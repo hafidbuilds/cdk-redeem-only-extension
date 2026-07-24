@@ -1630,18 +1630,48 @@ function checkTaskStorageBoundaries() {
     .filter((file) => /^(background|content|shared|sidepanel)[\\/]/.test(file));
   const taskRootOwners = productionFiles.filter((file) => readText(file).includes("'accountTasksV1'"));
   const eventRootOwners = productionFiles.filter((file) => readText(file).includes("'accountTaskEventsV1'"));
+  const effectRootOwners = productionFiles.filter((file) => readText(file).includes("'externalEffectsV1'"));
+  const attemptRootOwners = productionFiles.filter((file) => readText(file).includes("'redeemAttemptsV1'"));
   if (taskRootOwners.length !== 1 || taskRootOwners[0] !== 'background/task-repository.js') {
     fail(`accountTasksV1 must be owned only by background/task-repository.js: ${taskRootOwners.join(', ')}`);
   }
   if (eventRootOwners.length !== 1 || eventRootOwners[0] !== 'background/task-event-store.js') {
     fail(`accountTaskEventsV1 must be owned only by background/task-event-store.js: ${eventRootOwners.join(', ')}`);
   }
+  if (effectRootOwners.length !== 1 || effectRootOwners[0] !== 'background/external-effect-ledger.js') {
+    fail(`externalEffectsV1 must be owned only by background/external-effect-ledger.js: ${effectRootOwners.join(', ')}`);
+  }
+  if (attemptRootOwners.length !== 1 || attemptRootOwners[0] !== 'background/external-effect-ledger.js') {
+    fail(`redeemAttemptsV1 must be owned only by background/external-effect-ledger.js: ${attemptRootOwners.join(', ')}`);
+  }
   const background = readText('background.js');
   assertBefore(background, "'shared/task-schema.js'", "'background/task-repository.js'", 'task schema load order');
   assertBefore(background, "'background/task-repository.js'", "'background/task-runtime.js'", 'task runtime load order');
+  assertBefore(background, "'background/external-effect-ledger.js'", "'background/task-runtime.js'", 'external effect ledger load order');
+  assertBefore(background, "'background/steps/upi-redeem/effect-guard.js'", "'background/steps/upi-redeem/channel-submission.js'", 'redeem effect guard load order');
   const sidepanelHtml = readText('sidepanel/sidepanel.html');
   assertBefore(sidepanelHtml, 'task-event-view-model.js', 'task-event-renderer.js', 'task view script order');
   assertBefore(sidepanelHtml, 'task-event-renderer.js', 'task-panel-controller.js', 'task panel script order');
+}
+
+function checkRedeemDiagnosticRedaction() {
+  const files = [
+    'background/membership/redeem-service.js',
+    'background/membership/failed-redeem-retry-service.js',
+    'background/router/redeem-refresh-service.js',
+    'background/steps/upi-redeem/channel-submission.js',
+    'background/steps/upi-redeem/finalize.js',
+    'background/steps/upi-redeem/status-polling.js',
+  ];
+  const rawInterpolation = /\$\{(?:cdkey|selectedCdkey|submittedCdkey|attemptedUpiRedeemCdkey|entryCdkey|rowCdkey|failedCdkey|canceledCdkey)(?:\s*\|\|[^}]*)?\}/;
+  for (const file of files) {
+    const lines = readText(file).split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (rawInterpolation.test(line) && !line.includes('describeCdkey') && !line.includes('describeRedeemCdkey')) {
+        fail(`${file}:${index + 1} interpolates a complete CDK instead of a fingerprint`);
+      }
+    });
+  }
 }
 
 function checkLegacyNetworkAudit() {
@@ -1694,6 +1724,7 @@ checkModuleSizeGuard();
 checkTrackedSourceLineWarnings();
 checkSensitiveTrackedFiles();
 checkTaskStorageBoundaries();
+checkRedeemDiagnosticRedaction();
 checkLegacyNetworkAudit();
 checkPhoneSmsAudit();
 checkDocumentationDrift();

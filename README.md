@@ -73,6 +73,8 @@
 
 Service Worker 启动时会根据持久化 checkpoint 重建资源锁并分类恢复。尚未产生远端副作用的任务可安全恢复；远端请求已经发出或结果未知时只允许查询原请求，不会重新提交 CDK；无法证明安全性的任务进入中断或人工处理状态。任务、事件和普通日志使用同一脱敏器，不保存完整密码、AT、Cookie、2FA Secret、API Key、CDK 或邮件正文。
 
+兑换副作用账本由 `background/external-effect-ledger.js` 单独拥有：`externalEffectsV1` 保存 `prepared`、`dispatched`、`acknowledged`、`unknown`、`confirmed`、`failed` 状态，`redeemAttemptsV1` 保存对应尝试的渠道和不可逆 CDK 指纹。UPI、IDEAL、PIX 使用独立的账号锁和 CDK 锁。启动恢复只从现有渠道 usage 找回本地 CDK 并调用已有远端状态刷新；成功或明确失败才终结任务并释放锁，仍不确定的结果进入 `manual_review` 并保持锁定。
+
 ## Free / Plus
 
 Free 导出格式：

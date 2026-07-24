@@ -43,7 +43,7 @@
     } = deps;
 
     let membershipRedeemStatusSyncHelpers = null;
-
+    const describeCdkey = (cdkey = '', channel = 'upi') => (typeof self !== 'undefined' ? self : globalThis).MultiPageSensitiveDataRedactor?.describeCdkey?.(cdkey, normalizeRedeemChannel(channel)) || 'CDK fingerprint unavailable';
     function normalizeRedeemChannel(value = '') {
       const helper = getRedeemChannelStateHelpers().normalizeRedeemChannel;
       if (typeof helper === 'function') return helper(value);
@@ -733,7 +733,7 @@
           && !isUpiRedeemRemoteEntryCompatibleWithMembershipRow(cdkeyEntry, item, { requireCdkey: true })
         ) {
           const releasedAt = new Date().toISOString();
-          const reason = `当前 CDK ${rowCdkey} 已绑定其他账号，已回到 Free 等待重新匹配`;
+          const reason = `当前 ${describeCdkey(rowCdkey, channel)} 已绑定其他账号，已回到 Free 等待重新匹配`;
           changed = true;
           nextItems.push({
             ...item,
@@ -832,8 +832,8 @@
               channel === 'ideal' && failureCount >= totalRoundLimit
                 ? `UPI Free 兑换：${rowEmail} -> 后端返回 approve-blocked，IDEAL 已失败 ${totalRoundLimit} 次，账号已封存，不再使用。`
                 : reachedUpiDailyLimit
-                  ? `UPI Free 兑换：${rowEmail} -> 后端返回 approve-blocked，明确返回今日提交次数上限，已转入 IDEAL 候选，旧 CDK ${failedCdkey || ''} 已回到 CDK 池。`
-                  : `UPI Free 兑换：${rowEmail} -> 后端返回 approve-blocked，${failureLabel}，旧 CDK ${failedCdkey || ''} 已回到 CDK 池，账号保留在 Free。`,
+                  ? `UPI Free 兑换：${rowEmail} -> 后端返回 approve-blocked，明确返回今日提交次数上限，已转入 IDEAL 候选，旧 ${describeCdkey(failedCdkey, channel)} 已回到 CDK 池。`
+                  : `UPI Free 兑换：${rowEmail} -> 后端返回 approve-blocked，${failureLabel}，旧 ${describeCdkey(failedCdkey, channel)} 已回到 CDK 池，账号保留在 Free。`,
               'warn'
             );
           }
@@ -909,7 +909,7 @@
             membershipOverrideCheckedAt: '',
           });
           if (typeof addLog === 'function') {
-            await addLog(`UPI Free 兑换：${rowEmail} -> 当前绑定 CDK 远端确认成功，进入 Plus：${entryCdkey}`, 'ok');
+            await addLog(`UPI Free 兑换：${rowEmail} -> 当前绑定 CDK 远端确认成功，进入 Plus：${describeCdkey(entryCdkey, channel)}`, 'ok');
           }
           continue;
         }
@@ -1034,7 +1034,7 @@
             membershipOverrideCheckedAt: item.membershipOverrideCheckedAt || canceledAt,
           });
           if (typeof addLog === 'function') {
-            await addLog(`UPI Free 兑换：${rowEmail} -> 后端已取消 CDK ${canceledCdkey || ''}，账号已暂停自动续兑；如需继续请手动点击一键兑换。${cancelReason ? ` ${cancelReason}` : ''}`, 'warn');
+            await addLog(`UPI Free 兑换：${rowEmail} -> 后端已取消 ${describeCdkey(canceledCdkey, channel)}，账号已暂停自动续兑；如需继续请手动点击一键兑换。${cancelReason ? ` ${cancelReason}` : ''}`, 'warn');
           }
           continue;
         }
@@ -1061,7 +1061,7 @@
             checkedAt: item.checkedAt || releasedAt,
           });
           if (typeof addLog === 'function') {
-            await addLog(`UPI 无会员补兑：${rowEmail} -> 后端无兑换记录，已释放 CDK ${entry.cdkey || item.upiRedeemCdkey || ''}，账号回到 Free 可重新兑换。`, 'warn');
+            await addLog(`UPI 无会员补兑：${rowEmail} -> 后端无兑换记录，已释放 ${describeCdkey(entry.cdkey || item.upiRedeemCdkey, channel)}，账号回到 Free 可重新兑换。`, 'warn');
           }
           continue;
         }
@@ -1133,8 +1133,8 @@
               channel === 'ideal' && failureCount >= totalRoundLimit
                 ? `UPI Free 兑换：${rowEmail} -> 远端确认失败，IDEAL 已失败 ${totalRoundLimit} 次，账号已封存，不再使用：${remoteMessage}`
                 : reachedUpiDailyLimit
-                  ? `UPI Free 兑换：${rowEmail} -> 远端明确返回今日提交次数上限，已转入 IDEAL 候选，旧 CDK ${failedCdkey || ''} 已回到 CDK 池：${remoteMessage}`
-                  : `UPI Free 兑换：${rowEmail} -> 远端确认失败，${failureLabel}，旧 CDK ${failedCdkey || ''} 已回到 CDK 池，账号保留在 Free：${remoteMessage}`,
+                  ? `UPI Free 兑换：${rowEmail} -> 远端明确返回今日提交次数上限，已转入 IDEAL 候选，旧 ${describeCdkey(failedCdkey, channel)} 已回到 CDK 池：${remoteMessage}`
+                  : `UPI Free 兑换：${rowEmail} -> 远端确认失败，${failureLabel}，旧 ${describeCdkey(failedCdkey, channel)} 已回到 CDK 池，账号保留在 Free：${remoteMessage}`,
               'warn'
             );
           }

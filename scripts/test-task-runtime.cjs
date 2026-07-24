@@ -63,3 +63,27 @@ test('startup recovery is deduplicated within one service worker instance', asyn
   const taskId = first[0].task.taskId;
   assert.equal((await fixture.eventStore.list(taskId)).filter((event) => event.code === 'TASK_RECOVERY_RESUME_SAFE').length, 1);
 });
+
+test('startup query-only recovery can confirm a remote task and release its locks', async () => {
+  const fixture = createRuntime();
+  const task = await fixture.runtime.startTask({
+    type: 'redeem',
+    accountId: 'user@example.com',
+    channel: 'upi',
+    checkpoint: { cdkSubmitted: true, remoteRequestSent: true },
+  });
+  let recoveryCalls = 0;
+  fixture.runtime.setRemoteRecoveryHandler(async ({ task: recoveringTask }) => {
+    recoveryCalls += 1;
+    const resolved = await fixture.runtime.resolveRemoteTask(recoveringTask.taskId, {
+      outcome: 'confirmed',
+      result: { externalEffectIds: ['effect-1'] },
+    });
+    return { outcome: 'confirmed', task: resolved };
+  });
+  const recovered = await fixture.runtime.recoverActiveTasks({ force: true });
+  assert.equal(recoveryCalls, 1);
+  assert.equal(recovered[0].task.status, 'succeeded');
+  assert.equal(recovered[0].task.checkpoint.locksReleased, true);
+  assert.equal(fixture.runtime.createContext(task.taskId) !== null, true);
+});

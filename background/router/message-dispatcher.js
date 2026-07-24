@@ -571,7 +571,7 @@
               remoteRequestSent: false,
             });
             await taskContext?.assertNotCanceled?.();
-            return redeemUpiCredentialMembershipFree(redeemPayload);
+            return redeemUpiCredentialMembershipFree({ ...redeemPayload, taskId: taskContext?.taskId || '' });
           });
           return { ok: true, taskId: tracked.taskId, results: tracked.result };
         }

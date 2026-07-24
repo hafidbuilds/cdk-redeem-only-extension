@@ -37,6 +37,11 @@
       upsertResultItem,
     } = deps;
 
+    function describeRedeemCdkey(cdkey = '', channel = 'upi') {
+      const rootScope = typeof self !== 'undefined' ? self : globalThis;
+      return rootScope.MultiPageSensitiveDataRedactor?.describeCdkey?.(cdkey, channel) || 'CDK fingerprint unavailable';
+    }
+
     async function retryFailedUpiRedeemCdkey(input = {}) {
       const redeemChannel = normalizeRedeemChannel(input.channel || input.redeemChannel);
       const redeemChannelLabel = getRedeemChannelLabel(redeemChannel);
@@ -224,14 +229,14 @@
             accessToken,
             accessTokenMasked: maskAccessToken(accessToken),
             redeemStatus: 'running',
-            redeemReason: `${roundLabel}：${selectedCdkey}`,
+            redeemReason: `${roundLabel}：${describeRedeemCdkey(selectedCdkey, redeemChannel)}`,
             redeemAttemptedAt,
             redeemFailureLimit: totalRoundLimit,
             upiRedeemCdkey: selectedCdkey,
             redeemChannel,
           });
           await saveRetryProgress({ flowStage: 'upi-redeem-plus', email });
-          await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${roundLabel} 随机选择 CDK ${selectedCdkey}。`, 'info');
+          await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${roundLabel} 随机选择 ${describeRedeemCdkey(selectedCdkey, redeemChannel)}。`, 'info');
 
           try {
             const redeemResult = await redeemUpiCredentialWithAccessToken({
@@ -247,6 +252,7 @@
               channel: redeemChannel,
               skipEligibilityCheck: true,
               deferSubscriptionConfirmation: true,
+              taskId: input.taskId || initialState.activeTaskId || '',
             });
 
             if (redeemResult?.duplicateCdkeyRejected === true) {
@@ -283,12 +289,12 @@
               await saveRetryProgress({ flowStage: 'upi-redeem-plus', email });
               await addLog(
                 redeemChannel === 'ideal' && failureCount >= REDEEM_CHANNEL_FAILURE_LIMIT
-                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 重复提交，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用。`
+                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 重复提交，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用。`
                   : reachedUpiDailyLimit
-                    ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 明确返回今日提交次数上限，已转入 IDEAL 候选。`
+                    ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 明确返回今日提交次数上限，已转入 IDEAL 候选。`
                   : redeemChannel === 'upi' && failureCount >= REDEEM_CHANNEL_FAILURE_LIMIT
-                    ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 重复提交，UPI 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次；当前策略仍允许继续 UPI。`
-                    : `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 重复提交，本账号本轮结束，切换下一个账号。`,
+                    ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 重复提交，UPI 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次；当前策略仍允许继续 UPI。`
+                    : `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 重复提交，本账号本轮结束，切换下一个账号。`,
                 'warn'
               );
               summary.items.push({ email, cdkey: selectedCdkey, failed: true, reason });
@@ -315,7 +321,7 @@
                 redeemChannel,
               });
               await saveRetryProgress({ flowStage: 'upi-redeem-plus', email });
-              await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 已提交，等待远端结果。`, 'ok');
+              await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 已提交，等待远端结果。`, 'ok');
               summary.items.push({ email, cdkey: selectedCdkey, submitted: true });
               continue;
             }
@@ -350,7 +356,7 @@
                 membershipOverrideCheckedAt: '',
               });
               await saveRetryProgress({ flowStage: 'confirm-plus', email });
-              await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 已确认 ${redeemedSubscription.planType}。`, 'ok');
+              await addLog(`${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 已确认 ${redeemedSubscription.planType}。`, 'ok');
               summary.items.push({ email, cdkey: selectedCdkey, succeeded: true });
               continue;
             }
@@ -416,12 +422,12 @@
             await saveRetryProgress({ flowStage: 'upi-redeem-plus', email });
             await addLog(
               redeemChannel === 'ideal' && failureCount >= REDEEM_CHANNEL_FAILURE_LIMIT
-                ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 失败，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用：${reason}`
+                ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 失败，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用：${reason}`
                 : reachedUpiDailyLimit
-                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 明确返回今日提交次数上限，已转入 IDEAL 候选：${reason}`
+                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 明确返回今日提交次数上限，已转入 IDEAL 候选：${reason}`
                 : redeemChannel === 'upi' && failureCount >= REDEEM_CHANNEL_FAILURE_LIMIT
-                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 失败，UPI 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次；当前策略仍允许继续 UPI：${reason}`
-                  : `${redeemChannelLabel} 自动续兑：${email} -> ${selectedCdkey} 失败，本账号本轮结束，切换下一个账号：${reason}`,
+                  ? `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 失败，UPI 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次；当前策略仍允许继续 UPI：${reason}`
+                  : `${redeemChannelLabel} 自动续兑：${email} -> ${describeRedeemCdkey(selectedCdkey, redeemChannel)} 失败，本账号本轮结束，切换下一个账号：${reason}`,
               'warn'
             );
             summary.items.push({ email, cdkey: selectedCdkey, failed: true, reason });

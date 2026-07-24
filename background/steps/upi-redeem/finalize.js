@@ -65,6 +65,7 @@
     const isRetryableRemoteStatus = (...args) => context.isRetryableRemoteStatus(...args);
     const isUpiRedeemDuplicateCdkeyError = (...args) => context.isUpiRedeemDuplicateCdkeyError(...args);
     const isUpiRedeemNotAcceptedError = (...args) => context.isUpiRedeemNotAcceptedError(...args);
+    const isRedeemRemoteStatusUnknownError = (...args) => context.isRedeemRemoteStatusUnknownError(...args);
     const isUpiAccountIneligibleError = (...args) => context.isUpiAccountIneligibleError(...args);
     const checkUPIAccessTokenEligibility = (...args) => context.checkUPIAccessTokenEligibility(...args);
     const postUpiRedeem = (...args) => context.postUpiRedeem(...args);
@@ -72,6 +73,7 @@
     const confirmCurrentRedeemPaidSubscription = (...args) => context.confirmCurrentRedeemPaidSubscription(...args);
     const recordCdkeySubscriptionConfirmation = (...args) => context.recordCdkeySubscriptionConfirmation(...args);
     const applyPaidSubscriptionCleanup = (...args) => context.applyPaidSubscriptionCleanup(...args);
+    const effectGuard = context.effectGuard;
     const checkRegistrationUpiTrialEligibility = (...args) => context.checkRegistrationUpiTrialEligibility(...args);
     const redeemUpiCredentialWithAccessToken = (...args) => context.redeemUpiCredentialWithAccessToken(...args);
     const findMembershipResultItem = (...args) => context.findMembershipResultItem(...args);
@@ -102,7 +104,6 @@
           ].includes(normalizeUpiRedeemRemoteStatus(value)));
         }
 
-
         function buildQueuedFreeAutoRedeemCandidates(results = {}, channel = 'upi', options = {}) {
           const redeemChannel = normalizeRedeemChannel(channel);
           const excludedEmail = parsePoolEntryEmail(options.excludeEmail || '');
@@ -125,7 +126,6 @@
               return shouldRedeemItemUseChannel(item, redeemChannel);
             });
         }
-
 
         async function autoRedeemQueuedFreeCredentialsForChannel({
           runtimeState = {},
@@ -198,7 +198,6 @@
           }
         }
 
-
         async function attemptAutoRedeemTrialEligibleFreeCredentialChannel({
           runtimeState = {},
           visibleStep = 7,
@@ -228,9 +227,11 @@
             await addStepLog(visibleStep, `${redeemChannelLabel} 主流程自动兑换：${reason}，账号保留在 Free。`, 'warn');
             return { status: 'skipped', reason, item };
           }
+          const cdkeyDescriptor = effectGuard?.describeCdkey?.(cdkey, redeemChannel)
+            || `${redeemChannelLabel} CDK fingerprint unavailable`;
 
           const redeemAttemptedAt = toIsoTimestamp();
-          const runningReason = `主流程自动使用 ${redeemChannelLabel} CDK 兑换：${cdkey}`;
+          const runningReason = `主流程自动使用 ${redeemChannelLabel} CDK 兑换：${cdkeyDescriptor}`;
           const runningResults = await writeTrialEligibleFreeRedeemState({
             runtimeState: latestState,
             email: normalizedEmail,
@@ -253,7 +254,7 @@
 
           await addStepLog(
             visibleStep,
-            `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkey}，正在提交到兑换后端。`,
+            `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkeyDescriptor}，正在提交到兑换后端。`,
             'info'
           );
 
@@ -275,6 +276,7 @@
               channel: redeemChannel,
               skipEligibilityCheck: true,
               deferSubscriptionConfirmation: true,
+              taskId: normalizeString(latestState.activeTaskId || runtimeState.activeTaskId),
             });
             const submittedCdkey = normalizeString(redeemResult?.cdkey || redeemResult?.upiRedeemCdkey || cdkey);
             if (redeemResult?.duplicateCdkeyRejected === true) {
@@ -303,7 +305,7 @@
               });
               await addStepLog(
                 visibleStep,
-                `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${submittedCdkey} 已提交，等待远端最终会员结果。`,
+                `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${effectGuard?.describeCdkey?.(submittedCdkey, redeemChannel) || 'CDK fingerprint unavailable'} 已提交，等待远端最终会员结果。`,
                 'ok'
               );
               const remoteRefresh = await waitForSubmittedAutoRedeemRemoteRefresh({
@@ -331,7 +333,7 @@
             const successReason = normalizeString(redeemResult?.reason) || (planType ? `已开通 ${planType}` : 'CDK 兑换已提交');
             await addStepLog(
               visibleStep,
-              `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${submittedCdkey} 返回非等待状态：${successReason}`,
+              `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${effectGuard?.describeCdkey?.(submittedCdkey, redeemChannel) || 'CDK fingerprint unavailable'} 返回非等待状态：${successReason}`,
               'ok'
             );
             return {
@@ -390,8 +392,8 @@
             await addStepLog(
               visibleStep,
               countFailure
-                ? `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkey} 失败：${nextReason}`
-                : `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkey} 阻塞但不计失败：${reason}`,
+                ? `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkeyDescriptor} 失败：${nextReason}`
+                : `${redeemChannelLabel} 主流程自动兑换：${normalizedEmail} -> ${cdkeyDescriptor} 阻塞但不计失败：${reason}`,
               countFailure ? 'warn' : 'error'
             );
             return {
@@ -409,7 +411,6 @@
             };
           }
         }
-
 
         async function autoRedeemTrialEligibleFreeCredential({
           runtimeState = {},
@@ -499,7 +500,6 @@
           return { status: 'skipped', reason, item: currentItem };
         }
 
-
         async function executeUpiRedeem(state = {}) {
           throwIfStopped();
           const runtimeState = await getMergedState(state);
@@ -577,7 +577,7 @@
             visibleStep,
             eligibility?.eligible === true
               ? (autoRedeem?.status === 'submitted'
-                  ? `主流程 UPI 资格检测完成，账号已进入 Free，并已自动提交 ${getRedeemChannelLabel(autoRedeem.channel)} 兑换：${eligibility?.email || sessionEmail || 'unknown'} -> ${autoRedeem.cdkey || 'unknown'}。`
+                  ? `主流程 UPI 资格检测完成，账号已进入 Free，并已自动提交 ${getRedeemChannelLabel(autoRedeem.channel)} 兑换：${eligibility?.email || sessionEmail || 'unknown'} -> ${effectGuard?.describeCdkey?.(autoRedeem.cdkey, autoRedeem.channel) || 'CDK fingerprint unavailable'}。`
                   : autoRedeem?.status === 'queue_submitted'
                     ? `主流程 UPI 资格检测完成，账号已进入 Free；本轮账号未直接兑换，已自动接力 ${getRedeemChannelLabel(autoRedeem.channel)} Free 队列：${autoRedeem.reason || '已处理队列候选'}。`
                   : `主流程 UPI 资格检测完成，账号已进入 Free；自动兑换未提交：${autoRedeem?.reason || '未满足自动兑换条件'}。`)
@@ -614,12 +614,14 @@
             throw new Error('没有可用的 CDK，请在侧边栏导入可用 CDK。');
           }
           const selectedUsage = usage?.[cdkey] || {};
+          const cdkeyDescriptor = effectGuard?.describeCdkey?.(cdkey, 'upi') || 'UPI CDK fingerprint unavailable';
+          let effectHandle = null;
 
           await addStepLog(visibleStep, '正在读取当前 ChatGPT session，用于 CDK 兑换...', 'info');
           if (isRetryableRemoteStatus(selectedUsage.remoteStatus)) {
             await addStepLog(
               visibleStep,
-              `CDK ${cdkey} 上次状态为 ${normalizeUpiRedeemRemoteStatus(selectedUsage.remoteStatus)}，但未标记已用，将继续重试。`,
+              `${cdkeyDescriptor} 上次状态为 ${normalizeUpiRedeemRemoteStatus(selectedUsage.remoteStatus)}，但未标记已用，将继续重试。`,
               'warn'
             );
           }
@@ -647,7 +649,7 @@
             ...latestForSubscription,
           }, sessionState);
           const recordTrialEligibleFreeCredential = async (eligibility = {}) => {
-            await addStepLog(visibleStep, `UPI 资格检查通过，正在写入 Free 分组：${currentEmail || 'unknown'} -> ${cdkey}`, 'ok');
+            await addStepLog(visibleStep, `UPI 资格检查通过，正在写入 Free 分组：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}`, 'ok');
             if (typeof upsertTrialEligibleFreeCredential === 'function') {
               try {
                 await upsertTrialEligibleFreeCredential({
@@ -669,7 +671,7 @@
               }
             }
           };
-          await addStepLog(visibleStep, `正在检查 UPI ChatGPT session 资格：${cdkey} -> ${checkUrl}`, 'info');
+          await addStepLog(visibleStep, `正在检查 UPI ChatGPT session 资格：${cdkeyDescriptor} -> ${checkUrl}`, 'info');
           try {
             const eligibility = await checkUPIAccessTokenEligibility({
               checkUrl,
@@ -689,7 +691,7 @@
                 ...runtimeState,
                 ...latestForSubscription,
               }, sessionState);
-              await addStepLog(visibleStep, `正在使用刷新后的 UPI ChatGPT session 重试资格检查：${cdkey} -> ${checkUrl}`, 'info');
+              await addStepLog(visibleStep, `正在使用刷新后的 UPI ChatGPT session 重试资格检查：${cdkeyDescriptor} -> ${checkUrl}`, 'info');
               try {
                 const retryEligibility = await checkUPIAccessTokenEligibility({
                   checkUrl,
@@ -778,7 +780,9 @@
             }
           }
 
-          await addStepLog(visibleStep, `正在提交 ChatGPT session+CDK 到 UPI 兑换接口：${currentEmail || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(sessionState)} -> ${cdkey} -> ${apiUrl}`, 'info');
+          effectHandle = await effectGuard?.prepare?.({ taskId: normalizeString(runtimeState.activeTaskId || state.taskId), accountId: currentEmail, channel: 'upi', cdkey, nodeId: state.nodeId || 'upi-redeem' })
+            || { tracked: false, descriptor: cdkeyDescriptor };
+          await addStepLog(visibleStep, `正在提交 ChatGPT session+CDK 到 UPI 兑换接口：${currentEmail || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(sessionState)} -> ${cdkeyDescriptor} -> ${apiUrl}`, 'info');
           await reserveCdkeyForRedeemSubmission({
             cdkey,
             email: currentEmail,
@@ -787,7 +791,8 @@
             message: `正在提交兑换：${currentEmail || 'unknown'}`,
           });
           try {
-            await postUpiRedeem({
+            effectHandle = await effectGuard?.dispatched?.(effectHandle) || effectHandle;
+            const redeemPayload = await postUpiRedeem({
               apiUrl,
               externalApiKey,
               clientId,
@@ -795,9 +800,11 @@
               session: sessionState,
               accessToken: sessionState.accessToken,
               state: runtimeState,
+              idempotencyKey: effectHandle?.effect?.idempotencyKey || '',
             });
+            effectHandle = await effectGuard?.acknowledged?.(effectHandle, redeemPayload) || effectHandle;
             redeemBackendAccepted = true;
-            await addStepLog(visibleStep, `UPI 兑换接口已接收 ChatGPT session+CDK：${currentEmail || 'unknown'} -> ${cdkey}`, 'ok');
+            await addStepLog(visibleStep, `UPI 兑换接口已接收 ChatGPT session+CDK：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}`, 'ok');
             await updateCdkeyUsage(cdkey, (entry) => ({
               ...entry,
               email: currentEmail,
@@ -813,7 +820,7 @@
               retrying: false,
               retryError: '',
             }));
-            await addStepLog(visibleStep, `CDK 已提交到兑换后端，暂不从本地 CDK 池移除，等待确认会员成功后再清理：${cdkey}`, 'info');
+            await addStepLog(visibleStep, `CDK 已提交到兑换后端，暂不从本地 CDK 池移除，等待确认会员成功后再清理：${cdkeyDescriptor}`, 'info');
             const subscriptionResult = await confirmCurrentRedeemPaidSubscription({
               state: latestForSubscription,
               email: currentEmail,
@@ -850,6 +857,7 @@
               );
             }
             if (subscriptionResult.active) {
+              effectHandle = await effectGuard?.confirmed?.(effectHandle) || effectHandle;
               const planLabel = getPaidSubscriptionPlanLabel(subscriptionPlanType);
               try {
                 const cleanupState = await getMergedState({
@@ -888,6 +896,7 @@
                 );
               }
             } else {
+              await effectGuard?.waitingRemote?.(effectHandle);
               await addStepLog(
                 visibleStep,
                 `CDK 已提交成功，但会员状态待确认，暂不删除邮箱和 CDK：${subscriptionReason}`,
@@ -914,10 +923,24 @@
             }
           } catch (error) {
             const message = getErrorMessage(error) || 'CDK 兑换失败。';
+            if (isRedeemRemoteStatusUnknownError(error)) {
+              effectHandle = await effectGuard?.unknown?.(effectHandle, error) || effectHandle;
+              await updateCdkeyUsage(cdkey, (entry) => ({
+                ...entry,
+                email: currentEmail, usedAt: 0, lastAttemptAt: attemptAt, lastError: '',
+                remoteStatus: 'unknown',
+                remoteMessage: '远端结果未知，必须查询原提交状态，禁止重新提交',
+                remoteCheckedAt: attemptAt,
+                canCancel: false, canRetry: false, retrying: false, retryError: '',
+              }));
+              error.code = 'REDEEM_REMOTE_STATUS_UNKNOWN';
+              throw error;
+            }
             if (isUpiAccessTokenExpiredError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'AUTH_ACCESS_TOKEN_EXPIRED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI 兑换后端提示 ChatGPT session 失效，已停止当前兑换步骤，CDK 不记失败：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI 兑换后端提示 ChatGPT session 失效，已停止当前兑换步骤，CDK 不记失败：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await recordAccessTokenExpiredCdkeyAttempt({
@@ -929,9 +952,10 @@
               throw error;
             }
             if (isApproveBlockedError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'REDEEM_APPROVE_BLOCKED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI 后端返回 approve-blocked，立即释放 CDK 并保留账号：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI 后端返回 approve-blocked，立即释放 CDK 并保留账号：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await releaseCdkeyForApproveBlocked({
@@ -949,9 +973,10 @@
               throw error;
             }
             if (isUpiRedeemNotAcceptedError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'REDEEM_REMOTE_NOT_ACCEPTED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI 兑换接口未确认接收，后端没有兑换记录，已释放 CDK：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI 兑换接口未确认接收，状态接口明确没有兑换记录，已释放 CDK：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await releaseCdkeyForUnacceptedSubmission({
@@ -971,10 +996,11 @@
               throw error;
             }
             if (isUpiRedeemDuplicateCdkeyError(error)) {
+              effectHandle = await effectGuard?.unknown?.(effectHandle, Object.assign(error, { code: 'REDEEM_DUPLICATE_REMOTE_RECORD' })) || effectHandle;
               const pendingReason = `${message || '后端提示 CDK 已提交过'}；这张 CDK 已被占用，当前账号未提交成功，本账号本轮结束。`;
               await addStepLog(
                 visibleStep,
-                `UPI 后端提示 CDK 重复提交，当前账号未提交成功，本账号本轮结束：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI 后端提示 CDK 重复提交，当前账号未提交成功，本账号本轮结束：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await updateCdkeyUsage(cdkey, (entry) => ({
@@ -1003,11 +1029,12 @@
               }).catch(() => {});
               throw new Error(`${UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX}${pendingReason}`);
             } else if (redeemBackendAccepted) {
+              await effectGuard?.waitingRemote?.(effectHandle);
               duplicateCdkeyPending = true;
               const pendingReason = `CDK 已提交到兑换后端，但本地会员确认失败：${message}；已保持处理中，等待远端状态刷新`;
               await addStepLog(
                 visibleStep,
-                `CDK 已被兑换接口接收，本地确认会员失败，已按处理中记录：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `CDK 已被兑换接口接收，本地确认会员失败，已按处理中记录：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await updateCdkeyUsage(cdkey, (entry) => ({
@@ -1035,9 +1062,10 @@
                 upiRedeemSubscriptionReason: pendingReason,
               }).catch(() => {});
             } else {
+              effectHandle = await effectGuard?.failed?.(effectHandle, error?.code || 'REDEEM_REMOTE_REJECTED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI ChatGPT session+CDK 提交失败：${currentEmail || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI ChatGPT session+CDK 提交失败：${currentEmail || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'error'
               );
               await addStepLog(visibleStep, `CDK 兑换失败：${message}`, 'error');
@@ -1104,7 +1132,6 @@
             upiRedeemSubscriptionCheckedAt: normalizeString(completionLatestState?.upiRedeemSubscriptionCheckedAt),
           });
         }
-
 
     return {
       isAutoRedeemResultInFlight,

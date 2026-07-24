@@ -82,6 +82,11 @@
       verifyUpiCredentialMembershipPlus,
     } = deps;
 
+    function describeRedeemCdkey(cdkey = '', channel = 'upi') {
+      const rootScope = typeof self !== 'undefined' ? self : globalThis;
+      return rootScope.MultiPageSensitiveDataRedactor?.describeCdkey?.(cdkey, channel) || 'CDK fingerprint unavailable';
+    }
+
     async function redeemUpiCredentialMembershipFreeLegacy(input = {}) {
       if (runtimeFlags.batchRunning) {
         throw new Error('UPI 备份账号会员核验正在运行，请等待完成或先停止。');
@@ -303,7 +308,7 @@
             if (!attemptedUpiRedeemCdkey) {
               throw new Error('CDK 不足');
             }
-            await updateRedeemStage('upi-redeem-plus', `正在使用 CDK 兑换 Plus：${attemptedUpiRedeemCdkey}`);
+            await updateRedeemStage('upi-redeem-plus', `正在使用 CDK 兑换 Plus：${describeRedeemCdkey(attemptedUpiRedeemCdkey, 'upi')}`);
             throwIfStopRequested();
             const redeemResult = await redeemUpiCredentialWithAccessToken({
               state: {
@@ -317,6 +322,7 @@
               forceCdkey: attemptedUpiRedeemCdkey,
               skipEligibilityCheck: true,
               deferSubscriptionConfirmation: true,
+              taskId: input.taskId || '',
             });
             attemptedUpiRedeemCdkey = normalizeString(redeemResult.cdkey || redeemResult.upiRedeemCdkey || attemptedUpiRedeemCdkey);
             throwIfStopRequested();
@@ -525,7 +531,7 @@
               });
               await addLog(
                 attemptedUpiRedeemCdkey
-                  ? `UPI 无会员补兑：${credential.email} -> 后端返回 approve-blocked，旧 CDK ${attemptedUpiRedeemCdkey} 已释放，账号保留在 Free 等待重新匹配：${reason}`
+                  ? `UPI 无会员补兑：${credential.email} -> 后端返回 approve-blocked，旧 ${describeRedeemCdkey(attemptedUpiRedeemCdkey, 'upi')} 已释放，账号保留在 Free 等待重新匹配：${reason}`
                   : `UPI 无会员补兑：${credential.email} -> 后端返回 approve-blocked，账号保留在 Free 等待重新匹配：${reason}`,
                 'warn'
               );
@@ -1049,14 +1055,14 @@
               accessToken,
               accessTokenMasked: maskAccessToken(accessToken),
               redeemStatus: 'running',
-              redeemReason: `${roundLabel}：${attemptedUpiRedeemCdkey}`,
+              redeemReason: `${roundLabel}：${describeRedeemCdkey(attemptedUpiRedeemCdkey, redeemChannel)}`,
               redeemAttemptedAt,
               redeemFailureLimit: totalRoundLimit,
               upiRedeemCdkey: attemptedUpiRedeemCdkey,
               redeemChannel,
             });
             await saveRedeemProgress({ flowStage: 'upi-redeem-plus', email, redeemTotal: roundTotal });
-            await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${roundLabel} 随机选择 CDK ${attemptedUpiRedeemCdkey}。`, 'info');
+            await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${roundLabel} 随机选择 ${describeRedeemCdkey(attemptedUpiRedeemCdkey, redeemChannel)}。`, 'info');
 
             let attemptCounted = false;
             try {
@@ -1073,6 +1079,7 @@
                 channel: redeemChannel,
                 skipEligibilityCheck: true,
                 deferSubscriptionConfirmation: true,
+                taskId: input.taskId || '',
               });
               const submittedCdkey = normalizeString(redeemResult.cdkey || redeemResult.upiRedeemCdkey || attemptedUpiRedeemCdkey);
               if (redeemResult?.duplicateCdkeyRejected === true) {
@@ -1102,7 +1109,7 @@
                   redeemChannel,
                 });
                 await saveRedeemProgress({ flowStage: 'upi-redeem-plus', email, redeemTotal: roundTotal });
-                await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${submittedCdkey} 已提交到远端，等待最终会员结果。`, 'ok');
+                await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${describeRedeemCdkey(submittedCdkey, redeemChannel)} 已提交到远端，等待最终会员结果。`, 'ok');
                 continue;
               }
 
@@ -1138,7 +1145,7 @@
                 membershipOverrideCheckedAt: '',
               });
               await saveRedeemProgress({ flowStage: 'confirm-plus', email, redeemTotal: roundTotal });
-              await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${submittedCdkey} 已兑换并确认 ${redeemedSubscription.planType}。`, 'ok');
+              await addLog(`${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${describeRedeemCdkey(submittedCdkey, redeemChannel)} 已兑换并确认 ${redeemedSubscription.planType}。`, 'ok');
             } catch (error) {
               if (isMembershipStopError(error)) {
                 runtimeFlags.redeemStopRequested = true;
@@ -1218,10 +1225,10 @@
                 authError
                   ? `${redeemChannelLabel} Free 分组 CDK 兑换：远端接口拒绝请求，已停止在 ${email}；请检查 External API Key 或后端外部兑换接口 CSRF/API Key 配置：${reason}`
                   : reachedIdealLock
-                    ? `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${attemptedUpiRedeemCdkey} 失败，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用：${reason}`
+                    ? `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${describeRedeemCdkey(attemptedUpiRedeemCdkey, redeemChannel)} 失败，IDEAL 已失败 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次，账号已封存，不再使用：${reason}`
                     : reachedUpiDailyLimit
-                      ? `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${attemptedUpiRedeemCdkey} 明确返回今日提交次数上限，已转入 IDEAL 候选：${reason}`
-                    : `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${attemptedUpiRedeemCdkey} 失败，释放 CDK 并切换下一个账号：${reason}`,
+                      ? `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${describeRedeemCdkey(attemptedUpiRedeemCdkey, redeemChannel)} 明确返回今日提交次数上限，已转入 IDEAL 候选：${reason}`
+                    : `${redeemChannelLabel} Free 分组 CDK 兑换：${email} -> ${describeRedeemCdkey(attemptedUpiRedeemCdkey, redeemChannel)} 失败，释放 CDK 并切换下一个账号：${reason}`,
                 authError ? 'error' : 'warn'
               );
               if (runtimeFlags.redeemStopRequested) {

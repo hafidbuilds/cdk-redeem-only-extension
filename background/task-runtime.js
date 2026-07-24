@@ -3,6 +3,7 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createTaskRuntimeModule(root) {
   function createTaskRuntime({ repository, eventStore, lockManager, recoveryPolicy = root.MultiPageTaskRecoveryPolicy } = {}) {
     let bootRecoveryPromise = null;
+    let remoteRecoveryHandler = null;
     const runningOperations = new Map();
 
     function createTaskError(code, message = code) {
@@ -67,12 +68,14 @@
     function createContext(taskId) {
       return {
         taskId,
+        acquireResources: (resourceKeys = []) => lockManager?.acquire?.(taskId, resourceKeys),
         checkpoint: (patch = {}) => repository.patch(taskId, {
           checkpoint: patch,
           nodeId: patch.nodeId || undefined,
           progress: patch.progress || undefined,
         }),
         event: (event) => eventStore.append({ ...event, taskId }),
+        getTask: () => repository.get(taskId),
         setStatus: (status, patch = {}) => repository.patch(taskId, { ...patch, status }),
         isCancelRequested: async () => (await repository.get(taskId))?.cancelRequested === true,
         assertNotCanceled: async () => {
@@ -173,6 +176,50 @@
       return task;
     }
 
+    async function resolveRemoteTask(taskId, resolution = {}) {
+      const current = await repository.get(taskId);
+      if (!current) throw createTaskError('TASK_NOT_FOUND');
+      const outcome = String(resolution.outcome || '').trim().toLowerCase();
+      const confirmed = outcome === 'confirmed';
+      const failed = outcome === 'failed';
+      const status = confirmed ? 'succeeded' : (failed ? 'failed' : 'manual_review');
+      const releaseLocks = confirmed || failed;
+      const errorCode = confirmed
+        ? ''
+        : String(resolution.errorCode || (failed ? 'REDEEM_REMOTE_REJECTED' : 'REDEEM_REMOTE_STATUS_UNRESOLVED'));
+      const task = await repository.patch(taskId, {
+        status,
+        errorCode,
+        error: confirmed ? '' : String(resolution.message || ''),
+        result: confirmed ? { ...current.result, ...(resolution.result || {}), remoteConfirmed: true } : current.result,
+        recovery: {
+          action: confirmed ? 'remote_confirmed' : (failed ? 'remote_failed' : 'manual_review'),
+          canRetry: false,
+          canResubmit: failed,
+          releaseLocks,
+          errorCode,
+        },
+        checkpoint: {
+          externalSideEffectStatus: confirmed ? 'confirmed' : (failed ? 'failed' : 'unknown'),
+          remoteRequestSent: !releaseLocks,
+          locksReleased: releaseLocks,
+          remoteResolvedAt: new Date().toISOString(),
+        },
+      });
+      await appendStateEvent(
+        taskId,
+        confirmed ? 'TASK_REMOTE_CONFIRMED' : (failed ? 'TASK_REMOTE_FAILED' : 'TASK_REMOTE_MANUAL_REVIEW'),
+        confirmed ? 'Remote side effect confirmed' : (failed ? 'Remote side effect explicitly failed' : 'Remote side effect requires manual review'),
+        { outcome: confirmed ? 'confirmed' : (failed ? 'failed' : 'manual_review') }
+      );
+      if (releaseLocks) await lockManager?.release?.(taskId);
+      return task;
+    }
+
+    function setRemoteRecoveryHandler(handler) {
+      remoteRecoveryHandler = typeof handler === 'function' ? handler : null;
+    }
+
     async function performRecovery() {
       const lockState = await lockManager?.rebuild?.() || { conflicts: [] };
       const conflictedTaskIds = new Set((lockState.conflicts || []).map((item) => item.taskId));
@@ -195,7 +242,21 @@
           detail: { canRetry: decision.canRetry, canResubmit: decision.canResubmit },
         });
         if (decision.releaseLocks) await lockManager?.release?.(task.taskId);
-        recovered.push({ task: next, decision });
+        const recoveredItem = { task: next, decision };
+        if (decision.action === 'query_remote' && remoteRecoveryHandler) {
+          try {
+            const resolution = await remoteRecoveryHandler({ task: next, decision });
+            recoveredItem.resolution = resolution || null;
+            recoveredItem.task = resolution?.task || await repository.get(task.taskId) || next;
+          } catch {
+            recoveredItem.task = await resolveRemoteTask(task.taskId, {
+              outcome: 'manual_review',
+              errorCode: 'REDEEM_REMOTE_RECOVERY_FAILED',
+              message: 'Remote recovery query failed; manual review is required.',
+            });
+          }
+        }
+        recovered.push(recoveredItem);
       }
       return recovered;
     }
@@ -218,7 +279,9 @@
       findActiveTask,
       recoverActiveTasks,
       requestCancel,
+      resolveRemoteTask,
       runTask,
+      setRemoteRecoveryHandler,
       startTask,
     };
   }

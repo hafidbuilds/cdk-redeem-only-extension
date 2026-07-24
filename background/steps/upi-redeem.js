@@ -14,6 +14,7 @@
     const UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX = 'UPI_REDEEM_DUPLICATE_CDK::';
     const UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX = 'UPI_REDEEM_NOT_ACCEPTED::';
     const UPI_REDEEM_NETWORK_ERROR_PREFIX = 'UPI_REDEEM_NETWORK::';
+    const REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX = 'REDEEM_REMOTE_STATUS_UNKNOWN::';
     const UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX = 'UPI_ACCESS_TOKEN_EXPIRED::';
     const CHATGPT_SESSION_API_URL = 'https://chatgpt.com/api/auth/session';
     const DEFAULT_UPI_REDEEM_API_BASE_URL = 'https://chong.nerver.cc';
@@ -50,6 +51,9 @@
       broadcastDataUpdate = null,
       refreshPendingUpiCredentialMembershipRedeemStatuses = null,
       redeemUpiCredentialMembershipFree = null,
+      externalEffectLedger = null,
+      taskLockManager = null,
+      taskRuntime = null,
       sleepWithStop = async () => {},
       throwIfStopped = () => {},
       upsertTrialEligibleFreeCredential = null,
@@ -160,7 +164,7 @@
 
     function getErrorMessage(error) {
       return normalizeString(error?.message || error)
-        .replace(new RegExp(`^(?:${UPI_ACCOUNT_INELIGIBLE_ERROR_PREFIX}|${UPI_REDEEM_BACKEND_FAILED_ERROR_PREFIX}|${UPI_REDEEM_AUTH_ERROR_PREFIX}|${UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX}|${UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX}|${UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX}|PIX_ACCOUNT_INELIGIBLE::)`, 'i'), '');
+        .replace(new RegExp(`^(?:${UPI_ACCOUNT_INELIGIBLE_ERROR_PREFIX}|${UPI_REDEEM_BACKEND_FAILED_ERROR_PREFIX}|${UPI_REDEEM_AUTH_ERROR_PREFIX}|${UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX}|${UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX}|${UPI_REDEEM_NETWORK_ERROR_PREFIX}|${REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX}|${UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX}|PIX_ACCOUNT_INELIGIBLE::)`, 'i'), '');
     }
 
     function addStepLog(step, message, level = 'info') {
@@ -204,6 +208,7 @@
         UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX,
         UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX,
         UPI_REDEEM_NETWORK_ERROR_PREFIX,
+        REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX,
         UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX,
         CHATGPT_SESSION_API_URL,
         DEFAULT_UPI_REDEEM_API_BASE_URL,
@@ -227,6 +232,9 @@
       broadcastDataUpdate,
       refreshPendingUpiCredentialMembershipRedeemStatuses,
       redeemUpiCredentialMembershipFree,
+      externalEffectLedger,
+      taskLockManager,
+      taskRuntime,
       sleepWithStop,
       throwIfStopped,
       upsertTrialEligibleFreeCredential,

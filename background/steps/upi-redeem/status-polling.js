@@ -11,6 +11,10 @@
     const now = context.now;
     const setState = context.setState;
     const refreshPendingUpiCredentialMembershipRedeemStatuses = context.refreshPendingUpiCredentialMembershipRedeemStatuses;
+
+    function describeCdkey(cdkey = '', channel = 'upi') {
+      return context.effectGuard?.describeCdkey?.(cdkey, channel) || 'CDK fingerprint unavailable';
+    }
     const sleepWithStop = context.sleepWithStop;
     const throwIfStopped = context.throwIfStopped;
 
@@ -992,7 +996,7 @@
           let lastWaitingLogAt = 0;
           await addStepLog(
             visibleStep,
-            `${redeemChannelLabel} 主流程自动兑换：后台正在刷新远端兑换状态：${normalizedEmail} -> ${submittedCdkey}；只同步状态和失败次数，不在刷新线程里续兑。`,
+            `${redeemChannelLabel} 主流程自动兑换：后台正在刷新远端兑换状态：${normalizedEmail} -> ${describeCdkey(submittedCdkey, redeemChannel)}；只同步状态和失败次数，不在刷新线程里续兑。`,
             'info'
           );
 
@@ -1037,7 +1041,7 @@
                 const finalReason = normalizeString(finalItem?.redeemReason || finalItem?.reason || finalItem?.remoteMessage);
                 await addStepLog(
                   visibleStep,
-                  `${redeemChannelLabel} 主流程自动兑换：远端兑换状态已同步：${normalizedEmail} -> ${submittedCdkey}${finalStatus ? `，状态 ${finalStatus}` : ''}${finalReason ? `，${finalReason}` : ''}；已跳过自动续兑。`,
+                  `${redeemChannelLabel} 主流程自动兑换：远端兑换状态已同步：${normalizedEmail} -> ${describeCdkey(submittedCdkey, redeemChannel)}${finalStatus ? `，状态 ${finalStatus}` : ''}${finalReason ? `，${finalReason}` : ''}；已跳过自动续兑。`,
                   finalItem?.status === 'paid' ? 'success' : 'warn'
                 );
                 return {
@@ -1053,7 +1057,7 @@
                 lastWaitingLogAt = nowMs;
                 await addStepLog(
                   visibleStep,
-                  `${redeemChannelLabel} 主流程自动兑换：远端仍在处理 ${normalizedEmail} -> ${submittedCdkey}，继续每 5 秒刷新；不自动续兑。`,
+                  `${redeemChannelLabel} 主流程自动兑换：远端仍在处理 ${normalizedEmail} -> ${describeCdkey(submittedCdkey, redeemChannel)}，继续每 5 秒刷新；不自动续兑。`,
                   'info'
                 );
               }
@@ -1076,7 +1080,7 @@
             if (elapsedMs >= UPI_AUTO_REDEEM_REMOTE_REFRESH_TIMEOUT_MS) {
               await addStepLog(
                 visibleStep,
-                `${redeemChannelLabel} 主流程自动兑换：后台刷新远端兑换状态超时，账号仍等待远端结果：${normalizedEmail} -> ${submittedCdkey}；已跳过自动续兑。`,
+                `${redeemChannelLabel} 主流程自动兑换：后台刷新远端兑换状态超时，账号仍等待远端结果：${normalizedEmail} -> ${describeCdkey(submittedCdkey, redeemChannel)}；已跳过自动续兑。`,
                 'warn'
               );
               return {

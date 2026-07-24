@@ -28,6 +28,7 @@ importScripts(
   'background/account-repository.js',
   'background/account-lifecycle-service.js',
   'background/task-repository.js',
+  'background/external-effect-ledger.js',
   'background/task-event-store.js',
   'background/task-lock-manager.js',
   'background/task-recovery-policy.js',
@@ -116,6 +117,7 @@ importScripts(
   'background/steps/upi-redeem/free-entry-cleanup.js',
   'background/steps/upi-redeem/free-entry.js',
   'background/steps/upi-redeem/submission-response.js',
+  'background/steps/upi-redeem/effect-guard.js',
   'background/steps/upi-redeem/channel-submission.js',
   'background/steps/upi-redeem/status-polling.js',
   'background/steps/upi-redeem/finalize.js',
@@ -2696,6 +2698,7 @@ self.MultiPageRuntimeAccountRepository = accountRepository;
 self.MultiPageRuntimeAccountLifecycleService = accountLifecycleService;
 
 const taskRepository = self.MultiPageTaskRepository.createTaskRepository({ chromeApi: chrome });
+const externalEffectLedger = self.MultiPageExternalEffectLedger.createExternalEffectLedger({ chromeApi: chrome });
 const taskEventStore = self.MultiPageTaskEventStore.createTaskEventStore({ chromeApi: chrome });
 const taskLockManager = self.MultiPageTaskLockManager.createTaskLockManager({ repository: taskRepository });
 const taskRuntime = self.MultiPageTaskRuntime.createTaskRuntime({
@@ -2704,6 +2707,7 @@ const taskRuntime = self.MultiPageTaskRuntime.createTaskRuntime({
   lockManager: taskLockManager,
 });
 self.MultiPageRuntimeTaskRepository = taskRepository;
+self.MultiPageRuntimeExternalEffectLedger = externalEffectLedger;
 self.MultiPageRuntimeTaskEventStore = taskEventStore;
 self.MultiPageRuntimeTaskLockManager = taskLockManager;
 self.MultiPageRuntimeTaskRuntime = taskRuntime;
@@ -12985,6 +12989,15 @@ messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   upsertHotmailAccount,
   verifyHotmailAccount,
 });
+
+const redeemEffectRecovery = self.MultiPageUpiRedeemEffectGuard.createUpiRedeemEffectGuard({
+  ledger: externalEffectLedger,
+  taskRuntime,
+});
+taskRuntime.setRemoteRecoveryHandler(({ task }) => redeemEffectRecovery.recoverTask(task, {
+  getState,
+  refreshRemoteStatuses: (input) => messageRouter.refreshPendingUpiCredentialMembershipRedeemStatuses(input),
+}));
 
 function buildNodeRegistry(definitions = []) {
   return self.MultiPageBackgroundStepRegistry?.createNodeRegistry(

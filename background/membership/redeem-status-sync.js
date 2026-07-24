@@ -139,9 +139,10 @@
     const items = Array.isArray(results?.items) ? results.items : [];
     const targetEmail = normalizeRouterEmail(input.email || input.targetEmail || input.accountEmail || '');
     const targetChannel = normalizeString(input.channel || input.redeemChannel).toLowerCase();
-    const targetCdkeys = new Set((Array.isArray(input.cdkeys) ? input.cdkeys : [input.cdkey])
-      .map((cdkey) => normalizeString(cdkey).toLowerCase())
-      .filter(Boolean));
+    const inputCdkeys = (Array.isArray(input.cdkeys) ? input.cdkeys : [input.cdkey])
+      .map((cdkey) => normalizeString(cdkey))
+      .filter(Boolean);
+    const targetCdkeys = new Set(inputCdkeys.map((cdkey) => cdkey.toLowerCase()));
     const targets = {
       upi: new Set(),
       ideal: new Set(),
@@ -178,12 +179,16 @@
       }
       emails.add(email);
     });
+    if (targetCdkeys.size && ['upi', 'ideal', 'pix'].includes(targetChannel)) {
+      inputCdkeys.forEach((cdkey) => targets[targetChannel].add(cdkey));
+    }
     return {
       upi: Array.from(targets.upi),
       ideal: Array.from(targets.ideal),
+      pix: Array.from(targets.pix),
       emailMap,
       emailCount: emails.size,
-      cdkCount: targets.upi.size + targets.ideal.size,
+      cdkCount: targets.upi.size + targets.ideal.size + targets.pix.size,
     };
   }
 

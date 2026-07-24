@@ -45,3 +45,15 @@ test('unresolved terminal tasks keep locks across manager rebuild', async () => 
   await rebuilt.rebuild();
   assert.equal(rebuilt.getOwner('account:locked@example.com'), task.taskId);
 });
+
+test('adding a CDK lock preserves the task account lock', async () => {
+  const repository = createRepository();
+  const task = await repository.create({ type: 'redeem', status: 'running' });
+  const locks = lockApi.createTaskLockManager({ repository, schema });
+  await locks.acquire(task.taskId, ['account:user@example.com']);
+  await locks.acquire(task.taskId, ['cdkey:ideal:IDEAL-SECRET']);
+  const resourceKeys = (await repository.get(task.taskId)).resourceKeys;
+  assert.equal(resourceKeys.includes('account:user@example.com'), true);
+  assert.equal(resourceKeys.some((key) => /^cdkey:ideal:fnv1a_/.test(key)), true);
+  assert.doesNotMatch(JSON.stringify(resourceKeys), /IDEAL-SECRET/);
+});

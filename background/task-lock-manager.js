@@ -12,6 +12,7 @@
       if (!key) return '';
       const cdkeyMatch = key.match(/^cdkey:([^:]+):(.+)$/);
       if (!cdkeyMatch) return key;
+      if (/^fnv1a_[0-9a-f]{8}$/.test(cdkeyMatch[2])) return `cdkey:${cdkeyMatch[1]}:${cdkeyMatch[2]}`;
       return `cdkey:${cdkeyMatch[1]}:${schema.stableHash(cdkeyMatch[2].replace(/[\s-]+/g, ''))}`;
     }
 
@@ -49,7 +50,12 @@
     async function acquire(taskId, resourceKeys = []) {
       return withQueue(async () => {
         const normalizedTaskId = String(taskId || '').trim();
-        const keys = normalizeResourceKeys(resourceKeys);
+        const currentTask = await repository.get(normalizedTaskId);
+        if (!currentTask) throw new Error('TASK_NOT_FOUND');
+        const keys = normalizeResourceKeys([
+          ...(Array.isArray(currentTask.resourceKeys) ? currentTask.resourceKeys : []),
+          ...(Array.isArray(resourceKeys) ? resourceKeys : []),
+        ]);
         const activeTasks = (await repository.list()).filter((task) => (
           !schema.TERMINAL_STATUSES.has(task.status) || task.checkpoint?.locksReleased === false
         ));

@@ -7,13 +7,20 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createMultiPageUpiRedeemChannelSubmissionModule(root) {
   function createUpiRedeemChannelSubmission(context = {}) {
     const constants = context.constants || {};
-    const { UPI_REDEEM_TIMEOUT_MS, UPI_ACCOUNT_INELIGIBLE_ERROR_PREFIX, UPI_REDEEM_BACKEND_FAILED_ERROR_PREFIX, UPI_REDEEM_AUTH_ERROR_PREFIX, UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX, UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX, UPI_REDEEM_NETWORK_ERROR_PREFIX, UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX } = constants;
+    const { UPI_REDEEM_TIMEOUT_MS, UPI_ACCOUNT_INELIGIBLE_ERROR_PREFIX, UPI_REDEEM_BACKEND_FAILED_ERROR_PREFIX, UPI_REDEEM_AUTH_ERROR_PREFIX, UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX, UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX, UPI_REDEEM_NETWORK_ERROR_PREFIX, REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX, UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX } = constants;
     const fetchImpl = context.fetchImpl;
     const upiRedeemApiClient = context.upiRedeemApiClient;
     const now = context.now;
     const setState = context.setState;
     const sleepWithStop = context.sleepWithStop;
     const throwIfStopped = context.throwIfStopped;
+    const effectGuardModule = context.effectGuardModule
+      || root.MultiPageUpiRedeemEffectGuard
+      || (typeof require === 'function' ? require('./effect-guard.js') : null);
+    const effectGuard = effectGuardModule?.createUpiRedeemEffectGuard?.({
+      ledger: context.externalEffectLedger,
+      taskRuntime: context.taskRuntime,
+    }) || null;
 
     const normalizeString = (...args) => context.normalizeString(...args);
     const getRedeemChannelStateHelpers = (...args) => context.getRedeemChannelStateHelpers(...args);
@@ -92,7 +99,6 @@
         const REDEEM_CHANNEL_DAILY_LIMIT_BLOCK_MS = 24 * 60 * 60 * 1000;
         const UPI_REDEEM_GLOBAL_AUTH_PATTERN = /(?:external\s*)?api[\s_-]*key|apikey|x[\s_-]*external[\s_-]*api[\s_-]*key|csrf|x[\s_-]*client[\s_-]*id|client[\s_-]*id|authorization|bearer|(?:外部|远端|接口|后端)[\s\S]*(?:密钥|API\s*Key|ApiKey|鉴权|认证|权限|CSRF)|(?:密钥|API\s*Key|ApiKey|鉴权|认证|权限|CSRF)[\s\S]*(?:外部|远端|接口|后端)/i;
 
-
         function getRedeemChannelFailureField(channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().getRedeemChannelFailureField;
           if (typeof helper === 'function') {
@@ -100,7 +106,6 @@
           }
           return `${normalizeRedeemChannel(channel)}RedeemFailureCount`;
         }
-
 
         function getRedeemChannelFailureCount(item = {}, channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().getRedeemChannelFailureCount;
@@ -120,7 +125,6 @@
             : 0;
         }
 
-
         function getRedeemChannelDailyLimitBlockedAtField(channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().getRedeemChannelDailyLimitBlockedAtField;
           if (typeof helper === 'function') {
@@ -128,7 +132,6 @@
           }
           return `${normalizeRedeemChannel(channel)}RedeemDailyLimitBlockedAt`;
         }
-
 
         function getRedeemChannelDailyLimitBlockedUntilField(channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().getRedeemChannelDailyLimitBlockedUntilField;
@@ -138,7 +141,6 @@
           return `${normalizeRedeemChannel(channel)}RedeemDailyLimitBlockedUntil`;
         }
 
-
         function getRedeemChannelDailyLimitReasonField(channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().getRedeemChannelDailyLimitReasonField;
           if (typeof helper === 'function') {
@@ -146,7 +148,6 @@
           }
           return `${normalizeRedeemChannel(channel)}RedeemDailyLimitReason`;
         }
-
 
         function isRedeemChannelDailyLimitReason(message = '') {
           const helper = getRedeemChannelStateHelpers().isRedeemChannelDailyLimitReason;
@@ -160,7 +161,6 @@
             && /请\s*24\s*小时后再试/.test(text);
         }
 
-
         function isRedeemCrossRegionPaymentUnavailableReason(message = '') {
           const helper = getRedeemChannelStateHelpers().isRedeemCrossRegionPaymentUnavailableReason;
           if (typeof helper === 'function') {
@@ -168,7 +168,6 @@
           }
           return /\bpm-unavailable\b/i.test(normalizeString(message));
         }
-
 
         function buildRedeemChannelDailyLimitPatch(channel = 'upi', reason = '', failedAt = '') {
           if (!isRedeemChannelDailyLimitReason(reason)) {
@@ -184,7 +183,6 @@
             [getRedeemChannelDailyLimitReasonField(normalizedChannel)]: normalizeString(reason),
           };
         }
-
 
         function isRedeemChannelDailyLimitBlocked(item = {}, channel = 'upi') {
           const helper = getRedeemChannelStateHelpers().isRedeemChannelDailyLimitBlocked;
@@ -219,7 +217,6 @@
           const legacyBlockedAt = Date.parse(normalizeString(item?.redeemLastFailedAt || item?.redeemAttemptedAt || item?.checkedAt || item?.updatedAt));
           return !Number.isFinite(legacyBlockedAt) || legacyBlockedAt + REDEEM_CHANNEL_DAILY_LIMIT_BLOCK_MS > nowMs;
         }
-
 
         function isRedeemAccountLocked(item = {}) {
           const helper = getRedeemChannelStateHelpers().isRedeemAccountLocked;
@@ -889,6 +886,11 @@
           return normalizeString(error?.message || error).startsWith(UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX);
         }
 
+        function isRedeemRemoteStatusUnknownError(error) {
+          const message = normalizeString(error?.message || error);
+          return error?.code === 'REDEEM_REMOTE_STATUS_UNKNOWN' || message.startsWith(REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX) || message.startsWith(UPI_REDEEM_NETWORK_ERROR_PREFIX);
+        }
+
 
         const isUpiRedeemGlobalAuthFailureMessage = (message = '') => UPI_REDEEM_GLOBAL_AUTH_PATTERN.test(normalizeString(message));
 
@@ -1029,6 +1031,8 @@
           let lastReason = responseItem
             ? '兑换接口响应包含当前 CDK，但状态不是已接收。'
             : '兑换接口响应没有返回当前 CDK。';
+          let successfulStatusQueries = 0;
+          let lastStatusExplicitlyMissing = false;
           for (const delayMs of [1000, 2000, 3000]) {
             await sleepWithStop(delayMs);
             let statusPayload = null;
@@ -1039,6 +1043,7 @@
                 clientId,
                 body: { cdkeys: [cdkey], channel: normalizeRedeemChannel(channel) },
               });
+              successfulStatusQueries += 1;
             } catch (error) {
               lastReason = `状态确认请求失败：${getErrorMessage(error) || error}`;
               continue;
@@ -1050,13 +1055,16 @@
               if (isRedeemAcceptedStatus(remoteStatus)) {
                 return { confirmed: true, source: 'status', item: statusItem };
               }
+              lastStatusExplicitlyMissing = ['not_found', 'unused', 'available', 'new', 'ready'].includes(remoteStatus);
               lastReason = remoteMessage || `状态查询返回 ${remoteStatus || 'unknown'}`;
             } else {
+              lastStatusExplicitlyMissing = true;
               lastReason = '状态查询未找到当前 CDK记录。';
             }
           }
           return {
             confirmed: false,
+            safeToResubmit: positiveAcceptedCount === 0 && successfulStatusQueries > 0 && lastStatusExplicitlyMissing,
             reason: positiveAcceptedCount > 0
               ? `${lastReason} 兑换接口只返回汇总数量 ${positiveAcceptedCount}，但状态接口未确认落库。`
               : lastReason,
@@ -1064,7 +1072,7 @@
         }
 
 
-        async function postUPIJson({ apiUrl, externalApiKey, clientId, body }) {
+        async function postUPIJson({ apiUrl, externalApiKey, clientId, body, headers = {} }) {
           if (typeof fetchImpl !== 'function' || !upiRedeemApiClient?.postJson) {
             throw new Error('当前运行环境不支持 fetch，无法请求 UPI 兑换接口。');
           }
@@ -1081,6 +1089,7 @@
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
+                ...headers,
               },
               body,
               ...(controller ? { signal: controller.signal } : {}),
@@ -1109,7 +1118,7 @@
             return payload;
           } catch (error) {
             if (error?.name === 'AbortError') {
-              throw new Error('UPI 兑换接口请求超时。');
+              throw new Error(`${UPI_REDEEM_NETWORK_ERROR_PREFIX}UPI 兑换接口请求超时。`);
             }
             if (isFetchNetworkError(error)) {
               const message = normalizeString(error?.message || error);
@@ -1271,7 +1280,7 @@
         }
 
 
-        async function postUpiRedeem({ apiUrl, externalApiKey, clientId, cdkey, session, accessToken, state = {}, channel = 'upi' }) {
+        async function postUpiRedeem({ apiUrl, externalApiKey, clientId, cdkey, session, accessToken, state = {}, channel = 'upi', idempotencyKey = '' }) {
           const normalizedChannel = normalizeRedeemChannel(channel);
           let payload = null;
           try {
@@ -1283,6 +1292,7 @@
                 items: [buildUpiRedeemSessionItem({ cdkey, session, accessToken })],
                 channel: normalizedChannel,
               },
+              ...(normalizeString(idempotencyKey) ? { headers: { 'Idempotency-Key': normalizeString(idempotencyKey) } } : {}),
             });
           } catch (error) {
             if (isUpiRedeemApiAuthError(error)) {
@@ -1312,7 +1322,12 @@
             channel: normalizedChannel,
           });
           if (!acceptance.confirmed) {
-            throw new Error(`${UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX}UPI 兑换接口未确认接收当前 CDK，后端没有兑换记录：${acceptance.reason || '状态接口未找到记录'}`);
+            if (acceptance.safeToResubmit) {
+              throw new Error(`${UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX}UPI 兑换接口未确认接收当前 CDK，状态接口明确没有兑换记录：${acceptance.reason || '状态接口未找到记录'}`);
+            }
+            const error = new Error(`${REDEEM_REMOTE_STATUS_UNKNOWN_ERROR_PREFIX}UPI 兑换接口结果无法确认：${acceptance.reason || '状态接口不可用'}`);
+            error.code = 'REDEEM_REMOTE_STATUS_UNKNOWN';
+            throw error;
           }
           return payload;
         }
@@ -1321,6 +1336,7 @@
         async function releaseCdkeyForApproveBlocked({ cdkey = '', email = '', reason = '', attemptAt = 0, visibleStep = 0, state = {}, channel = 'upi' } = {}) {
           const normalizedCdkey = normalizeString(cdkey);
           const normalizedEmail = parsePoolEntryEmail(email) || resolveCurrentRedeemEmail(state, {});
+          const cdkeyDescriptor = effectGuard?.describeCdkey?.(normalizedCdkey, channel) || 'CDK fingerprint unavailable';
           const releasedAt = Math.max(1, Math.floor(Number(attemptAt) || Number(now()) || Date.now()));
           const releaseReason = normalizeString(reason) || 'approve-blocked';
           if (!normalizedCdkey) {
@@ -1351,11 +1367,11 @@
             subscriptionReason: '',
           }), channel);
           if (!normalizedEmail) {
-            await addStepLog(visibleStep, `后端返回 approve-blocked，已释放 CDK ${normalizedCdkey}，但未能解析邮箱。`, 'warn');
+            await addStepLog(visibleStep, `后端返回 approve-blocked，已释放 ${cdkeyDescriptor}，但未能解析邮箱。`, 'warn');
           }
           await addStepLog(
             visibleStep,
-            `后端返回 approve-blocked：${normalizedEmail || 'unknown'} 提交被阻塞，已释放 CDK ${normalizedCdkey}，账号保留在 Free 等待重新匹配。`,
+            `后端返回 approve-blocked：${normalizedEmail || 'unknown'} 提交被阻塞，已释放 ${cdkeyDescriptor}，账号保留在 Free 等待重新匹配。`,
             'warn'
           );
         }
@@ -1424,41 +1440,46 @@
           }
           if (forceCdkey) {
             const forcedUsage = usage?.[forceCdkey] || {};
+            const forcedCdkeyDescriptor = effectGuard?.describeCdkey?.(forceCdkey, redeemChannel) || 'fingerprint unavailable';
             if (!poolCdkeys.includes(forceCdkey)) {
-              throw new Error(`指定 CDK 不在当前 CDK 池中，已停止重试：${forceCdkey}`);
+              throw new Error(`指定 CDK 不在当前 CDK 池中，已停止重试：${forcedCdkeyDescriptor}`);
             }
             if (forcedUsage.enabled === false) {
-              throw new Error(`指定 CDK 已停用，已停止重试：${forceCdkey}`);
+              throw new Error(`指定 CDK 已停用，已停止重试：${forcedCdkeyDescriptor}`);
             }
             if (!isCdkeySelectableForRedeem(forcedUsage)) {
-              throw new Error(`指定 CDK 已兑换、处理中或已确认不可再次提交，已停止：${forceCdkey}`);
+              throw new Error(`指定 CDK 已兑换、处理中或已确认不可再次提交，已停止：${forcedCdkeyDescriptor}`);
             }
             cdkey = forceCdkey;
           }
           const selectedUsage = usage?.[cdkey] || {};
+          const taskId = normalizeString(input.taskId || runtimeState.activeTaskId);
+          const cdkeyDescriptor = effectGuard?.describeCdkey?.(cdkey, redeemChannel)
+            || `${redeemChannelLabel} CDK fingerprint unavailable`;
+          let effectHandle = null;
 
           const skipEligibilityCheck = input.skipEligibilityCheck === true;
           const attemptAt = Math.max(1, Math.floor(Number(now()) || Date.now()));
           await addStepLog(
             visibleStep,
-            `${redeemChannelLabel} Free 分组 CDK 兑换：准备提交 ChatGPT AT + CDK：${email || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(chatGptSession)} -> ${cdkey}`,
+            `${redeemChannelLabel} Free 分组 CDK 兑换：准备提交 ChatGPT AT + CDK：${email || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(chatGptSession)} -> ${cdkeyDescriptor}`,
             'info'
           );
           if (isRetryableRemoteStatus(selectedUsage.remoteStatus)) {
             await addStepLog(
               visibleStep,
-              `${redeemChannelLabel} Free 分组 CDK 兑换：CDK ${cdkey} 上次状态为 ${normalizeUpiRedeemRemoteStatus(selectedUsage.remoteStatus)}，但未标记已用，将继续重试。`,
+              `${redeemChannelLabel} Free 分组 CDK 兑换：${cdkeyDescriptor} 上次状态为 ${normalizeUpiRedeemRemoteStatus(selectedUsage.remoteStatus)}，但未标记已用，将继续重试。`,
               'warn'
             );
           }
           if (skipEligibilityCheck) {
             await addStepLog(
               visibleStep,
-              `${redeemChannelLabel} Free 分组 CDK 兑换：已跳过本地资格预检，直接提交兑换后端：${email || 'unknown'} -> ${cdkey} -> ${apiUrl}`,
+              `${redeemChannelLabel} Free 分组 CDK 兑换：已跳过本地资格预检，直接提交兑换后端：${email || 'unknown'} -> ${cdkeyDescriptor} -> ${apiUrl}`,
               'warn'
             );
           } else {
-            await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：正在检查 ChatGPT session 资格：${email || 'unknown'} -> ${cdkey} -> ${checkUrl}`, 'info');
+            await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：正在检查 ChatGPT session 资格：${email || 'unknown'} -> ${cdkeyDescriptor} -> ${checkUrl}`, 'info');
             try {
               await checkUPIAccessTokenEligibility({
                 checkUrl,
@@ -1525,7 +1546,9 @@
             }
           }
 
-          await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：正在提交 ChatGPT AT+CDK 到兑换接口：${email || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(chatGptSession)} -> ${cdkey} -> ${apiUrl}`, 'info');
+          effectHandle = await effectGuard?.prepare?.({ taskId, accountId: email, channel: redeemChannel, cdkey, nodeId: 'cdk-redeem-submit' })
+            || { tracked: false, descriptor: cdkeyDescriptor };
+          await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：正在提交 ChatGPT AT+CDK 到兑换接口：${email || 'unknown'} -> session字段 ${getChatGptSessionFieldCount(chatGptSession)} -> ${cdkeyDescriptor} -> ${apiUrl}`, 'info');
           await reserveCdkeyForRedeemSubmission({
             cdkey,
             email,
@@ -1536,7 +1559,8 @@
             channel: redeemChannel,
           });
           try {
-            await postUpiRedeem({
+            effectHandle = await effectGuard?.dispatched?.(effectHandle) || effectHandle;
+            const redeemPayload = await postUpiRedeem({
               apiUrl,
               externalApiKey,
               clientId,
@@ -1545,8 +1569,10 @@
               accessToken,
               state: runtimeState,
               channel: redeemChannel,
+              idempotencyKey: effectHandle?.effect?.idempotencyKey || '',
             });
-            await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：兑换接口已接收 ChatGPT AT+CDK：${email || 'unknown'} -> ${cdkey}`, 'ok');
+            effectHandle = await effectGuard?.acknowledged?.(effectHandle, redeemPayload) || effectHandle;
+            await addStepLog(visibleStep, `${redeemChannelLabel} Free 分组 CDK 兑换：兑换接口已接收 ChatGPT AT+CDK：${email || 'unknown'} -> ${cdkeyDescriptor}`, 'ok');
             await updateCdkeyUsage(cdkey, (entry) => ({
               ...entry,
               email,
@@ -1562,13 +1588,27 @@
               retrying: false,
               retryError: '',
             }), redeemChannel);
-            await addStepLog(visibleStep, `CDK 已提交到兑换后端，暂不从本地 CDK 池移除，等待确认会员成功后再清理：${cdkey}`, 'info');
+            await addStepLog(visibleStep, `CDK 已提交到兑换后端，暂不从本地 CDK 池移除，等待确认会员成功后再清理：${cdkeyDescriptor}`, 'info');
           } catch (error) {
             const message = getErrorMessage(error) || 'CDK 兑换失败。';
+            if (isRedeemRemoteStatusUnknownError(error)) {
+              effectHandle = await effectGuard?.unknown?.(effectHandle, error) || effectHandle;
+              await updateCdkeyUsage(cdkey, (entry) => ({
+                ...entry,
+                email, usedAt: 0, lastAttemptAt: attemptAt, lastError: '',
+                remoteStatus: 'unknown',
+                remoteMessage: '远端结果未知，必须查询原提交状态，禁止重新提交',
+                remoteCheckedAt: attemptAt,
+                canCancel: false, canRetry: false, retrying: false, retryError: '',
+              }), redeemChannel);
+              error.code = 'REDEEM_REMOTE_STATUS_UNKNOWN';
+              throw error;
+            }
             if (isUpiAccessTokenExpiredError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'AUTH_ACCESS_TOKEN_EXPIRED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI Free 分组 CDK 兑换：兑换后端提示 ChatGPT session 失效，已停止当前账号，CDK 不记失败：${email || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI Free 分组 CDK 兑换：兑换后端提示 ChatGPT session 失效，已停止当前账号，CDK 不记失败：${email || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await recordAccessTokenExpiredCdkeyAttempt({
@@ -1581,9 +1621,10 @@
               throw error;
             }
             if (isApproveBlockedError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'REDEEM_APPROVE_BLOCKED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI Free 分组 CDK 兑换：后端返回 approve-blocked，立即释放 CDK 并保留账号：${email || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI Free 分组 CDK 兑换：后端返回 approve-blocked，立即释放 CDK 并保留账号：${email || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await releaseCdkeyForApproveBlocked({
@@ -1598,9 +1639,10 @@
               throw error;
             }
             if (isUpiRedeemNotAcceptedError(error)) {
+              effectHandle = await effectGuard?.failed?.(effectHandle, 'REDEEM_REMOTE_NOT_ACCEPTED') || effectHandle;
               await addStepLog(
                 visibleStep,
-                `UPI Free 分组 CDK 兑换：兑换接口未确认接收，后端没有兑换记录，已释放 CDK：${email || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI Free 分组 CDK 兑换：兑换接口未确认接收，状态接口明确没有兑换记录，已释放 CDK：${email || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await releaseCdkeyForUnacceptedSubmission({
@@ -1612,10 +1654,11 @@
               throw error;
             }
             if (isUpiRedeemDuplicateCdkeyError(error)) {
+              effectHandle = await effectGuard?.unknown?.(effectHandle, Object.assign(error, { code: 'REDEEM_DUPLICATE_REMOTE_RECORD' })) || effectHandle;
               const pendingReason = `${message || '后端提示 CDK 已提交过'}；这张 CDK 已被占用，当前账号未提交成功，本账号本轮结束。`;
               await addStepLog(
                 visibleStep,
-                `UPI Free 分组 CDK 兑换：后端提示 CDK 重复提交，当前账号未提交成功，将回到 Free 可换卡：${email || 'unknown'} -> ${cdkey}：${message}`,
+                `UPI Free 分组 CDK 兑换：后端提示 CDK 重复提交，当前账号未提交成功，将回到 Free 可换卡：${email || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
                 'warn'
               );
               await updateCdkeyUsage(cdkey, (entry) => ({
@@ -1653,7 +1696,7 @@
             }
             await addStepLog(
               visibleStep,
-              `UPI Free 分组 CDK 兑换：AT+CDK 提交失败：${email || 'unknown'} -> ${cdkey}：${message}`,
+              `UPI Free 分组 CDK 兑换：AT+CDK 提交失败：${email || 'unknown'} -> ${cdkeyDescriptor}：${message}`,
               'error'
             );
             await updateCdkeyUsage(cdkey, (entry) => ({
@@ -1674,13 +1717,15 @@
               retrying: false,
               retryError: message,
             }), redeemChannel);
+            effectHandle = await effectGuard?.failed?.(effectHandle, error?.code || 'REDEEM_REMOTE_REJECTED') || effectHandle;
             throw error;
           }
 
           if (input.deferSubscriptionConfirmation === true) {
+            await effectGuard?.waitingRemote?.(effectHandle);
             await addStepLog(
               visibleStep,
-              `UPI Free 分组 CDK 兑换：已提交 ChatGPT AT+CDK，等待远端系统返回最终结果后再判定账号成功或失败：${email || 'unknown'} -> ${cdkey}`,
+              `UPI Free 分组 CDK 兑换：已提交 ChatGPT AT+CDK，等待远端系统返回最终结果后再判定账号成功或失败：${email || 'unknown'} -> ${cdkeyDescriptor}`,
               'info'
             );
             return {
@@ -1717,6 +1762,7 @@
             channel: redeemChannel,
           });
           if (subscriptionResult.active) {
+            effectHandle = await effectGuard?.confirmed?.(effectHandle) || effectHandle;
             const cleanupState = await getMergedState({
               email,
               upiRedeemSuccess: true,
@@ -1733,6 +1779,8 @@
               email,
               visibleStep,
             });
+          } else {
+            await effectGuard?.waitingRemote?.(effectHandle);
           }
 
           return {
@@ -1765,6 +1813,7 @@
 
 
     return {
+      effectGuard,
       getRedeemChannelLabel,
       getRedeemChannelFailureField,
       getRedeemChannelFailureCount,
@@ -1819,6 +1868,7 @@
       isUpiRedeemDuplicateCdkeyMessage,
       isUpiRedeemDuplicateCdkeyError,
       isUpiRedeemNotAcceptedError,
+      isRedeemRemoteStatusUnknownError,
       isUpiRedeemApiAuthError,
       isUpiAccountIneligibleError,
       isRecoverableUpiEligibilityError,
