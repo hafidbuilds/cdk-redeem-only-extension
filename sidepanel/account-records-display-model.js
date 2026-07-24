@@ -42,6 +42,9 @@
     const buildMembershipViewModelRows = typeof context.buildMembershipViewModelRows === 'function'
       ? context.buildMembershipViewModelRows
       : (rows) => Array.isArray(rows) ? rows : [];
+    const buildOperationDecisions = typeof context.buildOperationDecisions === 'function'
+      ? context.buildOperationDecisions
+      : () => ({});
     const buildUpiCredentialMembershipDisplayRowKey = typeof context.buildUpiCredentialMembershipDisplayRowKey === 'function'
       ? context.buildUpiCredentialMembershipDisplayRowKey
       : (row = {}, email = '') => normalizeText(row.email || email);
@@ -167,7 +170,8 @@
     }
 
     function buildDisplayRow(row, successLookup) {
-      return applyUpiRedeemSuccessMembershipPatch(sanitizeUpiCredentialMembershipDisplayRow(row), successLookup);
+      const displayRow = applyUpiRedeemSuccessMembershipPatch(sanitizeUpiCredentialMembershipDisplayRow(row), successLookup);
+      return { ...displayRow, operationDecisions: buildOperationDecisions(displayRow) };
     }
 
     function pushDisplayRow(rows, seen, row, email, plusDeletedEmailSets) {

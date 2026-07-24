@@ -375,6 +375,95 @@
     return '当前不可兑换';
   }
 
+  const OPERATION_REASON_CODES = Object.freeze({
+    allowed: 'ALLOWED',
+    missingEmail: 'ACCOUNT_EMAIL_MISSING',
+    disabled: 'ACCOUNT_DISABLED',
+    active: 'OPERATION_IN_PROGRESS',
+    missingAt: 'ACCESS_TOKEN_MISSING',
+    missingLoginMaterial: 'LOGIN_MATERIAL_MISSING',
+    notFree: 'ACCOUNT_NOT_FREE',
+    ineligible: 'TRIAL_NOT_ELIGIBLE',
+    channelBlocked: 'CHANNEL_NOT_ELIGIBLE',
+    locked: 'ACCOUNT_REDEEM_LOCKED',
+    dailyLimit: 'CHANNEL_DAILY_LIMIT',
+    failureLimit: 'CHANNEL_FAILURE_LIMIT',
+    notRetryable: 'OPERATION_NOT_RETRYABLE',
+    nothingToStop: 'NOTHING_TO_STOP',
+  });
+
+  function buildOperationDecision(allowed, reasonCode, reason, extra = {}) {
+    return {
+      allowed: allowed === true,
+      reasonCode: reasonCode || (allowed ? OPERATION_REASON_CODES.allowed : 'OPERATION_BLOCKED'),
+      reason: normalizeText(reason) || (allowed ? '可执行' : '当前不可执行'),
+      ...extra,
+    };
+  }
+
+  function getOperationDecision(row = {}, operation = 'redeem', options = {}) {
+    const normalizedOperation = normalizeText(operation).toLowerCase().replace(/[\s-]+/g, '_');
+    const channel = normalizeRedeemChannel(options.channel || row.redeemChannel || row.channel);
+    const status = normalizeText(row.status).toLowerCase();
+    const redeemStatus = normalizeText(row.redeemStatus).toLowerCase();
+    const active = isActiveRedeemRemoteStatus(redeemStatus)
+      || row.redeeming === true
+      || row.running === true
+      || row.operationRunning === true;
+    if (normalizedOperation === 'stop') {
+      return active || redeemStatus === 'running'
+        ? buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可停止当前任务')
+        : buildOperationDecision(false, OPERATION_REASON_CODES.nothingToStop, '当前没有可停止的任务');
+    }
+    if (!row?.email) return buildOperationDecision(false, OPERATION_REASON_CODES.missingEmail, '账号邮箱为空');
+    if (row.enabled === false) return buildOperationDecision(false, OPERATION_REASON_CODES.disabled, '账号已停用');
+    if (active && !['export', 'export_sensitive'].includes(normalizedOperation)) {
+      return buildOperationDecision(false, OPERATION_REASON_CODES.active, '账号已有操作或远端兑换正在进行');
+    }
+    if (normalizedOperation === 'refresh_access_token' || normalizedOperation === 'refresh_at' || normalizedOperation === 'access_token') {
+      return hasLoginMaterial(row)
+        ? buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可补充或刷新 AT')
+        : buildOperationDecision(false, OPERATION_REASON_CODES.missingLoginMaterial, '缺少 GPT 密码，无法补 AT');
+    }
+    if (normalizedOperation === 'verify_membership' || normalizedOperation === 'membership_check') {
+      return normalizeText(row.accessToken)
+        ? buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可进行会员核验')
+        : buildOperationDecision(false, OPERATION_REASON_CODES.missingAt, '缺少 AT，无法进行会员核验');
+    }
+    if (normalizedOperation === 'export' || normalizedOperation === 'export_sensitive') {
+      return buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可导出账号记录');
+    }
+    if (normalizedOperation === 'delete' || normalizedOperation === 'remove') {
+      return buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可删除账号记录');
+    }
+    if (normalizedOperation === 'retry' || normalizedOperation === 'retry_redeem') {
+      if (isManualLoginRetryableRow(row) || redeemStatus === 'failed' || isDuplicateCdkeyPendingRow(row)) {
+        return buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可重试当前操作', { channel });
+      }
+      return buildOperationDecision(false, OPERATION_REASON_CODES.notRetryable, '当前没有可重试的失败操作', { channel });
+    }
+    if (normalizedOperation === 'redeem' || normalizedOperation === 'redeem_free') {
+      if (status !== 'free') return buildOperationDecision(false, OPERATION_REASON_CODES.notFree, getNotRedeemableReason(row), { channel });
+      if (!normalizeText(row.accessToken)) return buildOperationDecision(false, OPERATION_REASON_CODES.missingAt, '缺少 AT，无法兑换', { channel });
+      if (normalizeTrialEligibilityStatus(row.trialEligibilityStatus) !== 'eligible') {
+        return buildOperationDecision(false, OPERATION_REASON_CODES.ineligible, '账号没有明确的试用资格', { channel });
+      }
+      if (!isTrialEligibilityChannelAllowed(row, channel)) return buildOperationDecision(false, OPERATION_REASON_CODES.channelBlocked, '当前渠道资格不可用', { channel });
+      if (isRedeemLocked(row)) return buildOperationDecision(false, OPERATION_REASON_CODES.locked, getRedeemLockReason(row), { channel });
+      if (isRedeemChannelDailyLimitBlocked(row, channel, options)) return buildOperationDecision(false, OPERATION_REASON_CODES.dailyLimit, '当前渠道处于 24 小时限流冷却', { channel });
+      if (isChannelFailureLimitReached(row, channel)) return buildOperationDecision(false, OPERATION_REASON_CODES.failureLimit, `当前渠道失败次数已达 ${REDEEM_CHANNEL_FAILURE_LIMIT} 次`, { channel });
+      return buildOperationDecision(true, OPERATION_REASON_CODES.allowed, '可执行兑换', { channel });
+    }
+    return buildOperationDecision(false, 'UNKNOWN_OPERATION', '未知账号操作');
+  }
+
+  function buildOperationDecisions(row = {}, options = {}) {
+    return Object.fromEntries(['refresh_access_token', 'verify_membership', 'redeem', 'export', 'delete', 'retry', 'stop'].map((operation) => [
+      operation,
+      getOperationDecision(row, operation, options),
+    ]));
+  }
+
   function isRedeemPlusDeletedEmail(email = '', channel = 'upi', deletedEmailSets = {}) {
     const normalizedEmail = normalizeEmail(email);
     const normalizedChannel = normalizeRedeemChannel(channel);
@@ -460,6 +549,10 @@
     isChannelFailureLimitReached,
     getChannelFailureLimitBlockedRows,
     getNotRedeemableReason,
+    OPERATION_REASON_CODES,
+    buildOperationDecision,
+    getOperationDecision,
+    buildOperationDecisions,
     isRedeemPlusDeletedEmail,
     isRedeemPlusDeletedDisplayRow,
     summarizeRows,

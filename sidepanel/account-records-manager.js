@@ -163,6 +163,8 @@
       hasUpiCredentialMembershipLoginMaterial,
       isManualLoginRetryableUpiCredentialMembershipRow,
       isDuplicateCdkeyPendingMembershipRow,
+      getOperationDecision,
+      buildOperationDecisions,
     } = accountRecordsRedeemPolicy.createAccountRecordsRedeemPolicy({
       failureLimit: REDEEM_CHANNEL_FAILURE_LIMIT,
       getRedeemChannelStateHelpers: () => getRedeemChannelStateHelpers(),
@@ -313,6 +315,7 @@
       getUpiCredentialMembershipCheckingEmail: () => upiCredentialMembershipCheckingEmail,
       getUpiCredentialMembershipLoginEmail: () => upiCredentialMembershipLoginEmail,
       getUpiCredentialMembershipRedeemProgressMeta: (row, results) => getUpiCredentialMembershipRedeemProgressMeta(row, results),
+      buildOperationDecisions: (row, options) => buildOperationDecisions(row, options),
     });
 
     const FILTER_CONFIG = {
@@ -830,12 +833,14 @@
       getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
       buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
       normalizeUpiCredentialMembershipEmail,
+      getOperationDecision: (row, operation, options) => getOperationDecision(row, operation, options),
       normalizeUpiCredentialMembershipText,
       isActiveUpiCredentialMembershipRedeemRow: (row, results) => isActiveUpiCredentialMembershipRedeemRow(row, results),
       isAutoRunRecordDisplayRunning: (currentState) => isAutoRunRecordDisplayRunning(currentState),
       summarizeMembershipViewModelRows,
       getUpiCredentialMembershipUiGroup,
       getFreeExportIncludeVerificationUrl,
+      getOperationDecision,
       getChannelFailureLimitBlockedFreeRows: (rows, channel) => getChannelFailureLimitBlockedFreeRows(rows, channel),
       isRedeemChannelDailyLimitBlocked: (row, channel) => isRedeemChannelDailyLimitBlocked(row, channel),
       isUpiCredentialMembershipRedeemLocked: (row) => isUpiCredentialMembershipRedeemLocked(row),
@@ -1333,6 +1338,7 @@
       exportUpiCredentialBackupTextFile,
       exportUpiRedeemSuccessEmailTextFile,
       getFreeExportIncludeVerificationUrl,
+      getOperationDecision,
       openPanel,
       reloadUpiCredentialMembershipAfterRuntimeImport,
       render,

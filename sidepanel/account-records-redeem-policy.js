@@ -121,6 +121,16 @@
       return membershipRowPolicy.isDuplicateCdkeyPendingRow?.(row) === true;
     }
 
+    function getOperationDecision(row = {}, operation = 'redeem', options = {}) {
+      return membershipRowPolicy.getOperationDecision?.(row, operation, options)
+        || { allowed: false, reasonCode: 'POLICY_UNAVAILABLE', reason: '账号操作策略不可用' };
+    }
+
+    function buildOperationDecisions(row = {}, options = {}) {
+      return membershipRowPolicy.buildOperationDecisions?.(row, options)
+        || {};
+    }
+
     return {
       getRedeemChannelFailureField,
       getRedeemChannelFailureCount,
@@ -138,6 +148,8 @@
       hasUpiCredentialMembershipLoginMaterial,
       isManualLoginRetryableUpiCredentialMembershipRow,
       isDuplicateCdkeyPendingMembershipRow,
+      getOperationDecision,
+      buildOperationDecisions,
     };
   }
 

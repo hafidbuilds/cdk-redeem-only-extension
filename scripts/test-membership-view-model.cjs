@@ -111,3 +111,21 @@ test('missing AT rows are counted as not redeemable', () => {
   assert.equal(summary.redeemablePixFreeCount, 1);
   assert.equal(membershipRowPolicy.isRedeemableFreeRowForChannel(rows[1], 'upi'), false);
 });
+
+test('operation policy exposes stable reason codes for shared account actions', () => {
+  const missingAt = buildEligibleFreeRow({ accessToken: '' });
+  assert.deepEqual(
+    membershipRowPolicy.getOperationDecision(missingAt, 'redeem', { channel: 'pix' }),
+    {
+      allowed: false,
+      reasonCode: 'ACCESS_TOKEN_MISSING',
+      reason: '缺少 AT，无法兑换',
+      channel: 'pix',
+    }
+  );
+  const ready = buildEligibleFreeRow({ password: 'gpt-password' });
+  assert.equal(membershipRowPolicy.getOperationDecision(ready, 'refresh_access_token').allowed, true);
+  assert.equal(membershipRowPolicy.getOperationDecision(ready, 'verify_membership').reasonCode, 'ALLOWED');
+  assert.equal(membershipRowPolicy.getOperationDecision({ email: 'x@example.com' }, 'stop').reasonCode, 'NOTHING_TO_STOP');
+  assert.equal(membershipRowPolicy.getOperationDecision({ email: 'x@example.com', redeemStatus: 'running' }, 'stop').allowed, true);
+});

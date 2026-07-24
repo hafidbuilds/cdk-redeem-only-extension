@@ -77,6 +77,8 @@ Service Worker 启动时会根据持久化 checkpoint 重建资源锁并分类�
 
 邮箱 Provider 的统一字段定义、标准化、校验和脱敏集中在 `background/email/provider-registry.js`；Hotmail、2925、iCloud、Gmail 和自定义邮箱的专用管理器仍保持原有职责。验证码轮询在 `background/verification/mail-baseline.js` 中保存请求时间、账号/任务范围和邮件 ID/指纹消费标记，普通日志不保存完整邮件正文。
 
+Sidepanel 账号行的补 AT、会员核验、UPI/IDEAL/PIX 兑换、导出、删除、重试和停止判断统一由 `sidepanel/membership-row-policy.js` 生成，返回稳定原因码和可读原因；显示模型把同一决策附在账号行上，渲染层不再复制资格判断。
+
 ## Free / Plus
 
 Free 导出格式：
