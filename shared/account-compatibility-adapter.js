@@ -70,13 +70,14 @@
     if (lifecycle.validityStatus === 'deactivated' || lifecycle.validityStatus === 'invalid') {
       return [{ ...base, status: 'failed', planType: '', accountDeactivated: lifecycle.validityStatus === 'deactivated' }];
     }
-    if (lifecycle.membershipStatus !== 'plus') {
+    if (lifecycle.membershipStatus === 'free' || normalized.metadata?.legacyStatus === 'failed') {
       return [{
         ...base,
         status: normalized.metadata?.legacyStatus === 'failed' ? 'failed' : 'free',
-        planType: lifecycle.membershipStatus === 'free' ? 'free' : (normalized.metadata?.legacyPlanType || 'free'),
+        planType: lifecycle.membershipStatus === 'free' ? 'free' : '',
       }];
     }
+    if (lifecycle.membershipStatus !== 'plus') return [];
     const channels = Array.from(new Set([
       ...asArray(normalized.metadata?.paidChannels),
       lifecycle.membershipChannel,

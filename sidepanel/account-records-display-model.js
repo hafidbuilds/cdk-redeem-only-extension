@@ -141,10 +141,11 @@
       getUpiCredentialMembershipPoolRows().forEach((credential) => {
         const email = normalizeEmail(credential?.email);
         if (!email || deletedEmailSet.has(email)) return;
-        const storedResult = resultLookup[email] || {};
+        const storedResult = resultLookup[email];
+        const storedStatus = normalizeText(storedResult?.status).toLowerCase();
+        if (!['free', 'paid', 'failed'].includes(storedStatus)) return;
         const row = buildDisplayRow({
           ...mergeUpiCredentialMembershipDisplayCredentialResult(credential, {
-            ...(storedResult.status ? {} : buildFallbackFreeResult()),
             ...storedResult,
           }),
           email,
@@ -159,6 +160,8 @@
       (Array.isArray(safeResults.items) ? safeResults.items : []).forEach((result) => {
         const email = normalizeEmail(result?.email);
         if (!email || deletedEmailSet.has(email)) return;
+        const status = normalizeText(result?.status).toLowerCase();
+        if (!['free', 'paid', 'failed'].includes(status)) return;
         const row = buildDisplayRow({
           ...result,
           email,
@@ -180,10 +183,6 @@
       seen.add(rowKey);
       if (isRedeemPlusDeletedDisplayRow(row, plusDeletedEmailSets)) return;
       rows.push(row);
-    }
-
-    function buildFallbackFreeResult() {
-      return { status: 'free', planType: 'free', reason: 'Free 分组账号，有试用资格' };
     }
 
     function buildPasskeyPatch(sourceCredential, sourceResult, credentialId, resultCredentialId, metadataPatch) {

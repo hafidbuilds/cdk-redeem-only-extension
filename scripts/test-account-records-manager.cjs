@@ -237,7 +237,7 @@ test('display model marks deleted row keys as seen before filtering duplicates',
     ],
     getUpiCredentialMembershipCheckResults: () => ({
       items: [
-        { email: 'duplicate@example.com', source: 'results', status: 'active' },
+        { email: 'duplicate@example.com', source: 'results', status: 'free' },
       ],
     }),
     buildUpiCredentialMembershipDisplayRowKey: (row, email) => String(row.email || email || '').trim().toLowerCase(),
@@ -245,6 +245,25 @@ test('display model marks deleted row keys as seen before filtering duplicates',
   });
 
   assert.deepEqual(displayModel.buildUpiCredentialMembershipDisplayRows(), []);
+});
+
+test('display model does not classify backup-only credentials as Free', () => {
+  const displayModel = createDisplayModel({
+    getUpiCredentialMembershipPoolRows: () => [
+      { email: 'unknown@example.com', password: 'fixture-password' },
+      { email: 'confirmed@example.com', password: 'fixture-password' },
+    ],
+    getUpiCredentialMembershipCheckResults: () => ({
+      items: [
+        { email: 'confirmed@example.com', status: 'free', planType: 'free' },
+      ],
+    }),
+  });
+
+  assert.deepEqual(
+    displayModel.buildUpiCredentialMembershipDisplayRows().map((row) => row.email),
+    ['confirmed@example.com']
+  );
 });
 
 test('createAccountRecordsManager fails loudly when redeem progress module is unavailable', () => {
