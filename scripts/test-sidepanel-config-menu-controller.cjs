@@ -51,6 +51,21 @@ test('routes rejected export callback to onError', async () => {
   assert.deepEqual(errors, [thrown]);
 });
 
+test('routes failure diagnostics export button to its callback', async () => {
+  const button = fakeButton();
+  let exported = 0;
+  const controller = moduleApi.createConfigMenuController({
+    dom: { btnExportFailureDiagnostics: button },
+    exportFailureDiagnostics: async () => { exported += 1; },
+  });
+  controller.bind();
+
+  button.click();
+  await flushAsyncHandlers();
+
+  assert.equal(exported, 1);
+});
+
 test('routes rejected import callback to onError', async () => {
   const input = fakeButton();
   const file = { name: 'settings.json' };

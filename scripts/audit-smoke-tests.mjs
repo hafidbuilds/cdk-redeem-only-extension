@@ -274,6 +274,7 @@ function checkCoreFiles() {
     'sidepanel/upi-info-helper-state.js',
     'sidepanel/auto-run-countdown-view.js',
     'sidepanel/auto-run-state.js',
+    'sidepanel/failure-diagnostics.js',
     'sidepanel/config-menu-controller.js',
     'sidepanel/workflow-action-bindings.js',
     'sidepanel/settings-field-bindings.js',
@@ -442,6 +443,7 @@ function checkStaticContracts() {
   const upiInfoHelperState = readText('sidepanel/upi-info-helper-state.js');
   const autoRunCountdownView = readText('sidepanel/auto-run-countdown-view.js');
   const autoRunState = readText('sidepanel/auto-run-state.js');
+  const failureDiagnostics = readText('sidepanel/failure-diagnostics.js');
   const configMenuController = readText('sidepanel/config-menu-controller.js');
   const workflowActionBindings = readText('sidepanel/workflow-action-bindings.js');
   const downloadService = readText('sidepanel/download-service.js');
@@ -613,6 +615,7 @@ function checkStaticContracts() {
   assertIncludes(sidepanelHtml, 'src="upi-info-helper-state.js"', 'sidepanel UPI info helper state script load');
   assertIncludes(sidepanelHtml, 'src="auto-run-countdown-view.js"', 'sidepanel auto-run countdown view script load');
   assertIncludes(sidepanelHtml, 'src="auto-run-state.js"', 'sidepanel auto-run state script load');
+  assertIncludes(sidepanelHtml, 'src="failure-diagnostics.js"', 'sidepanel failure diagnostics script load');
   assertIncludes(sidepanelHtml, 'src="config-menu-controller.js"', 'sidepanel config menu controller script load');
   assertIncludes(sidepanelHtml, 'src="workflow-action-bindings.js"', 'sidepanel workflow action bindings script load');
   assertIncludes(sidepanelHtml, 'src="settings-field-bindings.js"', 'sidepanel settings field bindings script load');
@@ -647,6 +650,7 @@ function checkStaticContracts() {
   assertBefore(sidepanelHtml, 'src="upi-info-helper-state.js"', 'src="sidepanel.js"', 'sidepanel UPI info helper state must load before sidepanel.js');
   assertBefore(sidepanelHtml, 'src="auto-run-countdown-view.js"', 'src="sidepanel.js"', 'sidepanel auto-run countdown view must load before sidepanel.js');
   assertBefore(sidepanelHtml, 'src="auto-run-state.js"', 'src="sidepanel.js"', 'sidepanel auto-run state must load before sidepanel.js');
+  assertBefore(sidepanelHtml, 'src="failure-diagnostics.js"', 'src="config-menu-controller.js"', 'failure diagnostics must load before config menu controller');
   assertBefore(sidepanelHtml, 'src="config-menu-controller.js"', 'src="sidepanel.js"', 'sidepanel config menu controller must load before sidepanel.js');
   assertBefore(sidepanelHtml, 'src="workflow-action-bindings.js"', 'src="sidepanel.js"', 'sidepanel workflow action bindings must load before sidepanel.js');
   assertBefore(sidepanelHtml, 'src="settings-field-bindings.js"', 'src="sidepanel.js"', 'sidepanel settings field bindings must load before sidepanel.js');
@@ -828,6 +832,9 @@ function checkStaticContracts() {
   assertIncludes(readText('sidepanel/sidepanel-ui-helpers.js'), 'createSidepanelUiHelpers', 'sidepanel UI helpers factory');
   assertIncludes(readText('sidepanel/action-modal-service.js'), 'createActionModalService', 'action modal service factory');
   assertIncludes(domBindings, 'SidepanelDomBindings', 'sidepanel DOM bindings global');
+  assertIncludes(failureDiagnostics, 'SidepanelFailureDiagnostics', 'sidepanel failure diagnostics global');
+  assertIncludes(failureDiagnostics, 'copyLatestFailureDiagnostics', 'sidepanel clipboard diagnostics action');
+  assertIncludes(sidepanelHtml, 'id="btn-export-failure-diagnostics"', 'failure diagnostics menu action');
   assertIncludes(domBindings, 'getBindings', 'sidepanel DOM bindings factory');
   assertIncludes(toastService, 'SidepanelToastService', 'sidepanel toast service global');
   assertIncludes(toastService, 'createToastService', 'sidepanel toast service factory');
@@ -1466,6 +1473,7 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('sidepanel/upi-info-helper-state.js', 180, 'UPI info helper state size guard');
 	  assertFileLineCountAtMost('sidepanel/auto-run-countdown-view.js', 250, 'sidepanel auto-run countdown view size guard');
   assertFileLineCountAtMost('sidepanel/auto-run-state.js', 280, 'sidepanel auto-run state size guard');
+  assertFileLineCountAtMost('sidepanel/failure-diagnostics.js', 260, 'sidepanel failure diagnostics size guard');
   assertFileLineCountAtMost('sidepanel/config-menu-controller.js', 220, 'sidepanel config menu controller size guard');
   assertFileLineCountAtMost('sidepanel/workflow-action-bindings.js', 80, 'sidepanel workflow action bindings size guard');
   assertFileLineCountAtMost('sidepanel/settings-field-bindings.js', 120, 'sidepanel settings field bindings size guard');

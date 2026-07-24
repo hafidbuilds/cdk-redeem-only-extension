@@ -103,11 +103,9 @@ const {
   btnAutoCancelSchedule,
   btnClearLog,
   configMenuShell,
-  btnConfigMenu,
-  configMenu,
-  btnExportSettings, btnExportSensitiveSettings,
-  btnImportSettings,
-  inputImportSettingsFile,
+  btnConfigMenu, configMenu,
+  btnExportSettings, btnExportSensitiveSettings, btnExportFailureDiagnostics,
+  btnImportSettings, inputImportSettingsFile,
   selectPanelMode,
   rowAccountAccessStrategy,
   selectAccountAccessStrategy,
@@ -1610,8 +1608,9 @@ with (appState.createScope()) {
     updateStatusDisplay: (state) => updateStatusDisplay(state),
   });
   const configMenuController = window.SidepanelConfigMenuController.createConfigMenuController({
-    dom: { btnConfigMenu, configMenu, btnExportSettings, btnExportSensitiveSettings, btnImportSettings, inputImportSettingsFile },
+    dom: { btnConfigMenu, configMenu, btnExportSettings, btnExportSensitiveSettings, btnExportFailureDiagnostics, btnImportSettings, inputImportSettingsFile },
     exportSettings, exportSensitiveSettings: () => getSettingsTransferManager()?.exportSensitiveSettingsFile?.(),
+    exportFailureDiagnostics: () => window.SidepanelFailureDiagnostics.copyLatestFailureDiagnostics({ chromeApi: chrome, copyTextToClipboard, showToast, closeConfigMenu }),
     importSettingsFromFile,
     onUpdate: () => updateSaveButtonState(),
     onError: (error) => showToast('配置操作失败：' + (error?.message || error), 'error'),
@@ -2464,6 +2463,7 @@ with (appState.createScope()) {
       btnExportSettings.disabled = actionLocked || contributionModeEnabled;
     }
     if (btnExportSensitiveSettings) btnExportSensitiveSettings.disabled = actionLocked || contributionModeEnabled;
+    if (btnExportFailureDiagnostics) btnExportFailureDiagnostics.disabled = actionLocked;
     if (btnImportSettings) {
       btnImportSettings.disabled = importLocked;
     }

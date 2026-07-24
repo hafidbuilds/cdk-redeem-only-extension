@@ -14,7 +14,7 @@
 | `cookies` | iCloud/OpenAI 会话 Cookie 读取与清理 | `background/passkey-api-login-executor.js`、`background/steps` |
 | `storage` | 持久设置、任务、事件、运行 checkpoint | `background/bootstrap`、`background/*repository.js` |
 | `scripting` | 在运行时注入现有内容脚本 | `background/content-script-registry.js`、`background/tab-runtime.js` |
-| `downloads` | 用户明确请求的配置、账号和诊断导出 | `sidepanel/settings-transfer-manager.js`、`background/membership/import-export-service.js` |
+| `downloads` | 用户明确请求的配置和账号文件导出 | `sidepanel/settings-transfer-manager.js`、`background/membership/import-export-service.js` |
 | `activeTab` | 用户当前标签页的受控自动化 | `background/tab-runtime.js` |
 | `https://chong.nerver.cc/*` | CDK 兑换和卡池接口 | `background/membership/redeem-service.js` |
 | `https://cha.nerver.cc/*` | 会员核验、订阅和验证码辅助接口 | `background/membership`、`background/verification` |

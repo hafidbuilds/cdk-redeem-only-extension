@@ -23,6 +23,7 @@ This extension is split around Chrome MV3 runtime boundaries: the background ser
 - `sidepanel/account-records-renderer.js` renders the panel; action modules such as `account-records-membership-actions.js`, `account-records-redeem-actions.js`, `account-records-membership-pool-ops.js`, and `account-records-membership-result-ops.js` perform side effects through injected context.
 - New account-records modules must be loaded in `sidepanel/sidepanel.html` before `account-records-manager.js`, added to `scripts/audit-smoke-tests.mjs`, and loaded in `scripts/test-account-records-manager.cjs` if the manager depends on them.
 - `sidepanel/prompt-preferences.js` owns local prompt-dismissal persistence, while `download-service.js` owns download naming and delivery. Both load before `sidepanel-app-controller.js`.
+- `sidepanel/failure-diagnostics.js` collects the bounded latest-failure log window and active-page state, redacts credentials and verification values, and writes the resulting JSON through the existing clipboard helper.
 
 ## Size Guards
 

@@ -76,6 +76,7 @@
     const configMenu = document.getElementById('config-menu');
     const btnExportSettings = document.getElementById('btn-export-settings');
     const btnExportSensitiveSettings = document.getElementById('btn-export-sensitive-settings');
+    const btnExportFailureDiagnostics = document.getElementById('btn-export-failure-diagnostics');
     const btnImportSettings = document.getElementById('btn-import-settings');
     const inputImportSettingsFile = document.getElementById('input-import-settings-file');
     const selectPanelMode = document.getElementById('select-panel-mode');
@@ -583,6 +584,7 @@
       configMenu,
       btnExportSettings,
       btnExportSensitiveSettings,
+      btnExportFailureDiagnostics,
       btnImportSettings,
       inputImportSettingsFile,
       selectPanelMode,

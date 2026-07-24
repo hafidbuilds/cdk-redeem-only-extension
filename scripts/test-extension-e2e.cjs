@@ -30,6 +30,7 @@ test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', 
   await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
   await page.locator('#settings-card').waitFor({ state: 'visible', timeout: 15000 });
   assert.ok(await page.locator('#btn-config-menu').isVisible());
+  assert.equal(await page.locator('#btn-export-failure-diagnostics').count(), 1);
   assert.ok(await page.locator('#account-records-list').count());
   assert.ok(await page.locator('#account-task-list').count());
 
@@ -55,5 +56,23 @@ test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', 
   const stateEnvelope = await sendMessage({ type: 'GET_STATE', source: 'sidepanel' });
   assert.equal(stateEnvelope?.lastError, '', JSON.stringify(stateEnvelope));
   assert.equal(Number(stateEnvelope?.response?.autoStepDelaySeconds), 4, JSON.stringify(stateEnvelope));
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value) => { window.__copiedFailureDiagnostics = String(value || ''); },
+      },
+    });
+  });
+  await page.locator('#btn-config-menu').click();
+  await page.locator('#btn-export-failure-diagnostics').click();
+  await page.locator('.toast-success .toast-msg').filter({ hasText: '已导出至剪贴板' }).waitFor({ timeout: 5000 });
+  const copiedDiagnostics = await page.evaluate(() => window.__copiedFailureDiagnostics || '');
+  const diagnosticPayload = JSON.parse(copiedDiagnostics);
+  assert.equal(diagnosticPayload.schemaVersion, 1);
+  assert.equal(diagnosticPayload.scope, 'latest-failure');
+  assert.ok(Array.isArray(diagnosticPayload.logWindow.entries));
+  assert.equal(typeof diagnosticPayload.verificationInput.detected, 'boolean');
   assert.deepEqual(errors, []);
 });

@@ -21,6 +21,7 @@
     dom = {},
     exportSettings = async () => {},
     exportSensitiveSettings = async () => {},
+    exportFailureDiagnostics = async () => {},
     importSettingsFromFile = async () => {},
     onUpdate = () => {},
     onError = (error) => console.warn('Config menu action failed:', error?.message || error),
@@ -105,6 +106,15 @@
           event?.stopPropagation?.();
           if (dom.btnExportSensitiveSettings?.disabled) return;
           runAsyncAction(exportSensitiveSettings);
+        });
+      }
+
+      if (markBound(dom.btnExportFailureDiagnostics, 'configFailureDiagnosticsBound')) {
+        dom.btnExportFailureDiagnostics.addEventListener('click', (event) => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          if (dom.btnExportFailureDiagnostics?.disabled) return;
+          runAsyncAction(exportFailureDiagnostics);
         });
       }
 
