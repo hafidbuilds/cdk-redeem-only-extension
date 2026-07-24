@@ -190,6 +190,154 @@
 .account-records-list::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 4px; }
 .account-records-list::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+.account-task-section {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px 12px;
+}
+
+.account-task-header,
+.account-task-primary,
+.account-task-detail,
+.account-task-actions,
+.account-task-events-title {
+  display: flex;
+  align-items: center;
+}
+
+.account-task-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.account-task-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-task-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.account-task-refresh {
+  font-size: 16px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+}
+
+.account-task-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.account-task-row {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.account-task-primary,
+.account-task-detail {
+  gap: 7px;
+  min-width: 0;
+}
+
+.account-task-kind,
+.account-task-account {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-task-kind {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-task-account {
+  color: var(--text-secondary);
+  flex: 1;
+  font-size: 11px;
+}
+
+.account-task-channel,
+.account-task-status {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.account-task-status.is-succeeded { color: var(--green); }
+.account-task-status.is-failed,
+.account-task-status.is-manual_review { color: var(--red); }
+.account-task-status.is-running,
+.account-task-status.is-waiting_remote { color: var(--amber); }
+
+.account-task-detail {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+.account-task-node { flex: 1; }
+.account-task-error {
+  color: var(--red);
+  display: block;
+  font-size: 10px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.account-task-actions {
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.account-task-events {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.account-task-events-title {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.account-task-event {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.account-task-event-time,
+.account-task-event-code {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.account-task-event-message,
+.account-task-empty {
+  color: var(--text-secondary);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
 .account-records-empty {
   min-height: 168px;
   display: flex;

@@ -95,6 +95,38 @@
       verifyUpiCredentialMembershipPlus,
     } = context;
 
+    const taskRuntime = (typeof self !== 'undefined' ? self : globalThis).MultiPageRuntimeTaskRuntime || null;
+
+    function getTaskAccountIds(payload = {}) {
+      const credentials = Array.isArray(payload.credentials) ? payload.credentials : [];
+      return Array.from(new Set([
+        payload.email,
+        payload.accountId,
+        payload.credential?.email,
+        ...credentials.map((item) => item?.email || item?.accountId),
+      ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)));
+    }
+
+    async function runTrackedTask(type, payload, operation, checkpoint = {}) {
+      if (!taskRuntime?.runTask) return { taskId: '', result: await operation(null) };
+      const state = await getState();
+      const accountIds = getTaskAccountIds(payload);
+      return taskRuntime.runTask({
+        type,
+        accountId: accountIds.length === 1 ? accountIds[0] : '',
+        accountIds,
+        channel: String(payload.channel || payload.redeemChannel || '').trim().toLowerCase(),
+        payload,
+        progress: { current: 0, total: Math.max(1, accountIds.length) },
+        checkpoint,
+        workflowSnapshot: {
+          activeFlowId: String(state.activeFlowId || '').trim(),
+          workflowVersion: Number(state.workflowVersion) || 1,
+          nodeIds: typeof getNodeIdsForState === 'function' ? getNodeIdsForState(state) : [],
+        },
+      }, operation);
+    }
+
     async function handleMessage(rawMessage, sender) {
       const message = await normalizeNodeProtocolMessage(rawMessage);
       const type = String(message?.type || '').trim();
@@ -131,6 +163,16 @@
         case 'NODE_COMPLETE': {
           const currentStateForNode = await getState();
           const nodeId = String(message.nodeId || message.payload?.nodeId || '').trim();
+          const activeTaskId = String(currentStateForNode.activeTaskId || '').trim();
+          if (activeTaskId) {
+            await taskRuntime?.createContext?.(activeTaskId)?.checkpoint?.({ nodeId, lastCompletedNodeId: nodeId });
+            await taskRuntime?.createContext?.(activeTaskId)?.event?.({
+              type: 'checkpoint',
+              code: 'TASK_NODE_COMPLETED',
+              nodeId,
+              message: 'Workflow node completed',
+            });
+          }
           const resolvedStep = findStepByNodeId(nodeId, currentStateForNode);
           if (!nodeId || !resolvedStep) {
             throw new Error('NODE_COMPLETE 缺少 nodeId。');
@@ -197,6 +239,17 @@
         case 'NODE_ERROR': {
           const stateForNode = await getState();
           const nodeId = String(message.nodeId || message.payload?.nodeId || '').trim();
+          const activeTaskId = String(stateForNode.activeTaskId || '').trim();
+          if (activeTaskId) {
+            await taskRuntime?.createContext?.(activeTaskId)?.checkpoint?.({ nodeId, lastFailedNodeId: nodeId });
+            await taskRuntime?.createContext?.(activeTaskId)?.event?.({
+              type: 'error',
+              level: 'error',
+              code: 'TASK_NODE_FAILED',
+              nodeId,
+              message: String(message.error || 'Workflow node failed'),
+            });
+          }
           const resolvedStep = findStepByNodeId(nodeId, stateForNode);
           if (!nodeId || !resolvedStep) {
             throw new Error('NODE_ERROR 缺少 nodeId。');
@@ -509,8 +562,18 @@
           if ((message.payload || {}).manualTrigger !== true) {
             throw new Error('Free 账号 CDK 兑换只能通过一键兑换按钮手动触发。');
           }
-          const result = await redeemUpiCredentialMembershipFree(message.payload || {});
-          return { ok: true, results: result };
+          const redeemPayload = message.payload || {};
+          const tracked = await runTrackedTask('redeem', redeemPayload, async (taskContext) => {
+            await taskContext?.checkpoint?.({
+              nodeId: 'cdk-redeem',
+              channel: redeemPayload.channel || 'upi',
+              cdkSubmitted: false,
+              remoteRequestSent: false,
+            });
+            await taskContext?.assertNotCanceled?.();
+            return redeemUpiCredentialMembershipFree(redeemPayload);
+          });
+          return { ok: true, taskId: tracked.taskId, results: tracked.result };
         }
 
         case 'IDENTIFY_UPI_CREDENTIAL_MEMBERSHIP_FREE_PLUS': {
@@ -523,8 +586,11 @@
           if (typeof identifyUpiCredentialMembershipFreePlus !== 'function') {
             throw new Error('UPI Free 分组 Plus 识别能力尚未接入。');
           }
-          const result = await identifyUpiCredentialMembershipFreePlus(payload);
-          return { ok: true, ...result };
+          const tracked = await runTrackedTask('verify_membership', payload, async (taskContext) => {
+            await taskContext?.checkpoint?.({ nodeId: 'identify-plus' });
+            return identifyUpiCredentialMembershipFreePlus(payload);
+          });
+          return { ok: true, taskId: tracked.taskId, ...tracked.result };
         }
 
         case 'REFRESH_UPI_CREDENTIAL_MEMBERSHIP_ACCESS_TOKENS': {
@@ -536,8 +602,12 @@
           if (typeof refreshUpiCredentialMembershipAccessTokens !== 'function') {
             throw new Error('UPI 账号 AT 检查刷新能力尚未接入。');
           }
-          const result = await refreshUpiCredentialMembershipAccessTokens(message.payload || {});
-          return { ok: true, ...result };
+          const refreshPayload = message.payload || {};
+          const tracked = await runTrackedTask('refresh_access_token', refreshPayload, async (taskContext) => {
+            await taskContext?.checkpoint?.({ nodeId: 'refresh-access-token', remoteRequestSent: false });
+            return refreshUpiCredentialMembershipAccessTokens(refreshPayload);
+          });
+          return { ok: true, taskId: tracked.taskId, ...tracked.result };
         }
 
         case 'VERIFY_UPI_CREDENTIAL_MEMBERSHIP_PLUS': {
@@ -549,8 +619,12 @@
           if (typeof verifyUpiCredentialMembershipPlus !== 'function') {
             throw new Error('UPI Plus 分组验证能力尚未接入。');
           }
-          const result = await verifyUpiCredentialMembershipPlus(message.payload || {});
-          return { ok: true, ...result };
+          const verifyPayload = message.payload || {};
+          const tracked = await runTrackedTask('verify_membership', verifyPayload, async (taskContext) => {
+            await taskContext?.checkpoint?.({ nodeId: 'verify-plus' });
+            return verifyUpiCredentialMembershipPlus(verifyPayload);
+          });
+          return { ok: true, taskId: tracked.taskId, ...tracked.result };
         }
 
         case 'LOGIN_UPI_CREDENTIAL_MEMBERSHIP_ACCOUNT': {

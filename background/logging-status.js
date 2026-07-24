@@ -1,5 +1,7 @@
 (function attachBackgroundLoggingStatus(root, factory) {
-  root.MultiPageBackgroundLoggingStatus = factory();
+  const api = factory();
+  root.MultiPageBackgroundLoggingStatus = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createBackgroundLoggingStatusModule() {
   function createLoggingStatus(deps = {}) {
     const {
@@ -9,6 +11,7 @@
       getState,
       isRecoverableStep9AuthFailure,
       LOG_PREFIX,
+      redactText = (value) => String(value || ''),
       setState,
       sourceRegistry = null,
       STOP_ERROR_MESSAGE,
@@ -58,7 +61,7 @@
       const stepKey = String(normalizedOptions.stepKey || '').trim();
       const nodeId = String(normalizedOptions.nodeId || normalizedOptions.nodeKey || stepKey || '').trim();
       return {
-        message: String(message || ''),
+        message: redactText(message),
         level,
         timestamp: Date.now(),
         step,

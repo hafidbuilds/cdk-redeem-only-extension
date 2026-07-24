@@ -109,9 +109,11 @@
     }
 
     function startAutoRunLoop(totalRuns, options = {}) {
-      sessionRunner.autoRunLoop(totalRuns, options).catch((error) => {
+      const run = sessionRunner.autoRunLoop(totalRuns, options);
+      run.catch((error) => {
         handleAutoRunLoopUnhandledError(error).catch(() => {});
       });
+      return run;
     }
 
     return {

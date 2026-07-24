@@ -256,6 +256,7 @@
 
       await setState({
         autoRunSessionId: sessionId,
+        activeTaskId: String(options.taskId || '').trim(),
         autoRunSkipFailures,
         autoRunRetryNonFreeTrial,
         autoRunRetryLegacyWalletCallback,
@@ -411,6 +412,7 @@
               selectedCustomEmailPoolEmail: prevState.selectedCustomEmailPoolEmail,
               autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
               autoRunSessionId: sessionId,
+              activeTaskId: String(options.taskId || prevState.activeTaskId || '').trim(),
               tabRegistry: {},
               sourceLastUrls: {},
               ...getAutoRunStatusPayload('running', { currentRun: targetRun, totalRuns, attemptRun, sessionId }),
@@ -1051,6 +1053,7 @@
       const afterRuntime = runtime.get();
       await setState({
         autoRunSessionId: 0,
+        activeTaskId: '',
         autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
         autoRunTimerPlan: null,
         scheduledAutoRunPlan: null,

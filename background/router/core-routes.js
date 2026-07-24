@@ -73,6 +73,9 @@
       return String(value || '').trim();
     }
 
+    const taskTracker = getRootScope().MultiPageTaskRoutes?.createTaskOperationTracker?.({ getNodeIdsForState, getState }) || {};
+    const runTrackedTask = taskTracker.runTrackedTask || (async (_type, _payload, operation) => ({ taskId: '', result: await operation(null) }));
+
     async function handleResetRoute() {
       clearStopRequest();
       await clearAutoRunTimerAlarm();
@@ -180,8 +183,26 @@
       const autoRunRetryLegacyWalletCallback = Boolean(message.payload?.autoRunRetryLegacyWalletCallback);
       const mode = message.payload?.mode === 'continue' ? 'continue' : 'restart';
       await setState({ autoRunSkipFailures, autoRunRetryNonFreeTrial, autoRunRetryLegacyWalletCallback });
-      startAutoRunLoop(totalRuns, { autoRunSkipFailures, autoRunRetryNonFreeTrial, autoRunRetryLegacyWalletCallback, mode });
-      return { ok: true };
+      const runtime = taskTracker.runtime;
+      if (!runtime?.startTask || !runtime?.executeTask) {
+        startAutoRunLoop(totalRuns, { autoRunSkipFailures, autoRunRetryNonFreeTrial, autoRunRetryLegacyWalletCallback, mode });
+        return { ok: true };
+      }
+      const task = await runtime.startTask(taskTracker.buildTaskInput('register', message.payload || {}, state, {
+        checkpoint: { activeFlowId: state.activeFlowId || '', nodeId: state.currentNodeId || '', registrationEmailSubmitted: false },
+      }));
+      runtime.executeTask(task.taskId, async (taskContext) => {
+        await taskContext.checkpoint({ nodeId: state.currentNodeId || '', activeFlowId: state.activeFlowId || '' });
+        await startAutoRunLoop(totalRuns, { autoRunSkipFailures, autoRunRetryNonFreeTrial, autoRunRetryLegacyWalletCallback, mode, taskId: task.taskId });
+        const finalState = await getState();
+        if (getPendingAutoRunTimerPlan(finalState)) {
+          await taskContext.setStatus('retry_wait', {
+            checkpoint: { nodeId: finalState.currentNodeId || '', waitingForTimer: true },
+          });
+        }
+        return { completedRuns: Number(finalState.autoRunCurrentRun) || 0, totalRuns };
+      }).catch(() => {});
+      return { ok: true, taskId: task.taskId };
     }
 
     async function handleScheduleAutoRunRoute(_payload, message, sender) {
@@ -262,8 +283,11 @@
       if (typeof checkUpiCredentialMembershipBatch !== 'function') {
         throw new Error('UPI 备份账号会员核验能力尚未接入。');
       }
-      const result = await checkUpiCredentialMembershipBatch(message.payload || {});
-      return { ok: true, results: result };
+      const tracked = await runTrackedTask('verify_membership', message.payload || {}, async (taskContext) => {
+        await taskContext?.checkpoint?.({ nodeId: 'membership-batch-check' });
+        return checkUpiCredentialMembershipBatch(message.payload || {});
+      });
+      return { ok: true, taskId: tracked.taskId, results: tracked.result };
     }
 
     async function handleCheckMembershipOneRoute(_payload, message) {
@@ -275,8 +299,11 @@
       if (typeof checkUpiCredentialMembershipOne !== 'function') {
         throw new Error('UPI 单账号会员检测能力尚未接入。');
       }
-      const result = await checkUpiCredentialMembershipOne(message.payload || {});
-      return { ok: true, ...result };
+      const tracked = await runTrackedTask('verify_membership', message.payload || {}, async (taskContext) => {
+        await taskContext?.checkpoint?.({ nodeId: 'membership-account-check' });
+        return checkUpiCredentialMembershipOne(message.payload || {});
+      });
+      return { ok: true, taskId: tracked.taskId, ...tracked.result };
     }
 
     async function handleCheckMembershipTrialEligibilityRoute(_payload, message) {
@@ -299,14 +326,18 @@
       if (typeof checkUpiCredentialMembershipTrialEligibility !== 'function') {
         throw new Error('UPI Free 分组试用资格手动检查能力尚未接入。');
       }
-      const result = await checkUpiCredentialMembershipTrialEligibility({
+      const operationPayload = {
         ...payload,
         source: payload.source
           || (message.type === 'CHECK_UPI_CREDENTIAL_MEMBERSHIP_TRIAL_ELIGIBILITY_BATCH'
             ? 'manual-trial-eligibility-batch'
             : 'manual-trial-eligibility-check'),
+      };
+      const tracked = await runTrackedTask('verify_membership', operationPayload, async (taskContext) => {
+        await taskContext?.checkpoint?.({ nodeId: 'trial-eligibility-check' });
+        return checkUpiCredentialMembershipTrialEligibility(operationPayload);
       });
-      return { ok: true, ...result };
+      return { ok: true, taskId: tracked.taskId, ...tracked.result };
     }
 
     async function handleFillMembershipFreeAccessTokensRoute(_payload, message) {
@@ -318,8 +349,11 @@
       if (typeof fillUpiCredentialMembershipFreeAccessTokens !== 'function') {
         throw new Error('UPI Free 分组 AT 补充能力尚未接入。');
       }
-      const result = await fillUpiCredentialMembershipFreeAccessTokens(message.payload || {});
-      return { ok: true, ...result };
+      const tracked = await runTrackedTask('refresh_access_token', message.payload || {}, async (taskContext) => {
+        await taskContext?.checkpoint?.({ nodeId: 'fill-access-token', remoteRequestSent: false });
+        return fillUpiCredentialMembershipFreeAccessTokens(message.payload || {});
+      });
+      return { ok: true, taskId: tracked.taskId, ...tracked.result };
     }
 
     async function handleRefreshCdkeyStatusesRoute(_payload, message) {
@@ -406,6 +440,11 @@
         deleteAccountRunHistoryRecords,
         getState,
         isAutoRunLockedState,
+      }) || {}),
+      ...(rootScope.MultiPageTaskRoutes?.createTaskRoutes?.({
+        repository: rootScope.MultiPageRuntimeTaskRepository,
+        eventStore: rootScope.MultiPageRuntimeTaskEventStore,
+        runtime: rootScope.MultiPageRuntimeTaskRuntime,
       }) || {}),
       ...(rootScope.MultiPageEmailPoolRoutes?.createEmailPoolRoutes?.({
         checkIcloudSession,

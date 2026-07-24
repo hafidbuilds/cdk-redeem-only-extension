@@ -2335,6 +2335,7 @@ with (appState.createScope()) {
       cloudflareRegistrationLookup: CLOUDFLARE_TEMP_EMAIL_REGISTRATION_LOOKUP_PROMPT_DISMISSED_STORAGE_KEY,
     },
   });
+  window.SidepanelTaskPanelController.attachTaskPanelController({ chromeApi: chrome, showToast });
   if (!promptPreferences) {
     throw new Error('提示偏好模块未加载。');
   }

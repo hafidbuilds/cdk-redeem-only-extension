@@ -5,6 +5,8 @@ importScripts(
   'shared/flow-capabilities.js',
   'shared/account-record-schema.js',
   'shared/account-compatibility-adapter.js',
+  'shared/sensitive-data-redactor.js',
+  'shared/task-schema.js',
   'shared/session-to-json-converter.js',
   'managed-alias-utils.js',
   'mail2925-utils.js',
@@ -25,6 +27,11 @@ importScripts(
   'background/account-record-migration.js',
   'background/account-repository.js',
   'background/account-lifecycle-service.js',
+  'background/task-repository.js',
+  'background/task-event-store.js',
+  'background/task-lock-manager.js',
+  'background/task-recovery-policy.js',
+  'background/task-runtime.js',
   'background/bootstrap/state-store.js',
   'background/bootstrap/settings-transfer.js',
   'background/bootstrap/legacy-cleanup.js',
@@ -60,6 +67,7 @@ importScripts(
   'background/routes/workflow-routes.js',
   'background/routes/settings-routes.js',
   'background/routes/account-record-routes.js',
+  'background/routes/task-routes.js',
   'background/routes/email-pool-routes.js',
   'background/message-router.js',
   'shared/membership-credential-format.js',
@@ -2686,6 +2694,19 @@ const accountLifecycleService = self.MultiPageAccountLifecycleService.createAcco
 });
 self.MultiPageRuntimeAccountRepository = accountRepository;
 self.MultiPageRuntimeAccountLifecycleService = accountLifecycleService;
+
+const taskRepository = self.MultiPageTaskRepository.createTaskRepository({ chromeApi: chrome });
+const taskEventStore = self.MultiPageTaskEventStore.createTaskEventStore({ chromeApi: chrome });
+const taskLockManager = self.MultiPageTaskLockManager.createTaskLockManager({ repository: taskRepository });
+const taskRuntime = self.MultiPageTaskRuntime.createTaskRuntime({
+  repository: taskRepository,
+  eventStore: taskEventStore,
+  lockManager: taskLockManager,
+});
+self.MultiPageRuntimeTaskRepository = taskRepository;
+self.MultiPageRuntimeTaskEventStore = taskEventStore;
+self.MultiPageRuntimeTaskLockManager = taskLockManager;
+self.MultiPageRuntimeTaskRuntime = taskRuntime;
 
 const backgroundLegacyCleanup = self.MultiPageBackgroundLegacyCleanup.createBackgroundLegacyCleanup({
   chrome,
@@ -8468,7 +8489,7 @@ async function addLog(message, level = 'info', options = {}) {
   const logs = state.logs || [];
   const step = Math.floor(Number(options?.step) || 0);
   const entry = {
-    message: String(message || ''),
+    message: self.MultiPageSensitiveDataRedactor.redactText(message),
     level,
     timestamp: Date.now(),
     step: step > 0 ? step : null,
@@ -8606,6 +8627,7 @@ const loggingStatus = self.MultiPageBackgroundLoggingStatus?.createLoggingStatus
   getState,
   isRecoverableStep9AuthFailure,
   LOG_PREFIX,
+  redactText: self.MultiPageSensitiveDataRedactor.redactText,
   setState,
   sourceRegistry,
   STOP_ERROR_MESSAGE,
@@ -10949,6 +10971,24 @@ async function executeNode(nodeId, options = {}) {
   }
   console.log(LOG_PREFIX, `Executing node ${normalizedNodeId}`);
   let state = await getState();
+  const activeTaskId = String(state.activeTaskId || '').trim();
+  if (activeTaskId) {
+    await taskRepository.patch(activeTaskId, {
+      nodeId: normalizedNodeId,
+      checkpoint: {
+        nodeId: normalizedNodeId,
+        activeFlowId: state.activeFlowId || '',
+        registrationEmailSubmitted: normalizedNodeId !== 'open-chatgpt',
+      },
+    }).catch(() => null);
+    await taskEventStore.append({
+      taskId: activeTaskId,
+      type: 'checkpoint',
+      code: 'TASK_NODE_STARTED',
+      nodeId: normalizedNodeId,
+      message: 'Workflow node started',
+    }).catch(() => null);
+  }
   const step = getStepIdByNodeIdForState(normalizedNodeId, state);
   const authChainClaim = await acquireTopLevelAuthChainExecutionForNode(normalizedNodeId, state);
   if (authChainClaim.joined) {
@@ -15169,6 +15209,9 @@ runtimeListenerRegistrar.registerRuntimeListeners();
 
 restoreAutoRunTimerIfNeeded().catch((err) => {
   handleBackgroundStartupError('restore auto run timer', err);
+});
+taskRuntime.recoverActiveTasks().catch((err) => {
+  handleBackgroundStartupError('recover persisted account tasks on boot', err);
 });
 purgeFormerNetworkResidue('boot').catch((err) => {
   handleBackgroundStartupError('clean legacy network residue', err);

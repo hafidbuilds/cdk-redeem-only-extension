@@ -215,7 +215,15 @@ function checkCoreFiles() {
     'background/routes/workflow-routes.js',
     'background/routes/settings-routes.js',
     'background/routes/account-record-routes.js',
+    'background/routes/task-routes.js',
     'background/routes/email-pool-routes.js',
+    'background/task-repository.js',
+    'background/task-event-store.js',
+    'background/task-lock-manager.js',
+    'background/task-recovery-policy.js',
+    'background/task-runtime.js',
+    'shared/task-schema.js',
+    'shared/sensitive-data-redactor.js',
     'shared/redeem-channel-state.js',
     'shared/membership-credential-format.js',
     'background/redeem/redeem-cdkey-usage.js',
@@ -276,6 +284,9 @@ function checkCoreFiles() {
     'sidepanel/upi-redeem-cdk-status-view.js',
     'sidepanel/upi-redeem-cdk-controller.js',
     'sidepanel/account-records-panel-controller.js',
+    'sidepanel/task-event-view-model.js',
+    'sidepanel/task-event-renderer.js',
+    'sidepanel/task-panel-controller.js',
     'sidepanel/panel-display-controller.js',
     'sidepanel/removed-payment-worker-controller.js',
     'sidepanel/auto-run-status-controller.js',
@@ -1464,6 +1475,9 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('sidepanel/upi-redeem-cdk-status-view.js', 250, 'sidepanel UPI redeem CDK status view size guard');
   assertFileLineCountAtMost('sidepanel/upi-redeem-cdk-controller.js', 700, 'sidepanel UPI redeem CDK controller size guard');
   assertFileLineCountAtMost('sidepanel/account-records-panel-controller.js', 250, 'sidepanel account records panel controller size guard');
+  assertFileLineCountAtMost('sidepanel/task-event-view-model.js', 120, 'task event view model size guard');
+  assertFileLineCountAtMost('sidepanel/task-event-renderer.js', 180, 'task event renderer size guard');
+  assertFileLineCountAtMost('sidepanel/task-panel-controller.js', 160, 'task panel controller size guard');
   assertFileLineCountAtMost('sidepanel/panel-display-controller.js', 250, 'sidepanel panel display controller size guard');
   assertFileLineCountAtMost('sidepanel/removed-payment-worker-controller.js', 700, 'sidepanel RemovedPaymentWorker controller size guard');
   assertFileLineCountAtMost('sidepanel/auto-run-status-controller.js', 250, 'sidepanel auto-run status controller size guard');
@@ -1522,6 +1536,12 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('background/bootstrap/runtime-listeners.js', 80, 'runtime listeners size guard');
   assertFileLineCountAtMost('background/routes/settings-routes.js', 220, 'settings routes size guard');
   assertFileLineCountAtMost('background/routes/account-record-routes.js', 80, 'account record routes size guard');
+  assertFileLineCountAtMost('background/routes/task-routes.js', 140, 'task routes size guard');
+  assertFileLineCountAtMost('background/task-repository.js', 160, 'task repository size guard');
+  assertFileLineCountAtMost('background/task-event-store.js', 160, 'task event store size guard');
+  assertFileLineCountAtMost('background/task-lock-manager.js', 180, 'task lock manager size guard');
+  assertFileLineCountAtMost('background/task-recovery-policy.js', 120, 'task recovery policy size guard');
+  assertFileLineCountAtMost('background/task-runtime.js', 300, 'task runtime size guard');
   assertFileLineCountAtMost('background/routes/email-pool-routes.js', 150, 'email pool routes size guard');
   assertFileLineCountAtMost('shared/redeem-channel-state.js', 700, 'redeem channel state size guard');
   assertFileLineCountAtMost('shared/membership-credential-format.js', 900, 'membership credential format size guard');
@@ -1605,6 +1625,25 @@ function checkSensitiveTrackedFiles() {
   }
 }
 
+function checkTaskStorageBoundaries() {
+  const productionFiles = gitLines(['ls-files', '*.js'])
+    .filter((file) => /^(background|content|shared|sidepanel)[\\/]/.test(file));
+  const taskRootOwners = productionFiles.filter((file) => readText(file).includes("'accountTasksV1'"));
+  const eventRootOwners = productionFiles.filter((file) => readText(file).includes("'accountTaskEventsV1'"));
+  if (taskRootOwners.length !== 1 || taskRootOwners[0] !== 'background/task-repository.js') {
+    fail(`accountTasksV1 must be owned only by background/task-repository.js: ${taskRootOwners.join(', ')}`);
+  }
+  if (eventRootOwners.length !== 1 || eventRootOwners[0] !== 'background/task-event-store.js') {
+    fail(`accountTaskEventsV1 must be owned only by background/task-event-store.js: ${eventRootOwners.join(', ')}`);
+  }
+  const background = readText('background.js');
+  assertBefore(background, "'shared/task-schema.js'", "'background/task-repository.js'", 'task schema load order');
+  assertBefore(background, "'background/task-repository.js'", "'background/task-runtime.js'", 'task runtime load order');
+  const sidepanelHtml = readText('sidepanel/sidepanel.html');
+  assertBefore(sidepanelHtml, 'task-event-view-model.js', 'task-event-renderer.js', 'task view script order');
+  assertBefore(sidepanelHtml, 'task-event-renderer.js', 'task-panel-controller.js', 'task panel script order');
+}
+
 function checkLegacyNetworkAudit() {
   const auditScript = path.join('scripts', ['audit-no', 'removed', 'network.mjs'].join('-'));
   const result = spawnSync(process.execPath, [auditScript], {
@@ -1654,6 +1693,7 @@ checkStaticContracts();
 checkModuleSizeGuard();
 checkTrackedSourceLineWarnings();
 checkSensitiveTrackedFiles();
+checkTaskStorageBoundaries();
 checkLegacyNetworkAudit();
 checkPhoneSmsAudit();
 checkDocumentationDrift();

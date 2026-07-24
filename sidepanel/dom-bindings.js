@@ -7,6 +7,10 @@
     const accountRecordsStats = document.getElementById('account-records-stats');
     const accountRecordsList = document.getElementById('account-records-list');
     const accountRecordsPageLabel = document.getElementById('account-records-page-label');
+    const accountTaskList = document.getElementById('account-task-list');
+    const accountTaskEvents = document.getElementById('account-task-events');
+    const accountTaskMeta = document.getElementById('account-task-meta');
+    const btnRefreshAccountTasks = document.getElementById('btn-refresh-account-tasks');
     const btnAccountRecordsPrev = document.getElementById('btn-account-records-prev');
     const btnAccountRecordsNext = document.getElementById('btn-account-records-next');
     const btnCloseAccountRecords = document.getElementById('btn-close-account-records');
@@ -509,6 +513,10 @@
       accountRecordsStats,
       accountRecordsList,
       accountRecordsPageLabel,
+      accountTaskList,
+      accountTaskEvents,
+      accountTaskMeta,
+      btnRefreshAccountTasks,
       btnAccountRecordsPrev,
       btnAccountRecordsNext,
       btnCloseAccountRecords,

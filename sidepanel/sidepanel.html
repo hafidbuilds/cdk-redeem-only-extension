@@ -1372,6 +1372,17 @@
         <span id="account-records-page-label" class="account-records-page-label mono">0 / 0</span>
         <button id="btn-account-records-next" class="btn btn-outline btn-xs" type="button">下一页</button>
       </div>
+      <section class="account-task-section" aria-labelledby="account-task-title">
+        <div class="account-task-header">
+          <div>
+            <span id="account-task-title" class="account-task-title">任务</span>
+            <span id="account-task-meta" class="account-task-meta">暂无任务</span>
+          </div>
+          <button id="btn-refresh-account-tasks" class="btn btn-ghost btn-xs account-task-refresh" type="button" title="刷新任务" aria-label="刷新任务">↻</button>
+        </div>
+        <div id="account-task-list" class="account-task-list"></div>
+        <div id="account-task-events" class="account-task-events" hidden></div>
+      </section>
     </div>
   </div>
 
@@ -1484,6 +1495,9 @@
   <script src="account-records-settings-payload.js"></script>
   <script src="account-records-free-export-preferences.js"></script>
   <script src="account-records-manager.js"></script>
+  <script src="task-event-view-model.js"></script>
+  <script src="task-event-renderer.js"></script>
+  <script src="task-panel-controller.js"></script>
   <script src="dom-bindings.js"></script>
   <script src="toast-service.js"></script>
   <script src="log-panel-manager.js"></script>
