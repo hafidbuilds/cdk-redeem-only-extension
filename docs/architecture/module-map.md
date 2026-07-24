@@ -7,6 +7,7 @@ This extension is split around Chrome MV3 runtime boundaries: the background ser
 - `background.js` is the service-worker entry point and bootstraps shared helpers, routes, and flow steps.
 - `background/message-router.js` is now a thin router facade. Route groups live under `background/routes/`, and lower-level dispatch lives in `background/router/`.
 - `background/steps/` contains workflow steps such as signup, password setup, 2FA/passkey handling, and UPI redeem.
+- `background/steps/upi-redeem/free-entry-cleanup.js` owns successful-Free cleanup projections; `submission-response.js` owns remote response parsing and explicit token-expiry classification. They load before their orchestrators.
 - `background/membership/` owns membership result storage, credential import/export, redeem retries, Plus verification, and redeem service helpers.
 - `shared/` contains format, state, and API utilities that are safe to load from both background and sidepanel code.
 
@@ -21,6 +22,7 @@ This extension is split around Chrome MV3 runtime boundaries: the background ser
 - `sidepanel/account-records-*-helpers.js` files hold focused helpers for export, subscription detection, redeem policy, deletion state, credential parsing, display models, flow rendering, DOM helpers, state sync, trial eligibility, run history, and settings payloads.
 - `sidepanel/account-records-renderer.js` renders the panel; action modules such as `account-records-membership-actions.js`, `account-records-redeem-actions.js`, `account-records-membership-pool-ops.js`, and `account-records-membership-result-ops.js` perform side effects through injected context.
 - New account-records modules must be loaded in `sidepanel/sidepanel.html` before `account-records-manager.js`, added to `scripts/audit-smoke-tests.mjs`, and loaded in `scripts/test-account-records-manager.cjs` if the manager depends on them.
+- `sidepanel/prompt-preferences.js` owns local prompt-dismissal persistence, while `download-service.js` owns download naming and delivery. Both load before `sidepanel-app-controller.js`.
 
 ## Size Guards
 

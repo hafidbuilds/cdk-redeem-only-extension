@@ -2325,25 +2325,26 @@ with (appState.createScope()) {
     }) || { confirmed: false, optionChecked: false };
   }
   
-  function isPromptDismissed(storageKey) {
-    return localStorage.getItem(storageKey) === '1';
+  const promptPreferences = window.SidepanelPromptPreferences?.createPromptPreferences?.({
+    storage: localStorage,
+    keys: {
+      newUserGuide: NEW_USER_GUIDE_PROMPT_DISMISSED_STORAGE_KEY,
+      contributionContentVersion: CONTRIBUTION_CONTENT_PROMPT_DISMISSED_VERSION_STORAGE_KEY,
+      autoSkipFailures: AUTO_SKIP_FAILURES_PROMPT_DISMISSED_STORAGE_KEY,
+      autoRunFallbackRisk: AUTO_RUN_FALLBACK_RISK_PROMPT_DISMISSED_STORAGE_KEY,
+      cloudflareRegistrationLookup: CLOUDFLARE_TEMP_EMAIL_REGISTRATION_LOOKUP_PROMPT_DISMISSED_STORAGE_KEY,
+    },
+  });
+  if (!promptPreferences) {
+    throw new Error('提示偏好模块未加载。');
   }
-  
-  function setPromptDismissed(storageKey, dismissed) {
-    if (dismissed) {
-      localStorage.setItem(storageKey, '1');
-    } else {
-      localStorage.removeItem(storageKey);
-    }
-  }
-  
-  function isNewUserGuidePromptDismissed() {
-    return isPromptDismissed(NEW_USER_GUIDE_PROMPT_DISMISSED_STORAGE_KEY);
-  }
-  
-  function setNewUserGuidePromptDismissed(dismissed) {
-    setPromptDismissed(NEW_USER_GUIDE_PROMPT_DISMISSED_STORAGE_KEY, dismissed);
-  }
+  const {
+    isNewUserGuidePromptDismissed, setNewUserGuidePromptDismissed,
+    getDismissedContributionContentPromptVersion, setDismissedContributionContentPromptVersion,
+    isAutoSkipFailuresPromptDismissed, setAutoSkipFailuresPromptDismissed,
+    isAutoRunFallbackRiskPromptDismissed, setAutoRunFallbackRiskPromptDismissed,
+    isCloudflareTempEmailRegistrationLookupPromptDismissed, setCloudflareTempEmailRegistrationLookupPromptDismissed,
+  } = promptPreferences;
   
   function shouldPromptNewUserGuide() {
     if (isNewUserGuidePromptDismissed()) {
@@ -2383,43 +2384,6 @@ with (appState.createScope()) {
   
     setNewUserGuidePromptDismissed(true);
     return false;
-  }
-  
-  function getDismissedContributionContentPromptVersion() {
-    return String(localStorage.getItem(CONTRIBUTION_CONTENT_PROMPT_DISMISSED_VERSION_STORAGE_KEY) || '').trim();
-  }
-  
-  function setDismissedContributionContentPromptVersion(version) {
-    const normalized = String(version || '').trim();
-    if (normalized) {
-      localStorage.setItem(CONTRIBUTION_CONTENT_PROMPT_DISMISSED_VERSION_STORAGE_KEY, normalized);
-    } else {
-      localStorage.removeItem(CONTRIBUTION_CONTENT_PROMPT_DISMISSED_VERSION_STORAGE_KEY);
-    }
-  }
-  
-  function isAutoSkipFailuresPromptDismissed() {
-    return isPromptDismissed(AUTO_SKIP_FAILURES_PROMPT_DISMISSED_STORAGE_KEY);
-  }
-  
-  function setAutoSkipFailuresPromptDismissed(dismissed) {
-    setPromptDismissed(AUTO_SKIP_FAILURES_PROMPT_DISMISSED_STORAGE_KEY, dismissed);
-  }
-  
-  function isAutoRunFallbackRiskPromptDismissed() {
-    return isPromptDismissed(AUTO_RUN_FALLBACK_RISK_PROMPT_DISMISSED_STORAGE_KEY);
-  }
-  
-  function setAutoRunFallbackRiskPromptDismissed(dismissed) {
-    setPromptDismissed(AUTO_RUN_FALLBACK_RISK_PROMPT_DISMISSED_STORAGE_KEY, dismissed);
-  }
-  
-  function isCloudflareTempEmailRegistrationLookupPromptDismissed() {
-    return isPromptDismissed(CLOUDFLARE_TEMP_EMAIL_REGISTRATION_LOOKUP_PROMPT_DISMISSED_STORAGE_KEY);
-  }
-  
-  function setCloudflareTempEmailRegistrationLookupPromptDismissed(dismissed) {
-    setPromptDismissed(CLOUDFLARE_TEMP_EMAIL_REGISTRATION_LOOKUP_PROMPT_DISMISSED_STORAGE_KEY, dismissed);
   }
   
   function shouldWarnAutoRunFallbackRisk(totalRuns, autoRunSkipFailures) {
@@ -2530,36 +2494,12 @@ with (appState.createScope()) {
     configMenuController.isOpen() ? closeConfigMenu() : openConfigMenu();
   }
   
-  function buildDownloadFileTimestamp() {
-    const now = new Date();
-    const pad = (value) => String(value).padStart(2, '0');
-    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  }
-  
-  function inferDownloadExtension(mimeType = '') {
-    const normalized = String(mimeType || '').toLowerCase();
-    if (normalized.includes('text/plain')) return 'txt';
-    if (normalized.includes('json')) return 'json';
-    return 'txt';
-  }
-  
-  function normalizeDownloadFileName(fileName = '', mimeType = '') {
-    const extension = inferDownloadExtension(mimeType);
-    const sanitized = String(fileName || '')
-      .trim()
-      .replace(/[\\/:*?"<>|]+/g, '-')
-      .replace(/^\.+/g, '')
-      .trim();
-    const fallback = `download-${buildDownloadFileTimestamp()}.${extension}`;
-    const safeName = sanitized || fallback;
-    return /\.[a-z0-9]{1,8}$/i.test(safeName) ? safeName : `${safeName}.${extension}`;
-  }
-  
-  const downloadService = window.SidepanelDownloadService?.createDownloadService?.({
-    normalizeDownloadFileName,
+  const {
+    buildDownloadFileTimestamp,
     inferDownloadExtension,
-    chromeApi: chrome,
-  });
+    normalizeDownloadFileName,
+  } = window.SidepanelDownloadService || {};
+  const downloadService = window.SidepanelDownloadService?.createDownloadService?.({ chromeApi: chrome });
   
   function getDownloadService() {
     if (!downloadService) {

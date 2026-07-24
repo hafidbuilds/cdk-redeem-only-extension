@@ -1,10 +1,32 @@
 (function attachSidepanelDownloadService(globalScope) {
+  function buildDownloadFileTimestamp(date = new Date()) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  }
+
+  function inferDownloadExtension(mimeType = '') {
+    const normalized = String(mimeType || '').toLowerCase();
+    if (normalized.includes('text/plain')) return 'txt';
+    if (normalized.includes('json')) return 'json';
+    return 'txt';
+  }
+
+  function normalizeDownloadFileName(fileName = '', mimeType = '') {
+    const extension = inferDownloadExtension(mimeType);
+    const sanitized = String(fileName || '')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/^\.+/g, '')
+      .trim();
+    const fallback = `download-${buildDownloadFileTimestamp()}.${extension}`;
+    const safeName = sanitized || fallback;
+    return /\.[a-z0-9]{1,8}$/i.test(safeName) ? safeName : `${safeName}.${extension}`;
+  }
+
   function createDownloadService(context = {}) {
-    const {
-      normalizeDownloadFileName,
-      inferDownloadExtension,
-      chromeApi = globalScope.chrome,
-    } = context;
+    const normalizeFileName = context.normalizeDownloadFileName || normalizeDownloadFileName;
+    const inferExtension = context.inferDownloadExtension || inferDownloadExtension;
+    const chromeApi = context.chromeApi || globalScope.chrome;
 
     function triggerAnchorDownload(objectUrl, fileName) {
       const anchor = document.createElement('a');
@@ -28,8 +50,8 @@
       if (!canUseTextFileSavePicker()) {
         return { saved: false, unavailable: true };
       }
-      const downloadFileName = normalizeDownloadFileName(fileName, mimeType);
-      const extension = inferDownloadExtension(mimeType);
+      const downloadFileName = normalizeFileName(fileName, mimeType);
+      const extension = inferExtension(mimeType);
       const baseMimeType = String(mimeType || 'text/plain').split(';')[0] || 'text/plain';
       try {
         const handle = await globalScope.showSaveFilePicker({
@@ -75,7 +97,7 @@
     }
 
     async function downloadTextFile(content, fileName, mimeType = 'application/json;charset=utf-8', options = {}) {
-      const downloadFileName = normalizeDownloadFileName(fileName, mimeType);
+      const downloadFileName = normalizeFileName(fileName, mimeType);
       const pickerResult = options?.saveTarget?.handle
         ? await writeTextFileToSaveTarget(options.saveTarget, content, mimeType)
         : await saveTextFileWithPicker(content, downloadFileName, mimeType);
@@ -127,6 +149,9 @@
   }
 
   globalScope.SidepanelDownloadService = {
+    buildDownloadFileTimestamp,
+    inferDownloadExtension,
+    normalizeDownloadFileName,
     createDownloadService,
   };
 })(window);

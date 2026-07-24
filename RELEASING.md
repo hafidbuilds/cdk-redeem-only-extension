@@ -9,9 +9,10 @@
 3. 确认 `manifest.json`、侧边栏标题和版本展示文案已经同步到目标版本号
 4. 检查代码、截图、默认配置里没有真实密钥、代理、手机号、邮箱、Cookie、回调地址
 5. 确认 `docs/images` 中的 README 图片可以正常显示
-6. 运行测试或至少完成关键功能自测
+6. 运行 `npm run check`，确认语法、完整测试和三项审计全部通过
 7. 检查 `git diff`，确认没有把本地临时文件一起带上
-8. Windows 发布包里的 `*.bat` 启动脚本要保持 `CRLF` 换行；如果直接从工作目录打包，不要把被编辑器改成 `LF` 的批处理文件带进发布包
+8. 运行 `npm run package`，只使用生成的脱敏 ZIP，不直接压缩工作目录
+9. 解压生成的 ZIP，确认 `manifest.json`、Background 和 Sidepanel 引用均存在
 
 ## 当前版本建议
 
@@ -43,6 +44,9 @@ git push -u origin main
 ## 常规发版建议
 
 ```powershell
+npm ci
+npm run check
+npm run package
 git status
 git add manifest.json sidepanel/sidepanel.html Release.md RELEASING.md
 git commit -m "Prepare v1.0.14 release"
@@ -50,6 +54,8 @@ git tag -a v1.0.14 -m "CDK Redeem Only V1.0.14"
 git push origin main
 git push origin v1.0.14
 ```
+
+默认发布包路径：`release-artifacts/cdk-redeem-only-extension-v1.0.14.zip`。该目录不进入 Git。
 
 ## Release 说明建议
 

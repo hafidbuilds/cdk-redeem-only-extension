@@ -1,6 +1,6 @@
 # CDK Redeem Only
 
-这是 CDK 兑换专用版 Chrome 扩展。当前版本保留邮箱注册、邮箱验证码、设置 GPT 密码、第 7 步开通 2FA、读取 AT、试用资格检测、Free 共用分组、UPI/IDEAL 双 CDK 池、UPI Plus/IDEAL Plus 分组、CDK 兑换、Plus 识别/验证、导入导出。
+这是 CDK 兑换专用版 Chrome 扩展。当前版本保留邮箱注册、邮箱验证码、设置 GPT 密码、第 7 步开通 2FA、读取 AT、试用资格检测、Free 共用分组、UPI/IDEAL/PIX 独立 CDK 池及 Plus 分组、CDK 兑换、Plus 识别/验证、导入导出。
 
 ## 教程文档
 
@@ -15,8 +15,8 @@
 - 设置 GPT 登录密码。
 - 第 7 步开通 TOTP 2FA、读取 access token、检测是否有试用资格。
 - 资格通过后保存到 Free 组；有可用 CDK 时主流程可自动提交兑换。
-- Free 组导入、导出、补充 AT、一键识别 Plus、一键兑换 UPI、一键兑换 IDEAL、一键兑换全部。
-- UPI 和 IDEAL CDK 池分开导入、删除、启用、刷新状态。
+- Free 组导入、导出、补充 AT、一键识别 Plus、一键兑换 UPI/IDEAL/PIX、一键兑换全部。
+- UPI、IDEAL 和 PIX CDK 池分开导入、删除、启用、刷新状态。
 - 远端兑换成功并确认会员后，按兑换渠道移动到 UPI Plus 或 IDEAL Plus。
 - Plus 组验证、导出、删除。
 - 单账号登录、手动移动 Free/Plus 分组。
@@ -45,7 +45,7 @@
 
 - `UPI Key`：后端提供的 `X-External-Api-Key`，不要加 `Bearer`。
 - `UPI Client ID`：可留空，扩展会自动生成并保存到本地。
-- `UPI 卡密池` / `IDEAL 卡密池`：一行一个 CDK；两个池互不影响，导入后会按对应渠道续兑符合条件的 Free 候选。
+- `UPI 卡密池` / `IDEAL 卡密池` / `PIX 卡密池`：一行一个 CDK；三个池互不影响，导入后会按对应渠道续兑符合条件的 Free 候选。
 - `兑换轮数`：首轮结束后，失败账号继续进行的轮数；`0` 表示只跑首轮，同一轮每个账号只尝试一张 CDK。
 
 默认远端：
@@ -81,7 +81,7 @@ Plus 导出格式：
 邮箱----密码---2fa---时间戳
 ```
 
-Free 组保存已确认有试用资格、但尚未确认 Plus 的账号。`一键兑换 UPI` 使用 UPI 卡密池处理 UPI 候选；`一键兑换 IDEAL` 使用 IDEAL 卡密池处理 IDEAL 候选；`一键兑换全部` 先 UPI 后 IDEAL，不并发抢同一个 Free 账号。
+Free 组保存已确认有试用资格、但尚未确认 Plus 的账号。三个渠道分别使用自己的卡密池和候选状态；`一键兑换全部` 会先打开渠道选择弹窗，一次只执行用户选择的一个渠道。
 
 远端兑换成功并确认会员后，对应 AT 的邮箱按兑换渠道进入 UPI Plus 或 IDEAL Plus。失败、取消、等待中的账号会保留在 Free，并记录原因和时间戳。
 
@@ -96,4 +96,17 @@ Free 组保存已确认有试用资格、但尚未确认 Plus 的账号。`一�
 - `_metadata`
 - `release-artifacts`
 - 本地日志、缓存和运行历史
+
+## 开发验证
+
+```powershell
+npm ci
+npm run syntax
+npm test
+npm run audit
+npm run check
+npm run package
+```
+
+`npm run package` 从 Git 受控的运行时白名单生成 `release-artifacts/cdk-redeem-only-extension-v<version>.zip`。压缩包不包含 Git 元数据、测试、文档、本地配置、账号运行历史、日志、备份或发布目录本身。
 

@@ -225,7 +225,9 @@ function checkCoreFiles() {
     'background/router/core-routes.js',
     'background/router/message-dispatcher.js',
     'background/steps/upi-redeem/session-material.js',
+    'background/steps/upi-redeem/free-entry-cleanup.js',
     'background/steps/upi-redeem/free-entry.js',
+    'background/steps/upi-redeem/submission-response.js',
     'background/steps/upi-redeem/channel-submission.js',
     'background/steps/upi-redeem/status-polling.js',
     'background/steps/upi-redeem/finalize.js',
@@ -343,6 +345,10 @@ function checkSyntax() {
 
 function checkStaticContracts() {
   const background = readText('background.js');
+  const packageJson = readJson('package.json');
+  const checkSyntaxScript = readText('scripts/check-syntax.mjs');
+  const buildReleaseScript = readText('scripts/build-release.mjs');
+  const ciWorkflow = readText('.github/workflows/ci.yml');
   const customEmailPoolState = readText('background/custom-email-pool-state.js');
   const settingsNormalizers = readText('background/settings-normalizers.js');
   const flowDefinitionResolver = readText('background/flow-definition-resolver.js');
@@ -402,6 +408,7 @@ function checkStaticContracts() {
   const sidepanelRemovedPaymentWorkerController = readText('sidepanel/removed-payment-worker-controller.js');
   const sidepanelAutoRunStatusController = readText('sidepanel/auto-run-status-controller.js');
   const sidepanelOperationDelayController = readText('sidepanel/operation-delay-controller.js');
+  const sidepanelPromptPreferences = readText('sidepanel/prompt-preferences.js');
   const sidepanelAppController = readText('sidepanel/sidepanel-app-controller.js');
   const sidepanelBootstrap = readText('sidepanel/sidepanel-bootstrap.js');
   const sidepanelHtml = readText('sidepanel/sidepanel.html');
@@ -467,7 +474,9 @@ function checkStaticContracts() {
   const accountRecordRoutes = readText('background/routes/account-record-routes.js');
   const emailPoolRoutes = readText('background/routes/email-pool-routes.js');
   const upiRedeemSessionMaterial = readText('background/steps/upi-redeem/session-material.js');
+  const upiRedeemFreeEntryCleanup = readText('background/steps/upi-redeem/free-entry-cleanup.js');
   const upiRedeemFreeEntry = readText('background/steps/upi-redeem/free-entry.js');
+  const upiRedeemSubmissionResponse = readText('background/steps/upi-redeem/submission-response.js');
   const upiRedeemChannelSubmission = readText('background/steps/upi-redeem/channel-submission.js');
   const upiRedeemStatusPolling = readText('background/steps/upi-redeem/status-polling.js');
   const upiRedeemFinalize = readText('background/steps/upi-redeem/finalize.js');
@@ -490,6 +499,18 @@ function checkStaticContracts() {
   const signupPageOrchestrator = readText('content/signup-page-orchestrator.js');
   const signupPage = readText('content/signup-page.js');
   const gitignore = readText('.gitignore');
+
+  for (const scriptName of ['syntax', 'test', 'audit', 'check', 'package']) {
+    if (!packageJson?.scripts?.[scriptName]) {
+      fail(`package.json missing script: ${scriptName}`);
+    }
+  }
+  assertIncludes(checkSyntaxScript, "git', ['ls-files'", 'syntax script tracked file discovery');
+  assertIncludes(buildReleaseScript, 'shouldIncludeReleaseFile', 'release package runtime allowlist');
+  assertIncludes(buildReleaseScript, 'assertRuntimeReferences', 'release package runtime reference validation');
+  assertIncludes(ciWorkflow, 'npm run syntax', 'CI syntax command');
+  assertIncludes(ciWorkflow, 'npm run audit', 'CI audit command');
+  assertIncludes(ciWorkflow, 'npm run package', 'CI package command');
 
   assertMatch(background, /autoStepDelaySeconds:\s*2\b/, 'background default settings');
   assertBefore(
@@ -574,6 +595,7 @@ function checkStaticContracts() {
   assertIncludes(sidepanelHtml, 'src="removed-payment-worker-controller.js"', 'sidepanel RemovedPaymentWorker controller script load');
   assertIncludes(sidepanelHtml, 'src="auto-run-status-controller.js"', 'sidepanel auto-run status controller script load');
   assertIncludes(sidepanelHtml, 'src="operation-delay-controller.js"', 'sidepanel operation delay controller script load');
+  assertIncludes(sidepanelHtml, 'src="prompt-preferences.js"', 'sidepanel prompt preferences script load');
   assertIncludes(sidepanelHtml, 'src="sidepanel-app-controller.js"', 'sidepanel app controller script load');
   assertIncludes(sidepanelHtml, 'src="sidepanel-bootstrap.js"', 'sidepanel bootstrap script load');
   assertBefore(sidepanelHtml, 'src="dom-bindings.js"', 'src="sidepanel.js"', 'sidepanel DOM bindings must load before sidepanel.js');
@@ -607,6 +629,7 @@ function checkStaticContracts() {
   assertBefore(sidepanelHtml, 'src="removed-payment-worker-controller.js"', 'src="auto-run-status-controller.js"', 'sidepanel RemovedPaymentWorker controller must load before auto-run status controller');
   assertBefore(sidepanelHtml, 'src="auto-run-status-controller.js"', 'src="operation-delay-controller.js"', 'sidepanel auto-run status controller must load before operation delay controller');
   assertBefore(sidepanelHtml, 'src="operation-delay-controller.js"', 'src="sidepanel-app-controller.js"', 'sidepanel operation delay controller must load before app controller');
+  assertBefore(sidepanelHtml, 'src="prompt-preferences.js"', 'src="sidepanel-app-controller.js"', 'sidepanel prompt preferences must load before app controller');
   assertBefore(sidepanelHtml, 'src="sidepanel-app-controller.js"', 'src="sidepanel-bootstrap.js"', 'sidepanel app controller must load before bootstrap');
   assertBefore(sidepanelHtml, 'src="sidepanel-bootstrap.js"', 'src="sidepanel.js"', 'sidepanel bootstrap must load before compatibility entrypoint');
   assertBefore(sidepanelHtml, 'src="mail-provider-state.js"', 'src="sidepanel.js"', 'sidepanel mail provider state must load before sidepanel.js');
@@ -943,7 +966,9 @@ function checkStaticContracts() {
   assertIncludes(background, "'background/membership/failed-redeem-retry-service.js'", 'background failed redeem retry service script load');
   assertIncludes(background, "'background/membership/redeem-service.js'", 'background membership redeem service script load');
   assertIncludes(background, "'background/steps/upi-redeem/session-material.js'", 'background UPI redeem session material script load');
+  assertIncludes(background, "'background/steps/upi-redeem/free-entry-cleanup.js'", 'background UPI redeem Free entry cleanup script load');
   assertIncludes(background, "'background/steps/upi-redeem/free-entry.js'", 'background UPI redeem Free entry script load');
+  assertIncludes(background, "'background/steps/upi-redeem/submission-response.js'", 'background UPI redeem submission response script load');
   assertIncludes(background, "'background/steps/upi-redeem/channel-submission.js'", 'background UPI redeem channel submission script load');
   assertIncludes(background, "'background/steps/upi-redeem/status-polling.js'", 'background UPI redeem status polling script load');
   assertIncludes(background, "'background/steps/upi-redeem/finalize.js'", 'background UPI redeem finalize script load');
@@ -954,10 +979,15 @@ function checkStaticContracts() {
   assertIncludes(background, "'background/verification/resend-controller.js'", 'background verification resend controller script load');
   assertIncludes(upiRedeemSessionMaterial, 'MultiPageUpiRedeemSessionMaterial', 'UPI redeem session material global');
   assertIncludes(upiRedeemSessionMaterial, 'createUpiRedeemSessionMaterial', 'UPI redeem session material factory');
+  assertIncludes(upiRedeemFreeEntryCleanup, 'MultiPageUpiRedeemFreeEntryCleanup', 'UPI redeem Free entry cleanup global');
+  assertIncludes(upiRedeemFreeEntryCleanup, 'createUpiRedeemFreeEntryCleanup', 'UPI redeem Free entry cleanup factory');
   assertIncludes(upiRedeemFreeEntry, 'MultiPageUpiRedeemFreeEntry', 'UPI redeem Free entry global');
   assertIncludes(upiRedeemFreeEntry, 'createUpiRedeemFreeEntry', 'UPI redeem Free entry factory');
+  assertIncludes(upiRedeemSubmissionResponse, 'MultiPageUpiRedeemSubmissionResponse', 'UPI redeem submission response global');
+  assertIncludes(upiRedeemSubmissionResponse, 'createUpiRedeemSubmissionResponse', 'UPI redeem submission response factory');
   assertIncludes(upiRedeemChannelSubmission, 'MultiPageUpiRedeemChannelSubmission', 'UPI redeem channel submission global');
   assertIncludes(upiRedeemChannelSubmission, 'createUpiRedeemChannelSubmission', 'UPI redeem channel submission factory');
+  assertIncludes(sidepanelPromptPreferences, 'SidepanelPromptPreferences', 'sidepanel prompt preferences global');
   assertIncludes(upiRedeemStatusPolling, 'MultiPageUpiRedeemStatusPolling', 'UPI redeem status polling global');
   assertIncludes(upiRedeemStatusPolling, 'createUpiRedeemStatusPolling', 'UPI redeem status polling factory');
   assertIncludes(upiRedeemFinalize, 'MultiPageUpiRedeemFinalize', 'UPI redeem finalize global');
@@ -1010,7 +1040,9 @@ function checkStaticContracts() {
   });
   [
     'session-material.js',
+    'free-entry-cleanup.js',
     'free-entry.js',
+    'submission-response.js',
     'channel-submission.js',
     'status-polling.js',
     'finalize.js',
@@ -1022,6 +1054,8 @@ function checkStaticContracts() {
       `background UPI redeem ${file} must load before UPI redeem facade`
     );
   });
+  assertBefore(background, "'background/steps/upi-redeem/free-entry-cleanup.js'", "'background/steps/upi-redeem/free-entry.js'", 'UPI redeem Free cleanup must load before Free entry');
+  assertBefore(background, "'background/steps/upi-redeem/submission-response.js'", "'background/steps/upi-redeem/channel-submission.js'", 'UPI redeem submission response must load before channel submission');
   [
     'assurivo-time.js',
     'verification-keywords.js',
@@ -1411,6 +1445,7 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('sidepanel/removed-payment-worker-controller.js', 700, 'sidepanel RemovedPaymentWorker controller size guard');
   assertFileLineCountAtMost('sidepanel/auto-run-status-controller.js', 250, 'sidepanel auto-run status controller size guard');
   assertFileLineCountAtMost('sidepanel/operation-delay-controller.js', 140, 'sidepanel operation delay controller size guard');
+  assertFileLineCountAtMost('sidepanel/prompt-preferences.js', 100, 'sidepanel prompt preferences size guard');
   assertFileLineCountAtMost('sidepanel/custom-email-pool-membership-sync.js', 180, 'custom email pool membership sync size guard');
   assertFileLineCountAtMost('sidepanel/sidepanel-app-controller.js', 7850, 'sidepanel app controller decomposition guard');
   assertFileLineCountAtMost('sidepanel/sidepanel-bootstrap.js', 700, 'sidepanel bootstrap size guard');
@@ -1487,7 +1522,9 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('background/membership/failed-redeem-retry-service.js', 650, 'membership failed redeem retry service size guard');
   assertFileLineCountAtMost('background/membership/redeem-service.js', 1600, 'membership redeem service size guard');
   assertFileLineCountAtMost('background/steps/upi-redeem/session-material.js', 750, 'UPI redeem session material size guard');
+  assertFileLineCountAtMost('background/steps/upi-redeem/free-entry-cleanup.js', 150, 'UPI redeem Free entry cleanup size guard');
   assertFileLineCountAtMost('background/steps/upi-redeem/free-entry.js', 580, 'UPI redeem Free entry size guard');
+  assertFileLineCountAtMost('background/steps/upi-redeem/submission-response.js', 150, 'UPI redeem submission response size guard');
   assertFileLineCountAtMost('background/steps/upi-redeem/channel-submission.js', 1900, 'UPI redeem channel submission size guard');
   assertFileLineCountAtMost('background/steps/upi-redeem/status-polling.js', 1150, 'UPI redeem status polling size guard');
   assertFileLineCountAtMost('background/steps/upi-redeem/finalize.js', 1150, 'UPI redeem finalize size guard');
@@ -1498,6 +1535,8 @@ function checkModuleSizeGuard() {
   assertFileLineCountAtMost('background/verification/assurivo-feed-client.js', 900, 'verification Assurivo feed client size guard');
   assertFileLineCountAtMost('background/verification/resend-controller.js', 2000, 'verification resend controller size guard');
   assertFileLineCountAtMost('background/verification-flow.js', 380, 'verification flow facade size guard');
+  assertFileLineCountAtMost('scripts/check-syntax.mjs', 80, 'syntax checker size guard');
+  assertFileLineCountAtMost('scripts/build-release.mjs', 240, 'release builder size guard');
   assertFileLineCountAtMost('content/auth-page-detectors.js', 250, 'auth page detectors size guard');
   assertFileLineCountAtMost('content/signup-dom-utils.js', 300, 'signup DOM utils size guard');
   assertFileLineCountAtMost('content/signup-entry-page.js', 400, 'signup entry page size guard');

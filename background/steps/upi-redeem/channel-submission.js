@@ -1,10 +1,10 @@
 (function attachMultiPageUpiRedeemChannelSubmission(root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
   root.MultiPageUpiRedeemChannelSubmission = api;
-})(typeof self !== 'undefined' ? self : globalThis, function createMultiPageUpiRedeemChannelSubmissionModule() {
+})(typeof self !== 'undefined' ? self : globalThis, function createMultiPageUpiRedeemChannelSubmissionModule(root) {
   function createUpiRedeemChannelSubmission(context = {}) {
     const constants = context.constants || {};
     const { UPI_REDEEM_TIMEOUT_MS, UPI_ACCOUNT_INELIGIBLE_ERROR_PREFIX, UPI_REDEEM_BACKEND_FAILED_ERROR_PREFIX, UPI_REDEEM_AUTH_ERROR_PREFIX, UPI_REDEEM_DUPLICATE_CDK_ERROR_PREFIX, UPI_REDEEM_NOT_ACCEPTED_ERROR_PREFIX, UPI_REDEEM_NETWORK_ERROR_PREFIX, UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX } = constants;
@@ -54,6 +54,21 @@
     const confirmCurrentRedeemPaidSubscription = (...args) => context.confirmCurrentRedeemPaidSubscription(...args);
     const recordCdkeySubscriptionConfirmation = (...args) => context.recordCdkeySubscriptionConfirmation(...args);
     const applyPaidSubscriptionCleanup = (...args) => context.applyPaidSubscriptionCleanup(...args);
+
+    const responseModule = context.submissionResponseModule
+      || root.MultiPageUpiRedeemSubmissionResponse
+      || (typeof require === 'function' ? require('./submission-response.js') : null);
+    if (!responseModule?.createUpiRedeemSubmissionResponse) {
+      throw new Error('UPI Redeem submission response module is unavailable.');
+    }
+    const {
+      readResponseBody,
+      getPayloadError,
+      getPayloadErrorDetails,
+      isUpiAccessTokenExpiredPayload,
+      getResponseContentType,
+      isHtmlResponsePayload,
+    } = responseModule.createUpiRedeemSubmissionResponse({ normalizeString });
 
         function getRedeemChannelLabel(channel = 'upi') {
           return normalizeRedeemChannel(channel).toUpperCase();
@@ -701,83 +716,6 @@
         }
 
 
-        async function readResponseBody(response) {
-          if (!response) {
-            return null;
-          }
-          if (typeof response.text === 'function') {
-            const text = await response.text();
-            if (!normalizeString(text)) {
-              return null;
-            }
-            try {
-              return JSON.parse(text);
-            } catch {
-              return text;
-            }
-          }
-          if (typeof response.json === 'function') {
-            return response.json().catch(() => null);
-          }
-          return null;
-        }
-
-
-        function getPayloadError(payload) {
-          if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-            return '';
-          }
-          if (payload.ok === false || payload.success === false) {
-            return normalizeString(payload.error || payload.message || 'UPI 兑换接口返回失败。');
-          }
-          if (payload.error) {
-            return typeof payload.error === 'string'
-              ? normalizeString(payload.error)
-              : JSON.stringify(payload.error);
-          }
-          if (Array.isArray(payload.errors) && payload.errors.length) {
-            return JSON.stringify(payload.errors);
-          }
-          const status = normalizeString(payload.status).toLowerCase();
-          if (['error', 'failed', 'failure'].includes(status)) {
-            return normalizeString(payload.message || payload.status);
-          }
-          return '';
-        }
-
-
-        function getPayloadErrorDetails(payload) {
-          const payloadError = getPayloadError(payload);
-          if (payloadError) {
-            return payloadError;
-          }
-          if (typeof payload === 'string') {
-            return normalizeString(payload).replace(/\s+/g, ' ').slice(0, 500);
-          }
-          if (payload && typeof payload === 'object') {
-            try {
-              return JSON.stringify(payload).slice(0, 500);
-            } catch {
-              return '';
-            }
-          }
-          return '';
-        }
-
-
-        function isUpiAccessTokenExpiredPayload(payload = {}, statusCode = 0) {
-          if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-            return false;
-          }
-          const code = normalizeString(payload.code || payload.error_code || payload.errorCode);
-          const message = normalizeString(payload.message || payload.error || payload.reason);
-          return (Number(statusCode) === 401 && code === '10002')
-            || /未登录|会话已过期|重新登录|session\s*expired|not\s*logged\s*in|login\s*required|unauthenticated/i.test(message)
-            || /(?:access[\s_-]?token|token|session)[\s:_-]*(?:401|unauthorized|invalid|expired|失效|过期|无效)/i.test(message)
-            || /(?:401|unauthorized|invalid|expired|失效|过期|无效)[\s\S]*(?:access[\s_-]?token|token|session)/i.test(message);
-        }
-
-
         function isUpiAccessTokenExpiredError(error) {
           return normalizeString(error?.message || error).startsWith(UPI_ACCESS_TOKEN_EXPIRED_ERROR_PREFIX)
             || /access[_-]?token[\s\S]*(?:过期|失效|expired|invalid)|(?:未登录|会话已过期|重新登录|session\s*expired)[\s\S]*(?:access[_-]?token|会话|登录)/i.test(getErrorMessage(error));
@@ -1123,27 +1061,6 @@
               ? `${lastReason} 兑换接口只返回汇总数量 ${positiveAcceptedCount}，但状态接口未确认落库。`
               : lastReason,
           };
-        }
-
-
-        function getResponseContentType(response) {
-          try {
-            return normalizeString(response?.headers?.get?.('content-type')).toLowerCase();
-          } catch {
-            return '';
-          }
-        }
-
-
-        function isHtmlResponsePayload(response, payload) {
-          const contentType = getResponseContentType(response);
-          if (contentType.includes('text/html')) {
-            return true;
-          }
-          if (typeof payload !== 'string') {
-            return false;
-          }
-          return /^\s*(?:<!doctype\s+html\b|<html[\s>]|<head[\s>]|<body[\s>])/i.test(payload);
         }
 
 

@@ -2,6 +2,13 @@
   "name": "cdk-redeem-only-extension",
   "license": "MIT",
   "private": true,
+  "scripts": {
+    "syntax": "node scripts/check-syntax.mjs",
+    "test": "node --test scripts/test-*.cjs",
+    "audit": "node scripts/audit-smoke-tests.mjs && node scripts/audit-no-removed-network.mjs && node scripts/audit-no-phone-sms.mjs",
+    "check": "npm run syntax && npm test && npm run audit",
+    "package": "node scripts/build-release.mjs"
+  },
   "devDependencies": {
     "playwright": "^1.61.1"
   }
