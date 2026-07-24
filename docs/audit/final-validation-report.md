@@ -32,4 +32,4 @@ E2E 依赖本机 Microsoft Edge：`C:\Program Files (x86)\Microsoft\Edge\Applica
 
 ## 发布包验收
 
-最终只运行一次 `npm run package`。随后检查 ZIP 内容必须只包含 Manifest 引用和扩展运行时白名单文件，不得包含 `.git`、`.codegraph`、`scripts/`、`docs/`、测试、`config.json`、运行历史、备份、日志或发布目录自身；并运行 `scripts/test-build-release.cjs` 校验排除规则。
+最终只运行一次 `npm run package`，生成 `release-artifacts/cdk-redeem-only-extension-v1.0.14.zip`，包含 273 个运行时文件。`scripts/test-build-release.cjs` 的 2/2 测试通过；ZIP 内容检查发现 0 个禁止路径，Manifest 引用缺失数为 0。压缩包不包含 `.git`、`.codegraph`、`scripts/`、`docs/`、测试、`config.json`、运行历史、备份、日志或发布目录自身。
