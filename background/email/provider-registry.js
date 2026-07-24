@@ -160,6 +160,7 @@
   }
 
   function create(context = {}) {
+    const remoteOperationPolicy = context.remoteOperationPolicy || null;
     const normalizeMail2925Mode = typeof context.normalizeMail2925Mode === 'function'
       ? context.normalizeMail2925Mode
       : defaultNormalizeMail2925Mode;
@@ -323,7 +324,10 @@
       if (typeof options.testConnection !== 'function') {
         return { ok: false, reason: definition.dedicatedUi ? 'dedicated_ui' : 'connection_test_unavailable' };
       }
-      const result = await options.testConnection(validation.config);
+      const runConnectionTest = () => options.testConnection(validation.config);
+      const result = remoteOperationPolicy?.execute
+        ? await remoteOperationPolicy.execute(`provider:${definition.id}`, runConnectionTest, options)
+        : await runConnectionTest();
       return { ok: Boolean(result?.ok ?? result), provider: definition.id, ...(result && typeof result === 'object' ? result : {}) };
     }
 

@@ -36,6 +36,7 @@ importScripts(
   'background/bootstrap/state-store.js',
   'background/bootstrap/settings-transfer-security.js',
   'background/bootstrap/settings-transfer.js',
+  'background/runtime/remote-operation-policy.js',
   'background/bootstrap/legacy-cleanup.js',
   'background/bootstrap/auto-run-session.js',
   'background/bootstrap/auto-run-timer-plan.js',
@@ -410,12 +411,14 @@ const ICLOUD_MAILDOMAINWS_CLIENT_BUILD_NUMBER = '2206Hotfix11';
 const ICLOUD_ALIAS_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const ICLOUD_TRANSIENT_RETRY_MAX_ATTEMPTS = 2;
 const ICLOUD_TRANSIENT_RETRY_DELAY_MS = 1200;
+const remoteOperationPolicy = self.MultiPageRemoteOperationPolicy.create({ chromeApi: chrome });
 const emailProviderRegistry = self.MultiPageEmailProviderRegistry.create({
   getManagedAliasUtils: () => getManagedAliasUtils(),
   getMail2925Mode: (stateOrMode) => getMail2925Mode(stateOrMode),
   isCustomMailProvider: (stateOrProvider) => isCustomMailProvider(stateOrProvider),
   isHotmailProvider: (stateOrProvider) => isHotmailProvider(stateOrProvider),
   normalizeMail2925Mode: (value) => normalizeMail2925Mode(value),
+  remoteOperationPolicy,
 });
 const {
   ICLOUD_PROVIDER,

@@ -914,6 +914,8 @@ function checkStaticContracts() {
   assertIncludes(background, "'background/bootstrap/state-store.js'", 'background state store script load');
   assertIncludes(background, "'background/bootstrap/settings-transfer.js'", 'background settings transfer script load');
   assertIncludes(background, "'background/bootstrap/settings-transfer-security.js'", 'background settings transfer security script load');
+  assertIncludes(background, "'background/runtime/remote-operation-policy.js'", 'background remote operation policy script load');
+  assertIncludes(emailProviderRegistry, 'remoteOperationPolicy.execute', 'provider connection uses isolated remote operation policy');
   assertIncludes(background, "'background/bootstrap/legacy-cleanup.js'", 'background legacy cleanup script load');
   assertIncludes(background, "'background/bootstrap/auto-run-session.js'", 'background auto-run session script load');
   assertIncludes(background, "'background/bootstrap/auto-run-timer-plan.js'", 'background auto-run timer plan script load');
