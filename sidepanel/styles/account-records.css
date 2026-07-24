@@ -1,0 +1,975 @@
+/* Account records and membership check views. */
+
+.account-records-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(15, 17, 23, 0.32);
+  backdrop-filter: blur(2px);
+}
+
+.account-records-overlay[hidden] {
+  display: none !important;
+}
+
+.account-records-panel {
+  width: min(100%, 420px);
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg-base) 82%, var(--blue-soft)),
+      color-mix(in srgb, var(--bg-surface) 96%, var(--bg-base))
+    );
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md), 0 18px 36px rgba(0, 0, 0, 0.18);
+}
+
+.account-records-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-records-panel-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.account-records-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.account-records-panel-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.account-records-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.account-records-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.account-records-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.account-records-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.account-records-stats::-webkit-scrollbar {
+  display: none;
+}
+
+.account-records-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-base) 86%, transparent);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  appearance: none;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
+}
+
+.account-records-stat strong {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 10px;
+}
+
+.account-records-stat:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--blue) 20%, var(--border));
+  color: var(--text-primary);
+}
+
+.account-records-stat.is-active {
+  border-color: color-mix(in srgb, var(--blue) 24%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.account-records-stat.is-success {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: color-mix(in srgb, var(--green) 16%, var(--border));
+}
+
+.account-records-stat.is-running {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: color-mix(in srgb, var(--blue) 16%, var(--border));
+}
+
+.account-records-stat.is-failed {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: color-mix(in srgb, var(--red) 16%, var(--border));
+}
+
+.account-records-stat.is-retry {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: color-mix(in srgb, var(--blue) 16%, var(--border));
+}
+
+.account-records-stat.is-stopped {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: color-mix(in srgb, var(--amber) 16%, var(--border));
+}
+
+.account-records-toolbar-actions .btn.is-active {
+  background: var(--blue-soft);
+  border-color: color-mix(in srgb, var(--blue) 22%, var(--border));
+  color: var(--blue);
+}
+
+.account-records-toolbar-actions .btn {
+  flex-shrink: 0;
+}
+
+.account-records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 168px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.account-records-list::-webkit-scrollbar { width: 5px; }
+.account-records-list::-webkit-scrollbar-track { background: transparent; }
+.account-records-list::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 4px; }
+.account-records-list::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+.account-records-empty {
+  min-height: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.account-record-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-base) 90%, transparent);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.account-record-item.is-selectable {
+  cursor: pointer;
+}
+
+.account-record-item.is-selectable:hover {
+  border-color: color-mix(in srgb, var(--blue) 18%, var(--border));
+  background: color-mix(in srgb, var(--bg-base) 82%, var(--blue-soft));
+}
+
+.account-record-item.is-selected {
+  border-color: color-mix(in srgb, var(--blue) 26%, var(--border));
+  background: color-mix(in srgb, var(--bg-base) 78%, var(--blue-soft));
+  box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.account-record-item-top,
+.account-record-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-record-item-email-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.account-record-item-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.account-record-item-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.account-record-item-identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-record-item-email,
+.account-record-item-secondary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-record-item-email {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.account-record-item-secondary {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.account-record-item-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.account-record-item-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.account-record-item-time {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.account-record-item-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.account-record-item-retry {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-base) 70%, var(--blue-soft));
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.account-record-item.is-success {
+  border-color: color-mix(in srgb, var(--green) 14%, var(--border-subtle));
+}
+
+.account-record-item.is-success .account-record-item-status {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.account-record-item.is-running {
+  border-color: color-mix(in srgb, var(--blue) 14%, var(--border-subtle));
+}
+
+.account-record-item.is-running .account-record-item-status {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.account-record-item.is-failed {
+  border-color: color-mix(in srgb, var(--red) 14%, var(--border-subtle));
+}
+
+.account-record-item.is-failed .account-record-item-status {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.account-record-item.is-stopped {
+  border-color: color-mix(in srgb, var(--amber) 14%, var(--border-subtle));
+}
+
+.account-record-item.is-stopped .account-record-item-status {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.account-records-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-records-page-label {
+  min-width: 56px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.upi-credential-membership-check-results {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, var(--blue));
+  border-radius: 8px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--bg-soft) 84%, var(--blue-soft));
+  margin-top: 12px;
+}
+
+.upi-membership-check-head,
+.upi-membership-check-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.upi-membership-check-head {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.upi-credential-membership-check-results > .upi-membership-check-head {
+  padding: 0 2px 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upi-membership-check-actions {
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+.upi-membership-check-section {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--green);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface) 88%, var(--green-soft));
+  box-shadow: var(--shadow-sm);
+}
+
+.upi-membership-check-section[data-upi-membership-section="paid"] {
+  border-left-color: var(--blue);
+  background: color-mix(in srgb, var(--bg-surface) 88%, var(--blue-soft));
+}
+
+.upi-membership-section-head {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.upi-membership-section-title {
+  color: var(--green);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.upi-membership-check-section[data-upi-membership-section="paid"] .upi-membership-section-title {
+  color: var(--blue);
+}
+
+.upi-membership-section-meta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upi-membership-check-section .upi-membership-check-actions {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.upi-membership-check-section .btn-xs {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.upi-membership-check-section .upi-membership-check-actions .btn-ghost {
+  background: var(--blue);
+  color: #fff;
+}
+
+.upi-membership-check-section .upi-membership-check-actions .btn-ghost:hover:not(:disabled) {
+  background: var(--blue);
+  color: #fff;
+  opacity: 0.9;
+  box-shadow: 0 2px 8px var(--blue-glow);
+}
+
+.upi-membership-check-section .upi-membership-check-actions .btn:disabled {
+  background: var(--blue);
+  color: #fff;
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.upi-membership-check-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  margin: 0 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+}
+
+.upi-membership-check-group {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upi-membership-check-group strong {
+  min-width: 18px;
+  text-align: center;
+  color: inherit;
+  font-size: 11px;
+}
+
+.upi-membership-check-group:hover {
+  color: var(--text-primary);
+  background: var(--bg-soft);
+}
+
+.upi-membership-check-group.is-active {
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.upi-membership-check-group.is-action {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.upi-membership-check-group:disabled,
+.upi-membership-check-group.is-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upi-membership-check-prune-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-base);
+}
+
+.upi-membership-check-prune-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.upi-membership-check-prune-copy strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.upi-membership-check-prune-deleted {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.upi-membership-check-prune-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.upi-membership-flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0 10px;
+}
+
+.upi-membership-flow-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 8px;
+}
+
+.upi-membership-flow-indicator {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--bg-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upi-membership-flow-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.upi-membership-flow-title {
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.upi-membership-flow-status {
+  min-width: 0;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.upi-membership-flow-row.running .upi-membership-flow-indicator {
+  border-color: var(--orange);
+  background: var(--orange-soft);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.upi-membership-flow-row.running .upi-membership-flow-num,
+.upi-membership-flow-row.running .upi-membership-flow-title,
+.upi-membership-flow-row.running .upi-membership-flow-status {
+  color: var(--orange);
+}
+
+.upi-membership-flow-row.completed .upi-membership-flow-indicator {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.upi-membership-flow-row.completed .upi-membership-flow-num,
+.upi-membership-flow-row.completed .upi-membership-flow-status {
+  color: var(--green);
+}
+
+.upi-membership-flow-row.completed .upi-membership-flow-title {
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+  opacity: 0.76;
+}
+
+.upi-membership-flow-row.skipped .upi-membership-flow-indicator {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.upi-membership-flow-row.skipped .upi-membership-flow-num,
+.upi-membership-flow-row.skipped .upi-membership-flow-title,
+.upi-membership-flow-row.skipped .upi-membership-flow-status {
+  color: var(--blue);
+}
+
+.upi-membership-flow-row.stopped .upi-membership-flow-indicator {
+  border-color: var(--cyan);
+  background: rgba(8, 145, 178, 0.08);
+}
+
+.upi-membership-flow-row.stopped .upi-membership-flow-num,
+.upi-membership-flow-row.stopped .upi-membership-flow-title,
+.upi-membership-flow-row.stopped .upi-membership-flow-status {
+  color: var(--cyan);
+}
+
+.upi-membership-flow-row.failed .upi-membership-flow-indicator {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.upi-membership-flow-row.failed .upi-membership-flow-num,
+.upi-membership-flow-row.failed .upi-membership-flow-title,
+.upi-membership-flow-row.failed .upi-membership-flow-status {
+  color: var(--red);
+}
+
+.upi-membership-flow-detail {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-base) 82%, var(--orange-soft));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.upi-membership-check-status-header {
+  display: grid;
+  grid-template-columns: var(--upi-membership-check-columns, 46px minmax(128px, 1fr) 116px 58px 86px 92px 64px);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.upi-membership-check-status-header span:nth-child(n + 3) {
+  justify-self: center;
+  text-align: center;
+}
+
+.upi-membership-check-section .upi-membership-check-status-header {
+  padding: 0 calc(12px + var(--upi-membership-check-scrollbar-gutter, 18px)) 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.upi-membership-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.upi-membership-check-section .upi-membership-check-list {
+  gap: 8px;
+  max-height: 260px;
+}
+
+.upi-membership-check-item {
+  display: grid;
+  grid-template-columns: var(--upi-membership-check-columns, 46px minmax(128px, 1fr) 116px 58px 86px 92px 64px);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  padding: 8px;
+}
+
+.upi-membership-check-enabled-toggle {
+  justify-content: flex-start;
+}
+
+.upi-membership-check-email {
+  min-width: 0;
+  color: var(--text-primary);
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.upi-membership-check-email-action {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.upi-membership-check-email-action:hover:not(:disabled) {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.upi-membership-check-email-action:disabled {
+  cursor: default;
+}
+
+.upi-membership-check-delete-action,
+.upi-membership-check-cancel-redeem-action {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.upi-membership-check-status-action {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  justify-self: center;
+  min-width: 70px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.upi-membership-check-login-action,
+.upi-membership-check-move-action,
+.upi-membership-check-action-placeholder {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  justify-self: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.upi-membership-check-delete-action,
+.upi-membership-check-cancel-redeem-action {
+  justify-self: center;
+}
+
+.upi-membership-check-action-placeholder {
+  min-height: 1px;
+  cursor: default;
+}
+
+.upi-membership-redeem-progress {
+  --redeem-progress: 0%;
+  --redeem-progress-color: var(--blue);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  width: 88px;
+  height: 22px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--redeem-progress-color) 36%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-base) 76%, var(--redeem-progress-color));
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+button.upi-membership-redeem-progress {
+  cursor: pointer;
+  padding: 0 6px;
+}
+
+button.upi-membership-redeem-progress:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.upi-membership-redeem-progress-track {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg-base) 88%, var(--redeem-progress-color));
+}
+
+.upi-membership-redeem-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--redeem-progress);
+  min-width: 0;
+  background: color-mix(in srgb, var(--redeem-progress-color) 72%, white);
+  transition: width 0.25s ease;
+}
+
+.upi-membership-redeem-progress-label {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--bg-base) 70%, transparent);
+}
+
+.upi-membership-redeem-progress.is-idle {
+  --redeem-progress-color: var(--blue);
+  color: var(--text-secondary);
+}
+
+.upi-membership-redeem-progress.is-running {
+  --redeem-progress-color: var(--orange);
+}
+
+.upi-membership-redeem-progress.is-running .upi-membership-redeem-progress-bar {
+  min-width: 18%;
+}
+
+.upi-membership-redeem-progress.is-running::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.26) 45%, transparent 72%);
+  animation: upi-membership-redeem-progress-sweep 1.25s linear infinite;
+}
+
+.upi-membership-redeem-progress.is-success {
+  --redeem-progress-color: var(--green);
+}
+
+.upi-membership-redeem-progress.is-failed {
+  --redeem-progress-color: var(--red);
+}
+
+.upi-membership-redeem-progress.is-muted {
+  --redeem-progress-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+@keyframes upi-membership-redeem-progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.upi-membership-check-status-action:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.upi-membership-check-status-action:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.upi-membership-check-detail,
+.upi-membership-check-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.upi-membership-check-section .upi-membership-check-empty {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--border) 70%, var(--text-muted));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-base) 84%, var(--bg-surface));
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.upi-membership-check-detail {
+  margin: -2px 8px 2px 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

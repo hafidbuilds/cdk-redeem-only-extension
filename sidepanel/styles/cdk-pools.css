@@ -1,0 +1,171 @@
+/* UPI/IDEAL CDK pool controls. */
+
+.upi-redeem-cdkey-status-header {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) minmax(64px, auto) minmax(104px, auto);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.upi-redeem-cdkey-channel-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.upi-redeem-cdkey-channel-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: var(--bg-elevated);
+}
+
+.upi-redeem-cdkey-channel-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.upi-redeem-cdkey-pool-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.upi-redeem-cdkey-pool-toolbar .icloud-summary {
+  min-width: 0;
+  flex: 1;
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn {
+  flex: 0 0 auto;
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn-cdk-import {
+  min-height: 32px;
+  min-width: 98px;
+  padding-inline: 14px;
+  border-color: color-mix(in srgb, var(--blue) 92%, #fff);
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 4px 12px var(--blue-glow);
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn-cdk-import svg {
+  flex-shrink: 0;
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn-cdk-import:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 88%, #fff);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.20),
+    0 6px 16px var(--blue-glow);
+  transform: translateY(-1px);
+  opacity: 1;
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn-cdk-import:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--blue-glow),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.upi-redeem-cdkey-pool-toolbar .btn-cdk-import:disabled {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+.upi-credential-backup-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.upi-credential-backup-actions .btn {
+  flex: 0 0 auto;
+}
+
+.icloud-tag.pending,
+.icloud-tag.running {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.icloud-tag.failed {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.upi-redeem-cdkey-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.upi-redeem-cdkey-status-item {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) minmax(64px, auto) minmax(104px, auto);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  padding: 8px;
+}
+
+.upi-redeem-cdkey-enabled-toggle {
+  justify-content: flex-start;
+}
+
+.upi-redeem-cdkey-text {
+  min-width: 0;
+  color: var(--text-primary);
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.upi-redeem-cdkey-status-action {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.upi-redeem-cdkey-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 104px;
+}
+
+.upi-redeem-cdkey-job-action,
+.upi-redeem-cdkey-delete-action {
+  min-width: 44px;
+  white-space: nowrap;
+}
+
+.upi-redeem-cdkey-status-action:hover,
+.upi-redeem-cdkey-status-action:focus-visible,
+.upi-redeem-cdkey-job-action:hover:not(:disabled),
+.upi-redeem-cdkey-job-action:focus-visible,
+.upi-redeem-cdkey-delete-action:hover,
+.upi-redeem-cdkey-delete-action:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
