@@ -211,6 +211,8 @@
             requiredKeywords: pollPayload.requiredKeywords || [],
             codePatterns: pollPayload.codePatterns || [],
             excludeCodes: pollPayload.excludeCodes || [],
+            excludeMessageIds: pollPayload.excludeMessageIds || [],
+            excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
           });
           const match = matchResult.match;
           if (match?.code) {

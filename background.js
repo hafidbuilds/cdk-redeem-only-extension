@@ -90,6 +90,7 @@ importScripts(
   'background/verification/assurivo-time.js',
   'background/verification/verification-keywords.js',
   'background/verification/code-extractor.js',
+  'background/verification/mail-baseline.js',
   'background/verification/assurivo-feed-client.js',
   'background/verification/resend-controller.js',
   'background/verification-flow.js',
@@ -4759,6 +4760,8 @@ async function requestHotmailLocalCode(account, pollPayload = {}) {
         requiredKeywords: pollPayload.requiredKeywords || [],
         codePatterns: pollPayload.codePatterns || [],
         excludeCodes: pollPayload.excludeCodes || [],
+        excludeMessageIds: pollPayload.excludeMessageIds || [],
+        excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
         filterAfterTimestamp: Number(pollPayload.filterAfterTimestamp || 0) || 0,
       }),
       signal: controller.signal,
@@ -5045,6 +5048,8 @@ async function pollHotmailVerificationCode(step, state, pollPayload = {}) {
         requiredKeywords: pollPayload.requiredKeywords || [],
         codePatterns: pollPayload.codePatterns || [],
         excludeCodes: pollPayload.excludeCodes || [],
+        excludeMessageIds: pollPayload.excludeMessageIds || [],
+        excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
       });
       const match = matchResult.match;
 
@@ -6363,6 +6368,8 @@ async function pollCloudflareTempEmailVerificationCode(step, state, pollPayload 
             requiredKeywords: pollPayload.requiredKeywords || [],
             codePatterns: pollPayload.codePatterns || [],
             excludeCodes: pollPayload.excludeCodes || [],
+            excludeMessageIds: pollPayload.excludeMessageIds || [],
+            excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
           });
           if (detailMatchResult.match?.code) {
             matchResult = detailMatchResult;
@@ -13132,11 +13139,12 @@ async function executeStep3(state) {
 
 function getMailConfig(state) {
   const provider = state.mailProvider || 'qq';
+  const providerDefinition = emailProviderRegistry?.getProviderDefinition?.(provider);
   if (provider === 'custom') {
     return { provider: 'custom', label: '自定义邮箱' };
   }
   if (provider === HOTMAIL_PROVIDER) {
-    return { provider: HOTMAIL_PROVIDER, label: 'Hotmail（API对接/本地助手）' };
+    return { provider: HOTMAIL_PROVIDER, label: providerDefinition?.displayName || 'Hotmail（API对接/本地助手）' };
   }
   if (provider === ICLOUD_PROVIDER) {
     const configuredHost = getConfiguredIcloudHostPreference(state)
@@ -13175,22 +13183,22 @@ function getMailConfig(state) {
     };
   }
   if (provider === LUCKMAIL_PROVIDER) {
-    return { provider: LUCKMAIL_PROVIDER, label: 'LuckMail（API 购邮）' };
+    return { provider: LUCKMAIL_PROVIDER, label: providerDefinition?.displayName || 'LuckMail（API 购邮）' };
   }
   if (provider === CLOUDFLARE_TEMP_EMAIL_PROVIDER) {
-    return { provider: CLOUDFLARE_TEMP_EMAIL_PROVIDER, label: 'Cloudflare Temp Email' };
+    return { provider: CLOUDFLARE_TEMP_EMAIL_PROVIDER, label: providerDefinition?.displayName || 'Cloudflare Temp Email' };
   }
   if (provider === 'cloudmail') {
-    return { provider: 'cloudmail', label: 'Cloud Mail' };
+    return { provider: 'cloudmail', label: providerDefinition?.displayName || 'Cloud Mail' };
   }
   if (provider === FREEMAIL_PROVIDER) {
-    return { provider: FREEMAIL_PROVIDER, label: 'freemail' };
+    return { provider: FREEMAIL_PROVIDER, label: providerDefinition?.displayName || 'freemail' };
   }
   if (provider === MOEMAIL_PROVIDER) {
-    return { provider: MOEMAIL_PROVIDER, label: 'MoeMail' };
+    return { provider: MOEMAIL_PROVIDER, label: providerDefinition?.displayName || 'MoeMail' };
   }
   if (provider === YYDSMAIL_PROVIDER) {
-    return { provider: YYDSMAIL_PROVIDER, label: 'YYDS Mail' };
+    return { provider: YYDSMAIL_PROVIDER, label: providerDefinition?.displayName || 'YYDS Mail' };
   }
   if (provider === OUTLOOK_EMAIL_PLUS_PROVIDER) {
     return { provider: OUTLOOK_EMAIL_PLUS_PROVIDER, label: 'Outlook Email Plus' };

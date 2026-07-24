@@ -75,6 +75,8 @@ Service Worker 启动时会根据持久化 checkpoint 重建资源锁并分类�
 
 兑换副作用账本由 `background/external-effect-ledger.js` 单独拥有：`externalEffectsV1` 保存 `prepared`、`dispatched`、`acknowledged`、`unknown`、`confirmed`、`failed` 状态，`redeemAttemptsV1` 保存对应尝试的渠道和不可逆 CDK 指纹。UPI、IDEAL、PIX 使用独立的账号锁和 CDK 锁。启动恢复只从现有渠道 usage 找回本地 CDK 并调用已有远端状态刷新；成功或明确失败才终结任务并释放锁，仍不确定的结果进入 `manual_review` 并保持锁定。
 
+邮箱 Provider 的统一字段定义、标准化、校验和脱敏集中在 `background/email/provider-registry.js`；Hotmail、2925、iCloud、Gmail 和自定义邮箱的专用管理器仍保持原有职责。验证码轮询在 `background/verification/mail-baseline.js` 中保存请求时间、账号/任务范围和邮件 ID/指纹消费标记，普通日志不保存完整邮件正文。
+
 ## Free / Plus
 
 Free 导出格式：

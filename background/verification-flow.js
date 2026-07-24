@@ -144,6 +144,7 @@
         ASSURIVO_TIMESTAMP_LOG_TIME_ZONE,
       },
       chrome,
+      mailBaseline: rootScope.MultiPageVerificationMailBaseline,
       closeConflictingTabsForSource,
       CLOUDFLARE_TEMP_EMAIL_PROVIDER,
       CLOUD_MAIL_PROVIDER,

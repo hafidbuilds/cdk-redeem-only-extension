@@ -9,6 +9,7 @@
     const constants = context.constants || {};
     const { DEFAULT_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS, MAX_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS, STEP4_ASSURIVO_RESEND_CONFIRM_TIMEOUT_MS, STEP4_ASSURIVO_EMPTY_FEED_WAIT_MS, POST_SUBMIT_CONFIRM_TIMEOUT_MS, POST_SUBMIT_CONFIRM_POLL_INTERVAL_MS, STEP4_STUCK_VERIFICATION_RESUBMIT_LIMIT } = constants;
     const chrome = context.chrome;
+    const mailBaseline = context.mailBaseline || { createRequestBaseline: (step, state, requestedAt) => ({ step, ...state, requestedAt }), resolveBaseline: (_step, state) => state?.verificationMailBaseline || {}, normalizeBaseline: (value) => value || {}, markConsumed: (value) => value, getMessageId: () => '', getMessageFingerprint: () => '' };
     const closeConflictingTabsForSource = context.closeConflictingTabsForSource;
     const CLOUDFLARE_TEMP_EMAIL_PROVIDER = context.CLOUDFLARE_TEMP_EMAIL_PROVIDER;
     const CLOUD_MAIL_PROVIDER = context.CLOUD_MAIL_PROVIDER;
@@ -436,7 +437,6 @@
         function getVerificationResendStateKey() {
           return 'verificationResendCount';
         }
-
         function normalizeVerificationResendCount(value, fallback = 0) {
           const numeric = Number(value);
           if (!Number.isFinite(numeric)) {
@@ -445,13 +445,11 @@
 
           return Math.min(20, Math.max(0, Math.floor(numeric)));
         }
-
         function getVerificationRequestedAtStateKey(step) {
           if (Number(step) === 4) return 'signupVerificationRequestedAt';
           if (Number(step) === 8) return 'loginVerificationRequestedAt';
           return '';
         }
-
         function normalizeVerificationRequestedAtCandidate(value) {
           const numeric = Number(value);
           if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -464,7 +462,6 @@
           }
           return timestamp;
         }
-
         function resolveInitialVerificationRequestedAt(step, state = {}, fallback = 0) {
           const stateKey = getVerificationRequestedAtStateKey(step);
           const candidateValues = [
@@ -480,7 +477,6 @@
           }
           return 0;
         }
-
         function getLegacyVerificationResendCountDefault(step, options = {}) {
           const requestFreshCodeFirst = Boolean(options.requestFreshCodeFirst);
           const legacyMaxRounds = Math.max(1, Math.floor(Number(VERIFICATION_POLL_MAX_ROUNDS) || 1));
@@ -489,7 +485,6 @@
           }
           return Math.max(0, legacyMaxRounds - 1);
         }
-
         function getConfiguredVerificationResendCount(step, state, options = {}) {
           const stateKey = getVerificationResendStateKey(step);
           const configuredValue = state?.[stateKey] !== undefined
@@ -513,12 +508,10 @@
 
           return Math.max(0, Math.floor(Number(VERIFICATION_POLL_MAX_ROUNDS) || 1) - 1);
         }
-
         function getCompletionStep(step, options = {}) {
           const completionStep = Number(options.completionStep);
           return Number.isFinite(completionStep) && completionStep > 0 ? completionStep : step;
         }
-
         async function confirmCustomVerificationStepBypass(step, options = {}) {
           const completionStep = getCompletionStep(step, options);
           const promptStep = getCompletionStep(step, { completionStep: options.promptStep ?? completionStep });
@@ -551,7 +544,6 @@
           await setNodeStatus(completionNodeId, 'skipped');
           await addLog(`步骤 ${completionStep}：已确认手动完成${verificationLabel}验证码输入，当前步骤已跳过。`, 'warn');
         }
-
         function getVerificationPollPayload(step, state, overrides = {}) {
           if (typeof externalBuildVerificationPollPayload === 'function') {
             return externalBuildVerificationPollPayload(step, state, overrides);
@@ -645,6 +637,8 @@
 
         async function requestVerificationCodeResend(step, options = {}) {
           throwIfStopped();
+          const baselineRequestedAt = Date.now();
+          await setState({ verificationMailBaseline: mailBaseline.createRequestBaseline(step, await getState(), baselineRequestedAt) });
           const signupTabId = await getTabId('signup-page');
           if (!signupTabId) {
             throw new Error('认证页面标签页已关闭，无法重新请求验证码。');
@@ -683,6 +677,7 @@
           }
 
           const currentState = await getState();
+          await setState({ verificationMailBaseline: { ...mailBaseline.normalizeBaseline(currentState?.verificationMailBaseline), requestedAt } });
           if (currentState.mailProvider === '2925') {
             const mailTabId = await getTabId('mail-2925');
             if (mailTabId) {
@@ -1677,6 +1672,7 @@
               lastEmailTimestamp: result.emailTimestamp,
               [stateKey]: result.code,
             });
+            await setState({ verificationMailBaseline: mailBaseline.markConsumed(mailBaseline.resolveBaseline(step, attemptState, { provider: 'custom' }, resolveInitialVerificationRequestedAt(step, attemptState)), result) });
 
             const completionNodeId = await getNodeIdForStep(completionStep);
             if (!completionNodeId) {
@@ -1860,6 +1856,7 @@
                   lastResendAt,
                 });
               }
+              const baselineForAttempt = mailBaseline.resolveBaseline(step, attemptState, mail, resolveInitialVerificationRequestedAt(step, attemptState));
               const pollOptions = {
                 excludeCodes: [...rejectedCodes],
                 disableTimeBudgetCap: Boolean(options.disableTimeBudgetCap),
@@ -1874,6 +1871,8 @@
                 resendIntervalMs,
                 lastResendAt,
                 onResendRequestedAt: updateFilterAfterTimestampForVerificationStep,
+                excludeMessageIds: baselineForAttempt.consumedMessageIds,
+                excludeMessageFingerprints: baselineForAttempt.consumedFingerprints,
               };
               if (nextFilterAfterTimestamp !== null && nextFilterAfterTimestamp !== undefined) {
                 pollOptions.filterAfterTimestamp = nextFilterAfterTimestamp;
@@ -1928,6 +1927,7 @@
                 lastEmailTimestamp: result.emailTimestamp,
                 [stateKey]: result.code,
               });
+              await setState({ verificationMailBaseline: mailBaseline.markConsumed(mailBaseline.resolveBaseline(step, await getState(), mail, resolveInitialVerificationRequestedAt(step, state)), result) });
 
               const completionNodeId = await getNodeIdForStep(completionStep);
               if (!completionNodeId) {

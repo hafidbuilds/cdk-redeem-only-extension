@@ -373,6 +373,8 @@
             requiredKeywords: pollPayload.requiredKeywords || [],
             codePatterns: pollPayload.codePatterns || [],
             excludeCodes: pollPayload.excludeCodes || [],
+            excludeMessageIds: pollPayload.excludeMessageIds || [],
+            excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
           });
           let matchResult = buildMatchResult(messages);
           if (!matchResult?.match?.code) {

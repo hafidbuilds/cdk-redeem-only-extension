@@ -12,6 +12,7 @@
     const constants = context.constants || {};
     const { ICLOUD_MAIL_POLL_MIN_ATTEMPTS, ICLOUD_MAIL_POLL_TIMEOUT_MARGIN_MS, ASSURIVO_VERIFICATION_OPEN_URL, ASSURIVO_VERIFICATION_FEED_URL, ASSURIVO_VERIFICATION_FILTER_SKEW_MS, ASSURIVO_RESEND_SAME_CODE_GRACE_MS } = constants;
     const fetchImpl = context.fetchImpl;
+    const mailBaseline = context.mailBaseline || null;
     function addLog(message, level = 'info', options = {}) {
       const nextOptions = options && typeof options === 'object' ? { ...options } : {};
       const activeStep = typeof context.getActiveVerificationLogStep === 'function'
@@ -397,6 +398,8 @@
               code: codes.length ? codes[0] : reusedExcludedCode,
               emailTimestamp,
               emailTimestampText: formatAssurivoTimestampForLog(emailTimestamp),
+              mailId: typeof mailBaseline?.getMessageId === 'function' ? mailBaseline.getMessageId(candidateEntry) : String(candidateEntry?.id || candidateEntry?.message_id || candidateEntry?.messageId || '').trim(),
+              mailFingerprint: typeof mailBaseline?.getMessageFingerprint === 'function' ? mailBaseline.getMessageFingerprint(candidateEntry) : '',
               source: 'assurivo-feed',
               promptMatched: bodyDetails.promptMatched,
               candidateCodes: rawCodes,
@@ -781,6 +784,8 @@
                 handled: true,
                 code,
                 emailTimestamp: codeDetails.emailTimestamp || Date.now(),
+                mailId: codeDetails.mailId || '',
+                mailFingerprint: codeDetails.mailFingerprint || '',
                 targetEmail,
                 verificationUrl: request.url,
                 reusedExcludedCode: Boolean(codeDetails.reusedExcludedCode),

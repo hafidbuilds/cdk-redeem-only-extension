@@ -199,6 +199,9 @@
     const hasKeywordHints = requiredKeywords.length > 0;
     const afterTimestamp = normalizeTimestamp(filters.afterTimestamp);
     const receivedAt = normalizeTimestamp(message?.receivedDateTime);
+    const messageId = String(message?.id || message?.messageId || message?.message_id || '').trim();
+    const excludedMessageIds = new Set((filters.excludeMessageIds || []).map((item) => String(item || '').trim()).filter(Boolean));
+    if (messageId && excludedMessageIds.has(messageId)) return null;
     if (afterTimestamp && receivedAt && receivedAt < afterTimestamp) {
       return null;
     }
@@ -210,6 +213,16 @@
     const code = extractVerificationCode(combinedText, {
       codePatterns: filters.codePatterns,
     });
+    if (filters.excludeMessageFingerprints?.length) {
+      let fingerprintHash = 2166136261;
+      const fingerprintInput = [sender, subject, receivedAt, preview.replace(/\s+/g, ' ').trim().slice(0, 240)].join('|');
+      for (let index = 0; index < fingerprintInput.length; index += 1) {
+        fingerprintHash ^= fingerprintInput.charCodeAt(index);
+        fingerprintHash = Math.imul(fingerprintHash, 16777619);
+      }
+      const fingerprint = `mail:fnv1a_${(fingerprintHash >>> 0).toString(16).padStart(8, '0')}`;
+      if (filters.excludeMessageFingerprints.includes(fingerprint)) return null;
+    }
     const excludedCodes = new Set((filters.excludeCodes || []).filter(Boolean));
     if (code && excludedCodes.has(code)) {
       return null;

@@ -286,6 +286,8 @@
             senderFilters: pollPayload.senderFilters || [],
             subjectFilters: pollPayload.subjectFilters || [],
             excludeCodes: pollPayload.excludeCodes || [],
+            excludeMessageIds: pollPayload.excludeMessageIds || [],
+            excludeMessageFingerprints: pollPayload.excludeMessageFingerprints || [],
           });
           const match = matchResult.match;
           if (match?.code) {
