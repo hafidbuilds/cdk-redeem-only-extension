@@ -13940,7 +13940,12 @@ function startStep5ProfileSubmitRecoveryWatchdog(nodeId, options = {}) {
         return;
       }
 
-      if (pageState?.profileVisible && pageState?.submitButtonClickable && attempts < maxAttempts) {
+      if (
+        pageState?.profileVisible
+        && pageState?.profileFieldsComplete !== false
+        && pageState?.submitButtonClickable
+        && attempts < maxAttempts
+      ) {
         attempts += 1;
         const submitResult = await triggerStep5ProfileSubmitOnTab({
           attempt: attempts,
@@ -14052,6 +14057,7 @@ async function validateStep5PostCompletion(tabId, completionPayload = {}) {
   let authRetryRecoveryCount = 0;
   let passkeySkipCount = 0;
   let profileSubmitRecoveryCount = 0;
+  let incompleteProfileFieldsLogged = false;
   let lastPageState = null;
   let lastUrl = '';
 
@@ -14142,6 +14148,21 @@ async function validateStep5PostCompletion(tabId, completionPayload = {}) {
     }
 
     if (pageState.profileVisible) {
+      if (pageState.profileFieldsComplete === false) {
+        if (!incompleteProfileFieldsLogged) {
+          incompleteProfileFieldsLogged = true;
+          const fieldNames = Array.isArray(pageState.incompleteProfileFields)
+            ? pageState.incompleteProfileFields.join('、')
+            : 'name/age';
+          await addLog(`步骤 5：检测到资料字段为空（${fieldNames}），已禁止提交空表单，等待页面填写任务自动补填。`, 'warn', {
+            step: 5,
+            stepKey: 'fill-profile',
+          });
+        }
+        await sleepWithStop(pollIntervalMs);
+        continue;
+      }
+      incompleteProfileFieldsLogged = false;
       if (pageState.submitButtonClickable && profileSubmitRecoveryCount < maxProfileSubmitRecoveries) {
         profileSubmitRecoveryCount += 1;
         await addLog(

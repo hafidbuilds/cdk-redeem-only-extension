@@ -14,6 +14,7 @@
       getStep5PostSubmitSuccessState = () => null,
       getCreateAccountEnrollPasskeyPageState = () => null,
       fillProfileNameAndBirthday: fillProfileNameAndBirthdayDelegate = null,
+      fillInput = null,
       humanPause = async () => {},
       simulateClick = (el) => el?.click?.(),
       sleep = (ms = 0) => new Promise((resolve) => root.setTimeout(resolve, ms)),
@@ -173,6 +174,85 @@
       return detectProfilePage() || detectProfileFields();
     }
 
+    function getStep5ProfileInputs() {
+      const nameInput = documentRef.querySelector([
+        'input[name="name"]',
+        'input[autocomplete="name"]',
+        'input[placeholder*="全名"]',
+        'input[placeholder*="氏名"]',
+        'input[placeholder*="名前"]',
+        'input[placeholder*="पूरा नाम"]',
+      ].join(', '));
+      const ageInput = documentRef.querySelector([
+        'input[name="age"]',
+        'input[placeholder*="年龄"]',
+        'input[placeholder*="年齡"]',
+        'input[placeholder*="年齢"]',
+        'input[placeholder*="उम्र"]',
+        'input[placeholder*="आयु"]',
+      ].join(', '));
+      return {
+        nameInput: nameInput && isVisibleElement(nameInput) ? nameInput : null,
+        ageInput: ageInput && isVisibleElement(ageInput) ? ageInput : null,
+      };
+    }
+
+    function getStep5ProfileFieldState() {
+      const { nameInput, ageInput } = getStep5ProfileInputs();
+      const nameValue = String(nameInput?.value || '').replace(/\s+/g, ' ').trim();
+      const ageValue = String(ageInput?.value || '').trim();
+      const numericAge = Number(ageValue);
+      const nameComplete = Boolean(nameInput && nameValue && nameInput.getAttribute?.('aria-invalid') !== 'true');
+      const ageComplete = !ageInput || (
+        /^\d{1,3}$/.test(ageValue)
+        && numericAge >= 13
+        && numericAge <= 120
+        && ageInput.getAttribute?.('aria-invalid') !== 'true'
+      );
+      const incompleteProfileFields = [];
+      if (!nameComplete) incompleteProfileFields.push('name');
+      if (!ageComplete) incompleteProfileFields.push('age');
+      return {
+        profileFieldsComplete: incompleteProfileFields.length === 0,
+        incompleteProfileFields,
+        nameValue,
+        ageValue,
+      };
+    }
+
+    async function refillProfileTextFields(payload = {}) {
+      if (typeof fillInput !== 'function') {
+        throw new Error('资料页输入处理器未初始化。');
+      }
+      const fullName = String(payload.fullName || '').replace(/\s+/g, ' ').trim();
+      const age = payload.age == null ? '' : String(payload.age).trim();
+      const maxAttempts = Math.max(1, Math.min(5, Math.floor(Number(payload.maxAttempts) || 3)));
+      let refilled = false;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const state = getStep5ProfileFieldState();
+        if (state.profileFieldsComplete) return { ...state, refilled, refillAttempts: attempt - 1 };
+        if (!refilled) {
+          log(`步骤 5：检测到资料字段被页面清空（${state.incompleteProfileFields.join('、')}），正在重新填写后再提交。`, 'warn');
+        }
+        const { nameInput, ageInput } = getStep5ProfileInputs();
+        if (state.incompleteProfileFields.includes('name') && nameInput && fullName) {
+          fillInput(nameInput, fullName);
+          nameInput.blur?.();
+        }
+        if (state.incompleteProfileFields.includes('age') && ageInput && age) {
+          fillInput(ageInput, age);
+          ageInput.blur?.();
+        }
+        refilled = true;
+        await sleep(250);
+      }
+      const finalState = { ...getStep5ProfileFieldState(), refilled, refillAttempts: maxAttempts };
+      if (!finalState.profileFieldsComplete) {
+        throw new Error(`步骤 5：资料字段未能稳定写入页面：${finalState.incompleteProfileFields.join('、')}。`);
+      }
+      return finalState;
+    }
+
     function getStep5ErrorText() {
       const messages = [];
       const selectors = [
@@ -218,6 +298,10 @@
       const passkeyState = getCreateAccountEnrollPasskeyPageState();
       const submitButton = getStep5SubmitButton();
       const errorText = getStep5ErrorText();
+      const profileVisible = isStep5ProfileStillVisible();
+      const profileFieldState = profileVisible
+        ? getStep5ProfileFieldState()
+        : { profileFieldsComplete: true, incompleteProfileFields: [], nameValue: '', ageValue: '' };
       let signupAuthHost = false;
       try {
         const parsed = new URL(String(locationRef.href || '').trim());
@@ -236,7 +320,8 @@
         successState: successState?.state || '',
         passkeyEnrollPage: Boolean(passkeyState),
         passkeySkipEnabled: Boolean(passkeyState?.skipEnabled),
-        profileVisible: isStep5ProfileStillVisible(),
+        profileVisible,
+        ...profileFieldState,
         submitButtonVisible: Boolean(submitButton),
         submitButtonClickable: isStep5SubmitButtonClickable(submitButton),
         errorText,
@@ -246,7 +331,7 @@
           && !maxCheckAttemptsBlocked
           && !successState
           && !passkeyState
-          && !isStep5ProfileStillVisible()
+          && !profileVisible
         ),
       };
     }
@@ -258,6 +343,14 @@
           ...state,
           clicked: false,
           reason: state.successState ? 'already_left_profile' : 'profile_not_visible',
+        };
+      }
+
+      if (!state.profileFieldsComplete) {
+        return {
+          ...state,
+          clicked: false,
+          reason: 'profile_fields_incomplete',
         };
       }
 
@@ -315,6 +408,7 @@
     return {
       detectProfilePage,
       fillProfileNameAndBirthday,
+      refillProfileTextFields,
       submitProfilePage,
       getStep5ProfilePathPatterns,
       isStep5Ready: detectProfileFields,
@@ -323,6 +417,7 @@
       waitForStep5SubmitButton,
       isStep5SubmitButtonClickable,
       isStep5ProfileStillVisible,
+      getStep5ProfileFieldState,
       getStep5SubmitState,
       getStep5ErrorText,
     };

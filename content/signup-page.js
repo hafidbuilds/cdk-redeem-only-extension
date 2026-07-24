@@ -225,6 +225,7 @@ const OAUTH_CONSENT_FORM_SELECTOR = SIGNUP_PAGE_DETECTOR_CONSTANTS.OAUTH_CONSENT
 const CONTINUE_ACTION_PATTERN = SIGNUP_PAGE_DETECTOR_CONSTANTS.CONTINUE_ACTION_PATTERN;
 const ADD_EMAIL_PAGE_PATTERN = SIGNUP_PAGE_DETECTOR_CONSTANTS.ADD_EMAIL_PAGE_PATTERN;
 const STEP6_PASSWORD_SUBMIT_TRANSITION_TIMEOUT_MS = 30000;
+const STEP4_VERIFICATION_INPUT_WAIT_MS = 30000;
 
 function getSignupDomUtils() {
   const rootScope = typeof self !== 'undefined' ? self : window;
@@ -685,6 +686,7 @@ function getSignupProfilePageHelpers() {
     getStep5PostSubmitSuccessState,
     getCreateAccountEnrollPasskeyPageState,
     fillProfileNameAndBirthday: fillStep5NameBirthdayLocally,
+    fillInput,
     humanPause,
     simulateClick,
     sleep,
@@ -3470,7 +3472,7 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
 
     if (snapshot.state === 'verification') {
       await waitForDocumentLoadComplete(15000, `${prepareLogLabel}：注册验证码页面`);
-      await waitForVerificationCodeTarget(15000);
+      await waitForVerificationCodeTarget(STEP4_VERIFICATION_INPUT_WAIT_MS);
       log(`${prepareLogLabel}：验证码页面已完成加载并就绪${recoveryRound ? `（期间自动恢复 ${recoveryRound} 次）` : ''}。`, 'ok');
       return { ready: true, retried: recoveryRound, prepareSource };
     }
@@ -4859,7 +4861,7 @@ async function fillVerificationCode(step, payload) {
     }
 
     try {
-      const verificationTarget = await waitForVerificationCodeTarget(10000);
+      const verificationTarget = await waitForVerificationCodeTarget(step === 4 ? STEP4_VERIFICATION_INPUT_WAIT_MS : 10000);
       if (verificationTarget.type === 'split') {
         splitInputs = verificationTarget.elements;
       } else {
@@ -6418,6 +6420,7 @@ async function waitForStep5SubmitOutcome(options = {}) {
     maxPasskeySkipAttempts = 2,
     maxSubmitClicks = 3,
     retryClickIntervalMs = 3500,
+    refillProfileFields = null,
   } = options;
   const start = Date.now();
   let authRetryRecoveryCount = 0;
@@ -6425,10 +6428,8 @@ async function waitForStep5SubmitOutcome(options = {}) {
   let submitClickCount = 1;
   let lastSubmitClickAt = Date.now();
   let lastStep5Error = '';
-
   while (Date.now() - start < timeoutMs) {
     throwIfStopped();
-
     const retryState = getStep5AuthRetryPageState();
     if (retryState?.userAlreadyExistsBlocked) {
       throw createSignupUserAlreadyExistsError();
@@ -6453,7 +6454,6 @@ async function waitForStep5SubmitOutcome(options = {}) {
       lastSubmitClickAt = Date.now();
       continue;
     }
-
     const passkeyState = getCreateAccountEnrollPasskeyPageState();
     if (passkeyState) {
       if (passkeySkipCount >= maxPasskeySkipAttempts) {
@@ -6468,17 +6468,18 @@ async function waitForStep5SubmitOutcome(options = {}) {
       lastSubmitClickAt = Date.now();
       continue;
     }
-
     const successState = getStep5PostSubmitSuccessState();
     if (successState) {
       return successState;
     }
-
     const step5Error = typeof getStep5ErrorText === 'function' ? getStep5ErrorText() : '';
     if (step5Error) {
       lastStep5Error = step5Error;
     }
-
+    const refillResult = isStep5ProfileStillVisible() && typeof refillProfileFields === 'function'
+      ? await refillProfileFields()
+      : null;
+    if (refillResult?.refilled) { lastSubmitClickAt = 0; await sleep(300); continue; }
     if (
       isStep5ProfileStillVisible()
       && submitClickCount < maxSubmitClicks
@@ -6495,7 +6496,6 @@ async function waitForStep5SubmitOutcome(options = {}) {
         continue;
       }
     }
-
     await sleep(250);
   }
 
@@ -6942,7 +6942,8 @@ async function fillStep5NameBirthdayLocally(payload) {
     }
   }
 
-
+  const refillProfileFields = () => getSignupProfilePageHelpers().refillProfileTextFields?.({ fullName, age: birthdayMode ? null : resolvedAge, maxAttempts: 3 });
+  await refillProfileFields();
   if (prefillOnly) {
     log('步骤 4：混合注册页资料已预填，继续填写验证码。', 'info');
     return { prefilled: true };
@@ -6986,7 +6987,7 @@ async function fillStep5NameBirthdayLocally(payload) {
   log('步骤 5：已点击“完成帐户创建”，正在等待页面跳转、重试页或提交结果。');
 
   try {
-    const outcome = await waitForStep5SubmitOutcome();
+    const outcome = await waitForStep5SubmitOutcome({ refillProfileFields });
     cleanupNavigationReporter();
 
     const completionPayload = completeStep5Once({ outcome });

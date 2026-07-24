@@ -1259,7 +1259,6 @@
 
           throw lastError || new Error(`步骤 ${step}：无法获取新的${getVerificationCodeLabel(step)}验证码。`);
         }
-
         async function submitVerificationCode(step, code, options = {}) {
           const completionStep = getCompletionStep(step, options);
           const authLoginStep = completionStep >= 11 ? 10 : 7;
@@ -1267,21 +1266,20 @@
           if (!signupTabId) {
             throw new Error('认证页面标签页已关闭，无法填写验证码。');
           }
-
           await chrome.tabs.update(signupTabId, { active: true });
           if (step === 4) {
             const prepareRequest = {
               type: 'PREPARE_SIGNUP_VERIFICATION', step: 4, source: 'background',
               payload: {
                 password: options.password || '', prepareSource: 'step4_pre_submit',
-                prepareLogLabel: '步骤 4 填码前检查', timeoutMs: 15000,
+                prepareLogLabel: '步骤 4 填码前检查', timeoutMs: 30000,
               },
             };
             const prepareVerificationPage = async () => {
               const sender = typeof sendToContentScriptResilient === 'function'
                 ? sendToContentScriptResilient : sendToContentScript;
               const result = await sender('signup-page', prepareRequest, {
-                timeoutMs: 20000, responseTimeoutMs: 18000, retryDelayMs: 500,
+                timeoutMs: 35000, responseTimeoutMs: 33000, retryDelayMs: 500,
                 logMessage: '步骤 4：取码完成后认证页正在恢复，等待验证码输入框重新就绪...',
                 logStep: completionStep, logStepKey: 'fetch-signup-code',
               });
@@ -1308,13 +1306,15 @@
               }
               return true;
             };
-            let prepareResult;
-            try {
-              prepareResult = await prepareVerificationPage();
-            } catch (error) {
-              const inputMissing = /未找到验证码输入框/i.test(String(error?.message || error || ''));
-              if (!inputMissing || !(await reloadStaleVerificationPage())) throw error;
-              prepareResult = await prepareVerificationPage();
+            let prepareResult; const isInputMissing = (error) => /未找到验证码输入框/i.test(String(error?.message || error || ''));
+            try { prepareResult = await prepareVerificationPage(); } catch (error) {
+              if (!isInputMissing(error)) throw error;
+              await addLog('步骤 4：验证码页面已到达，但输入框可能仍在动态挂载，暂不刷新页面，短暂等待后再次检查。', 'warn');
+              await sleepWithStop(3000);
+              try { prepareResult = await prepareVerificationPage(); } catch (retryError) {
+                if (!isInputMissing(retryError) || !(await reloadStaleVerificationPage())) throw retryError;
+                prepareResult = await prepareVerificationPage();
+              }
             }
             if (prepareResult?.alreadyVerified) {
               return {
