@@ -120,9 +120,12 @@ npm ci
 npm run syntax
 npm test
 npm run audit
+npm run e2e
 npm run check
 npm run package
 ```
+
+`npm run e2e` 使用本机 Microsoft Edge 以真实 MV3 Service Worker 加载未打包扩展，验证 sidepanel、设置消息保存/恢复、账号区域和任务区域。没有可用 Edge 时，该门禁应明确记录为环境阻塞，不得用固定成功替代。
 
 `npm run package` 从 Git 受控的运行时白名单生成 `release-artifacts/cdk-redeem-only-extension-v<version>.zip`。压缩包不包含 Git 元数据、测试、文档、本地配置、账号运行历史、日志、备份或发布目录本身。
 

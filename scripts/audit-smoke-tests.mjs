@@ -516,7 +516,7 @@ function checkStaticContracts() {
   const signupPage = readText('content/signup-page.js');
   const gitignore = readText('.gitignore');
 
-  for (const scriptName of ['syntax', 'test', 'audit', 'check', 'package']) {
+  for (const scriptName of ['syntax', 'test', 'audit', 'e2e', 'check', 'package']) {
     if (!packageJson?.scripts?.[scriptName]) {
       fail(`package.json missing script: ${scriptName}`);
     }
