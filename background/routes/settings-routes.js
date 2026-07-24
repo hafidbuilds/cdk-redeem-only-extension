@@ -180,8 +180,8 @@
       };
     }
 
-    async function exportSettings() {
-      return { ok: true, ...(await requireHandler(exportSettingsBundle, 'exportSettingsBundle')()) };
+    async function exportSettings(payload = {}) {
+      return { ok: true, ...(await requireHandler(exportSettingsBundle, 'exportSettingsBundle')(payload || {})) };
     }
 
     async function importSettings(payload = {}) {

@@ -20,6 +20,7 @@
   function createConfigMenuController({
     dom = {},
     exportSettings = async () => {},
+    exportSensitiveSettings = async () => {},
     importSettingsFromFile = async () => {},
     onUpdate = () => {},
     onError = (error) => console.warn('Config menu action failed:', error?.message || error),
@@ -95,6 +96,15 @@
             return;
           }
           dom.inputImportSettingsFile?.click?.();
+        });
+      }
+
+      if (markBound(dom.btnExportSensitiveSettings, 'configSensitiveExportBound')) {
+        dom.btnExportSensitiveSettings.addEventListener('click', (event) => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          if (dom.btnExportSensitiveSettings?.disabled) return;
+          runAsyncAction(exportSensitiveSettings);
         });
       }
 

@@ -34,6 +34,7 @@ importScripts(
   'background/task-recovery-policy.js',
   'background/task-runtime.js',
   'background/bootstrap/state-store.js',
+  'background/bootstrap/settings-transfer-security.js',
   'background/bootstrap/settings-transfer.js',
   'background/bootstrap/legacy-cleanup.js',
   'background/bootstrap/auto-run-session.js',
@@ -2817,8 +2818,8 @@ function buildSettingsRuntimeDataImportUpdates(configBundle = {}) {
   return getSettingsTransferManager().buildSettingsRuntimeDataImportUpdates(configBundle);
 }
 
-function exportSettingsBundle() {
-  return getSettingsTransferManager().exportSettingsBundle();
+function exportSettingsBundle(options = {}) {
+  return getSettingsTransferManager().exportSettingsBundle(options || {});
 }
 
 function importSettingsBundle(configBundle) {

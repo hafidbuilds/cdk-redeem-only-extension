@@ -229,7 +229,7 @@
       upiRedeemCdkeyUsage: 'pixRedeemCdkeyUsage',
     });
     const LEGACY_UPI_REDEEM_SETTING_KEYS = Object.values(LEGACY_UPI_REDEEM_SETTING_KEY_MAP);
-    const SETTINGS_EXPORT_SCHEMA_VERSION = 1;
+    const SETTINGS_EXPORT_SCHEMA_VERSION = 2;
 
     return {
       PERSISTED_SETTING_DEFAULTS,

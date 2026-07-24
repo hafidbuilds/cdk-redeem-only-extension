@@ -3,6 +3,9 @@
   root.MultiPageBackgroundSettingsTransfer = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createSettingsTransferModule() {
+  const security = globalThis.MultiPageSettingsTransferSecurity
+    || (typeof require === 'function' ? require('./settings-transfer-security.js') : null);
+
   function createSettingsTransfer(context = {}) {
     const {
       chromeApi,
@@ -32,8 +35,11 @@
       broadcastDataUpdate = () => {},
       ensureManualInteractionAllowed = async () => ({}),
       getState = async () => ({}),
+      settingsImportBackupStorageKey = 'settingsImportBackupsV1',
+      settingsImportBackupLimit = 3,
     } = context;
 
+    const CURRENT_SCHEMA_VERSION = Math.max(1, Number(settingsExportSchemaVersion) || 1);
     const membershipResultsStorageKey = storageKeys.membershipResults || 'upiCredentialMembershipCheckResults';
     const credentialBackupsStorageKey = storageKeys.credentialBackups || 'upiAccountCredentialBackups';
     const accountRunHistoryStorageKey = storageKeys.accountRunHistory || 'accountRunHistory';
@@ -45,20 +51,16 @@
     function normalizeLocalCpaJsonRelativeAuthDir(rawValue = '') {
       return String(rawValue || '').trim() || defaultLocalCpaJsonRelativeAuthDir;
     }
-
     function buildSettingsExportFilename(date = new Date()) {
       const pad = (value) => String(value).padStart(2, '0');
       return `${settingsExportFilenamePrefix}-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
     }
-
     function normalizeSettingsRuntimeObject(value, fallback = {}) {
       return value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
     }
-
     function normalizeSettingsRuntimeEmail(value = '') {
       return String(value || '').trim().toLowerCase();
     }
-
     function normalizeSettingsRuntimeMembershipResults(value = null) {
       const source = normalizeSettingsRuntimeObject(value, null);
       if (!source) {
@@ -86,7 +88,6 @@
         updatedAt: String(source.updatedAt || '') || new Date().toISOString(),
       };
     }
-
     function normalizeSettingsRuntimeCredentialBackups(value = null) {
       const source = normalizeSettingsRuntimeObject(value, null);
       if (!source) {
@@ -109,7 +110,6 @@
         })
         .filter(Boolean));
     }
-
     function normalizeSettingsRuntimeAccountRunHistory(value = null) {
       if (!Array.isArray(value)) {
         return null;
@@ -121,7 +121,6 @@
         .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
         .map((item) => ({ ...item }));
     }
-
     function normalizeSettingsRuntimeAliasState(value = null) {
       const source = normalizeSettingsRuntimeObject(value, null);
       if (!source) {
@@ -140,6 +139,17 @@
       };
     }
 
+    function buildSafeRuntimeData(runtimeData = {}) {
+      return security.buildSafeRuntimeData(runtimeData, {
+        normalizeMembership: normalizeSettingsRuntimeMembershipResults,
+        normalizeHistory: normalizeSettingsRuntimeAccountRunHistory,
+        normalizeAlias: normalizeSettingsRuntimeAliasState,
+      });
+    }
+
+    function migrateSettingsBundle(input = {}) {
+      return security.migrateSettingsBundle(input, CURRENT_SCHEMA_VERSION);
+    }
     async function getSettingsRuntimeDataForExport() {
       const [stored, accountRunHistory, aliasState] = await Promise.all([
         chromeApi.storage.local.get([
@@ -223,24 +233,41 @@
       return updates;
     }
 
-    async function exportSettingsBundle() {
+    async function exportSettingsBundle(options = {}) {
+      const includeSensitiveRuntimeData = options?.includeSensitiveRuntimeData === true;
+      if (includeSensitiveRuntimeData && options?.confirmed !== true) {
+        throw new Error('导出敏感备份必须明确选择并完成二次确认。');
+      }
       const [settings, runtimeData] = await Promise.all([
         getPersistedSettings(),
         getSettingsRuntimeDataForExport(),
       ]);
+      const safeExport = !includeSensitiveRuntimeData;
       const bundle = {
-        schemaVersion: settingsExportSchemaVersion,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
         extensionVersion: chromeApi.runtime.getManifest().version,
-        containsSensitiveRuntimeData: true,
-        settings,
-        runtimeData,
+        exportMode: safeExport ? 'safe' : 'sensitive',
+        containsSensitiveRuntimeData: !safeExport,
+        settings: safeExport ? security.omitSensitiveFields(settings) : settings,
+        runtimeData: safeExport ? buildSafeRuntimeData(runtimeData) : runtimeData,
       };
 
       return {
         fileName: buildSettingsExportFilename(),
         fileContent: JSON.stringify(bundle, null, 2),
       };
+    }
+
+    async function saveImportBackup() {
+      return security.saveImportBackup({
+        chromeApi,
+        getPersistedSettings,
+        getSettingsRuntimeDataForExport,
+        storageKey: settingsImportBackupStorageKey,
+        limit: settingsImportBackupLimit,
+        currentVersion: CURRENT_SCHEMA_VERSION,
+      });
     }
 
     async function importSettingsBundle(configBundle) {
@@ -252,15 +279,12 @@
         throw new Error('配置文件内容无效。');
       }
 
-      const schemaVersion = Number(configBundle.schemaVersion);
-      if (schemaVersion !== settingsExportSchemaVersion) {
-        throw new Error(`仅支持导入 schemaVersion=${settingsExportSchemaVersion} 的配置文件。`);
-      }
-      if (!configBundle.settings || typeof configBundle.settings !== 'object' || Array.isArray(configBundle.settings)) {
+      const migratedBundle = migrateSettingsBundle(configBundle);
+      if (!migratedBundle.settings || typeof migratedBundle.settings !== 'object' || Array.isArray(migratedBundle.settings)) {
         throw new Error('配置文件缺少 settings 配置段。');
       }
 
-      const importedSettings = buildPersistentSettingsPayload(configBundle.settings, {
+      const importedSettings = buildPersistentSettingsPayload(migratedBundle.settings, {
         fillDefaults: false,
         requireKnownKeys: true,
       });
@@ -288,8 +312,11 @@
         });
       }
 
+      await saveImportBackup();
       await setPersistentSettings(importedSettings);
-      const runtimeDataUpdates = buildSettingsRuntimeDataImportUpdates(configBundle);
+      const runtimeDataUpdates = migratedBundle.containsSensitiveRuntimeData === true
+        ? buildSettingsRuntimeDataImportUpdates(migratedBundle)
+        : {};
       if (Object.keys(runtimeDataUpdates).length > 0) {
         await chromeApi.storage.local.set(runtimeDataUpdates);
       }
@@ -339,6 +366,9 @@
       normalizeSettingsRuntimeAliasState,
       getSettingsRuntimeDataForExport,
       buildSettingsRuntimeDataImportUpdates,
+      buildSafeRuntimeData,
+      migrateSettingsBundle,
+      saveImportBackup,
       exportSettingsBundle,
       importSettingsBundle,
     };

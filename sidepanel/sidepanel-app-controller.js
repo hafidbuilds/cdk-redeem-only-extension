@@ -105,7 +105,7 @@ const {
   configMenuShell,
   btnConfigMenu,
   configMenu,
-  btnExportSettings,
+  btnExportSettings, btnExportSensitiveSettings,
   btnImportSettings,
   inputImportSettingsFile,
   selectPanelMode,
@@ -529,7 +529,6 @@ const {
   stepsList,
   toastContainer,
 } = dom;
-
 const actionModalService = window.SidepanelActionModalService?.createActionModalService?.({
   dom: {
     modal: autoStartModal,
@@ -544,7 +543,6 @@ const actionModalService = window.SidepanelActionModalService?.createActionModal
     continueButton: btnAutoStartContinue, closeButton: btnAutoStartClose,
   },
 });
-
 const PLUS_PAYMENT_METHOD_LEGACY_WALLET = 'legacyWallet';
 const PLUS_PAYMENT_METHOD_LEGACY_PAY = 'legacyPay';
 const PLUS_PAYMENT_METHOD_UPI_INFO_HELPER = 'upiInfo-helper';
@@ -1612,8 +1610,8 @@ with (appState.createScope()) {
     updateStatusDisplay: (state) => updateStatusDisplay(state),
   });
   const configMenuController = window.SidepanelConfigMenuController.createConfigMenuController({
-    dom: { btnConfigMenu, configMenu, btnExportSettings, btnImportSettings, inputImportSettingsFile },
-    exportSettings,
+    dom: { btnConfigMenu, configMenu, btnExportSettings, btnExportSensitiveSettings, btnImportSettings, inputImportSettingsFile },
+    exportSettings, exportSensitiveSettings: () => getSettingsTransferManager()?.exportSensitiveSettingsFile?.(),
     importSettingsFromFile,
     onUpdate: () => updateSaveButtonState(),
     onError: (error) => showToast('配置操作失败：' + (error?.message || error), 'error'),
@@ -2465,6 +2463,7 @@ with (appState.createScope()) {
     if (btnExportSettings) {
       btnExportSettings.disabled = actionLocked || contributionModeEnabled;
     }
+    if (btnExportSensitiveSettings) btnExportSensitiveSettings.disabled = actionLocked || contributionModeEnabled;
     if (btnImportSettings) {
       btnImportSettings.disabled = importLocked;
     }

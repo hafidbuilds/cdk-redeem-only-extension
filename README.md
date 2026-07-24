@@ -79,6 +79,8 @@ Service Worker 启动时会根据持久化 checkpoint 重建资源锁并分类�
 
 Sidepanel 账号行的补 AT、会员核验、UPI/IDEAL/PIX 兑换、导出、删除、重试和停止判断统一由 `sidepanel/membership-row-policy.js` 生成，返回稳定原因码和可读原因；显示模型把同一决策附在账号行上，渲染层不再复制资格判断。
 
+配置导出默认使用 schemaVersion 2 的安全格式，字段级排除密码、AT、2FA Secret、Cookie、API Key 和完整 CDK；从旧版 schemaVersion 1 导入时会先幂等迁移，并在覆盖前把当前完整配置保存到受限的 `settingsImportBackupsV1`（最多 3 份）。配置菜单中的“导出敏感备份”必须二次确认，且导出文件明确标记 `exportMode: sensitive`。Service Worker 启动时将 `storage.session` 限制为 `TRUSTED_CONTEXTS`，Content Script 通过 Background 白名单消息获取最少必要数据。权限用途见 [docs/architecture/permission-map.md](docs/architecture/permission-map.md)。
+
 ## Free / Plus
 
 Free 导出格式：

@@ -129,9 +129,9 @@
       try {
         if (chromeApi.storage?.session?.setAccessLevel) {
           await chromeApi.storage.session.setAccessLevel({
-            accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
+            accessLevel: 'TRUSTED_CONTEXTS',
           });
-          console.log(logPrefix, 'Enabled storage.session for content scripts');
+          console.log(logPrefix, 'Restricted storage.session to trusted extension contexts');
         }
       } catch (err) {
         console.warn(logPrefix, 'Failed to enable storage.session for content scripts:', err?.message || err);

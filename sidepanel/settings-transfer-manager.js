@@ -11,7 +11,17 @@
       controls.updateConfigMenuControls?.();
     }
 
-    async function exportSettingsFile() {
+    async function exportSettingsFile(options = {}) {
+      const sensitive = options?.includeSensitiveRuntimeData === true;
+      if (sensitive) {
+        const confirmed = await helpers.openConfirmModal?.({
+          title: '导出敏感备份',
+          message: '该文件包含密码、Token、Cookie、API Key 和兑换运行数据，仅应保存到受信任位置。确认继续？',
+          confirmLabel: '确认导出敏感备份',
+          confirmVariant: 'btn-danger',
+        });
+        if (!confirmed) return;
+      }
       const saveTarget = await helpers.requestTextFileSaveTarget?.(
         `multipage-settings-${helpers.buildDownloadFileTimestamp?.()}.json`,
         'application/json;charset=utf-8'
@@ -34,7 +44,7 @@
         const response = await runtime.sendMessage?.({
           type: 'EXPORT_SETTINGS',
           source: 'sidepanel',
-          payload: {},
+          payload: sensitive ? { includeSensitiveRuntimeData: true, confirmed: true } : {},
         });
 
         if (response?.error) {
@@ -60,6 +70,10 @@
       } finally {
         setActionInFlight(false);
       }
+    }
+
+    async function exportSensitiveSettingsFile() {
+      return exportSettingsFile({ includeSensitiveRuntimeData: true });
     }
 
     async function importSettingsFromFile(file) {
@@ -120,6 +134,7 @@
 
     return {
       exportSettingsFile,
+      exportSensitiveSettingsFile,
       importSettingsFromFile,
     };
   }

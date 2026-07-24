@@ -901,7 +901,8 @@ function checkStaticContracts() {
   assertIncludes(accountRecords, 'SidepanelAccountRecordsViewModel', 'account records manager view model dependency');
   assertIncludes(accountRecords, 'SidepanelMembershipRedeemProgress', 'account records manager redeem progress dependency');
   assertIncludes(settingsTransferManager, 'multipage-settings-', 'settings export filename');
-  assertIncludes(backgroundSettingsTransfer, 'containsSensitiveRuntimeData: true', 'settings export sensitive data marker');
+  assertIncludes(backgroundSettingsTransfer, "exportMode: safeExport ? 'safe' : 'sensitive'", 'settings export mode marker');
+  assertIncludes(backgroundSettingsTransfer, 'migrateSettingsBundle', 'settings migration helper');
   assertIncludes(background, "'background/settings-normalizers.js'", 'background settings normalizers script load');
   assertIncludes(background, 'requireSettingsNormalizers()', 'background settings normalizer compatibility wrappers');
   assertIncludes(settingsNormalizers, 'createSettingsNormalizers', 'settings normalizers factory');
@@ -912,6 +913,7 @@ function checkStaticContracts() {
   assertIncludes(background, "'background/bootstrap/settings-defaults.js'", 'background settings defaults script load');
   assertIncludes(background, "'background/bootstrap/state-store.js'", 'background state store script load');
   assertIncludes(background, "'background/bootstrap/settings-transfer.js'", 'background settings transfer script load');
+  assertIncludes(background, "'background/bootstrap/settings-transfer-security.js'", 'background settings transfer security script load');
   assertIncludes(background, "'background/bootstrap/legacy-cleanup.js'", 'background legacy cleanup script load');
   assertIncludes(background, "'background/bootstrap/auto-run-session.js'", 'background auto-run session script load');
   assertIncludes(background, "'background/bootstrap/auto-run-timer-plan.js'", 'background auto-run timer plan script load');
