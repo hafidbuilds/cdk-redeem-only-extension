@@ -2,6 +2,7 @@
   function createBackgroundStateStore(deps = {}) {
     const {
       alignUpiRedeemCdkeyAliasStatePatch = (patch) => patch || {},
+      accountRecordsStorageKey = 'accountRecordsV2',
       buildStatePatchWithRuntimeState = (_currentState, updates) => updates || {},
       buildStateViewWithRuntimeState = (state) => state || {},
       chrome: chromeApi = globalScope.chrome,
@@ -103,14 +104,14 @@
     }
 
     async function getState() {
-      const [state, persistedSettings, persistedAliasState, accountRunHistory, credentialMembershipCheckState] = await Promise.all([
+      const [state, persistedSettings, persistedAliasState, accountRunHistory, persistedAccountState] = await Promise.all([
         chromeApi.storage.session.get(null),
         getPersistedSettings(),
         getPersistedAliasState(),
         getPersistedAccountRunHistory(),
-        chromeApi.storage.local.get([membershipResultsStorageKey]).catch(() => ({})),
+        chromeApi.storage.local.get([membershipResultsStorageKey, accountRecordsStorageKey]).catch(() => ({})),
       ]);
-      const persistedCredentialMembershipCheckResults = credentialMembershipCheckState?.[membershipResultsStorageKey]
+      const persistedCredentialMembershipCheckResults = persistedAccountState?.[membershipResultsStorageKey]
         || defaultState.upiCredentialMembershipCheckResults;
       const sessionState = protectPersistedCustomEmailPoolOnReload(state, persistedSettings);
       return buildStateViewWithRuntimeState({
@@ -119,6 +120,7 @@
         ...persistedAliasState,
         ...sessionState,
         upiCredentialMembershipCheckResults: persistedCredentialMembershipCheckResults,
+        accountRecordsV2: persistedAccountState?.[accountRecordsStorageKey] || defaultState.accountRecordsV2,
         accountRunHistory,
       });
     }

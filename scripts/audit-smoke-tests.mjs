@@ -355,6 +355,11 @@ function checkStaticContracts() {
   const flowRuntime = readText('background/bootstrap/flow-runtime.js');
   const settingsDefaults = readText('background/bootstrap/settings-defaults.js');
   const stateStore = readText('background/bootstrap/state-store.js');
+  const accountRecordSchema = readText('shared/account-record-schema.js');
+  const accountRecordMigration = readText('background/account-record-migration.js');
+  const accountRepository = readText('background/account-repository.js');
+  const accountLifecycleService = readText('background/account-lifecycle-service.js');
+  const accountCompatibilityAdapter = readText('shared/account-compatibility-adapter.js');
   const backgroundSettingsTransfer = readText('background/bootstrap/settings-transfer.js');
   const legacyCleanup = readText('background/bootstrap/legacy-cleanup.js');
   const autoRunSession = readText('background/bootstrap/auto-run-session.js');
@@ -511,6 +516,24 @@ function checkStaticContracts() {
   assertIncludes(ciWorkflow, 'npm run syntax', 'CI syntax command');
   assertIncludes(ciWorkflow, 'npm run audit', 'CI audit command');
   assertIncludes(ciWorkflow, 'npm run package', 'CI package command');
+
+  assertIncludes(accountRecordSchema, 'normalizeAccountId', 'canonical account ID normalizer');
+  assertIncludes(accountRecordMigration, 'buildAccountRecordsV2FromLegacy', 'canonical account legacy migration');
+  assertIncludes(accountRepository, "const ACCOUNT_RECORDS_STORAGE_KEY = 'accountRecordsV2';", 'canonical account repository storage key');
+  assertIncludes(accountLifecycleService, 'classifyAccessTokenEvidence', 'account token lifecycle evidence policy');
+  assertIncludes(accountCompatibilityAdapter, 'projectAccountRecordsToMembershipResults', 'canonical account legacy projection');
+  assertIncludes(stateStore, 'accountRecordsStorageKey', 'canonical account hydration');
+  assertIncludes(accountRecordsMembershipStateSync, 'projectAccountRecordsToMembershipResults', 'sidepanel canonical account read model');
+  assertBefore(background, "'shared/account-record-schema.js'", "'background/account-record-migration.js'", 'account schema before migration');
+  assertBefore(background, "'background/account-record-migration.js'", "'background/account-repository.js'", 'account migration before repository');
+  assertBefore(background, "'background/account-repository.js'", "'background/bootstrap/state-store.js'", 'account repository before state store');
+  assertBefore(sidepanelHtml, '../shared/account-record-schema.js', '../shared/account-compatibility-adapter.js', 'sidepanel account schema before adapter');
+  assertBefore(sidepanelHtml, '../shared/account-compatibility-adapter.js', 'account-records-membership-state-sync.js', 'sidepanel account adapter before consumer');
+  assertNotMatch(
+    [accountRecordMigration, accountLifecycleService, accountCompatibilityAdapter, sidepanelAppController, accountRecordsMembershipStateSync].join('\n'),
+    /storage\.local\.set\s*\(\s*\{[\s\S]{0,160}(?:accountRecordsV2|ACCOUNT_RECORDS_STORAGE_KEY)/,
+    'canonical account direct-write boundary outside repository'
+  );
 
   assertMatch(background, /autoStepDelaySeconds:\s*2\b/, 'background default settings');
   assertBefore(

@@ -3,6 +3,8 @@
 importScripts(
   'shared/source-registry.js',
   'shared/flow-capabilities.js',
+  'shared/account-record-schema.js',
+  'shared/account-compatibility-adapter.js',
   'shared/session-to-json-converter.js',
   'managed-alias-utils.js',
   'mail2925-utils.js',
@@ -20,6 +22,9 @@ importScripts(
   'background/flow-definition-resolver.js',
   'background/bootstrap/flow-runtime.js',
   'background/bootstrap/settings-defaults.js',
+  'background/account-record-migration.js',
+  'background/account-repository.js',
+  'background/account-lifecycle-service.js',
   'background/bootstrap/state-store.js',
   'background/bootstrap/settings-transfer.js',
   'background/bootstrap/legacy-cleanup.js',
@@ -515,6 +520,7 @@ const PERSISTENT_ALIAS_STATE_KEYS = [
 const ACCOUNT_RUN_HISTORY_STORAGE_KEY = 'accountRunHistory';
 const UPI_ACCOUNT_CREDENTIAL_BACKUPS_STORAGE_KEY = 'upiAccountCredentialBackups';
 const UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY = 'upiCredentialMembershipCheckResults';
+const ACCOUNT_RECORDS_STORAGE_KEY = self.MultiPageAccountRepository.ACCOUNT_RECORDS_STORAGE_KEY;
 const SIGNUP_METHOD_EMAIL = 'email';
 const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
 const CONTRIBUTION_RUNTIME_DEFAULTS = self.MultiPageBackgroundContributionOAuth?.RUNTIME_DEFAULTS || {
@@ -754,6 +760,7 @@ const DEFAULT_STATE = {
   passwordAccountIdentifier: '', // 当前 password 所属账号标识。
   accounts: [], // 已生成账号记录：{ email, password, createdAt }。
   accountRunHistory: [], // 账号运行历史快照，实际持久化在 chrome.storage.local。
+  accountRecordsV2: { schemaVersion: 2, items: {}, updatedAt: '' },
   manualAliasUsage: {},
   preservedAliases: {},
   icloudAliasCache: [],
@@ -2641,6 +2648,7 @@ async function getPersistedAliasState() {
 }
 
 const backgroundStateStore = self.MultiPageBackgroundStateStore.createBackgroundStateStore({
+  accountRecordsStorageKey: ACCOUNT_RECORDS_STORAGE_KEY,
   alignUpiRedeemCdkeyAliasStatePatch,
   buildStatePatchWithRuntimeState,
   buildStateViewWithRuntimeState,
@@ -2669,6 +2677,15 @@ async function initializeSessionStorageAccess() {
 initializeSessionStorageAccess().catch((err) => {
   handleBackgroundStartupError('initialize session storage access', err);
 });
+
+const accountRepository = self.MultiPageAccountRepository.createAccountRepository({
+  chromeApi: chrome,
+});
+const accountLifecycleService = self.MultiPageAccountLifecycleService.createAccountLifecycleService({
+  repository: accountRepository,
+});
+self.MultiPageRuntimeAccountRepository = accountRepository;
+self.MultiPageRuntimeAccountLifecycleService = accountLifecycleService;
 
 const backgroundLegacyCleanup = self.MultiPageBackgroundLegacyCleanup.createBackgroundLegacyCleanup({
   chrome,
@@ -2787,6 +2804,49 @@ function broadcastDataUpdate(payload) {
     type: 'DATA_UPDATED',
     payload,
   }).catch(() => { });
+  scheduleAccountReadModelSync(payload);
+}
+
+let accountReadModelSyncPending = false;
+
+function scheduleAccountReadModelSync(payload = {}) {
+  const relevantKeys = new Set([
+    'customEmailPoolEntries',
+    'accountRunHistory',
+    'upiCredentialMembershipCheckResults',
+    'upiRedeemCdkeyUsage',
+    'idealRedeemCdkeyUsage',
+    'pixChannelRedeemCdkeyUsage',
+  ]);
+  if (!Object.keys(payload || {}).some((key) => relevantKeys.has(key)) || accountReadModelSyncPending) return;
+  accountReadModelSyncPending = true;
+  Promise.resolve().then(async () => {
+    try {
+      await synchronizeAccountReadModel('data-update');
+    } catch (error) {
+      console.warn(LOG_PREFIX, 'Account read-model sync failed:', error?.message || error);
+    } finally {
+      accountReadModelSyncPending = false;
+    }
+  });
+}
+
+async function synchronizeAccountReadModel(reason = 'startup') {
+  const [legacyState, stored] = await Promise.all([
+    getState(),
+    chrome.storage.local.get([UPI_ACCOUNT_CREDENTIAL_BACKUPS_STORAGE_KEY]).catch(() => ({})),
+  ]);
+  const result = await accountRepository.migrateLegacySources({
+    ...legacyState,
+    upiAccountCredentialBackups: stored?.[UPI_ACCOUNT_CREDENTIAL_BACKUPS_STORAGE_KEY] || {},
+  });
+  if (result.changed) {
+    chrome.runtime.sendMessage({
+      type: 'DATA_UPDATED',
+      payload: { accountRecordsV2: result.root, accountRecordsMigrationReason: reason },
+    }).catch(() => {});
+  }
+  return result;
 }
 
 function broadcastIcloudAliasesChanged(payload = {}) {
@@ -11355,6 +11415,9 @@ const accountRunHistoryHelpers = self.MultiPageBackgroundAccountRunHistory?.crea
   getNodeTitleForState,
   getState,
   normalizeAccountRunHistoryHelperBaseUrl,
+});
+synchronizeAccountReadModel('service-worker-startup').catch((error) => {
+  handleBackgroundStartupError('migrate canonical account records', error);
 });
 const contributionOAuthManager = self.MultiPageBackgroundContributionOAuth?.createContributionOAuthManager({
   addLog,

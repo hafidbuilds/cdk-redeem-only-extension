@@ -369,7 +369,11 @@
     }
 
     function getUpiCredentialMembershipCheckResults(currentState = getLatestState()) {
-      const raw = currentState?.upiCredentialMembershipCheckResults || {};
+      const legacyRaw = currentState?.upiCredentialMembershipCheckResults || {};
+      const adapter = globalScope.MultiPageAccountCompatibilityAdapter;
+      const raw = currentState?.accountRecordsV2?.items && adapter?.projectAccountRecordsToMembershipResults
+        ? adapter.projectAccountRecordsToMembershipResults(currentState.accountRecordsV2, legacyRaw)
+        : legacyRaw;
       const rawDeletedEmails = (Array.isArray(raw.redeemAutoDeletedEmails) ? raw.redeemAutoDeletedEmails : [])
         .map(normalizeEmail)
         .filter(Boolean);

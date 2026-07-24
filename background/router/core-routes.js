@@ -401,6 +401,7 @@
         validateModeSwitch,
       }) || {}),
       ...(rootScope.MultiPageAccountRecordRoutes?.createAccountRecordRoutes?.({
+        accountRepository: rootScope.MultiPageRuntimeAccountRepository,
         clearAccountRunHistory,
         deleteAccountRunHistoryRecords,
         getState,

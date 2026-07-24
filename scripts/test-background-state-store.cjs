@@ -6,6 +6,36 @@ require('../background/bootstrap/state-store.js');
 
 const { createBackgroundStateStore } = globalThis.MultiPageBackgroundStateStore;
 
+test('background state hydrates the persisted canonical account read model', async () => {
+  const accountRecordsV2 = {
+    schemaVersion: 2,
+    items: {
+      'fixture@example.com': { id: 'fixture@example.com' },
+    },
+    updatedAt: '2026-07-25T00:00:00.000Z',
+  };
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: { get: async () => ({}) },
+        local: {
+          get: async (keys) => ({
+            ...(keys.includes('accountRecordsV2') ? { accountRecordsV2 } : {}),
+          }),
+        },
+      },
+    },
+    defaultState: {
+      accountRecordsV2: { schemaVersion: 2, items: {}, updatedAt: '' },
+      upiCredentialMembershipCheckResults: { items: [] },
+    },
+    buildStateViewWithRuntimeState: (state) => state,
+  });
+
+  const state = await store.getState();
+  assert.deepEqual(state.accountRecordsV2, accountRecordsV2);
+});
+
 test('background state restores persisted custom email pool when session has stale empty pool', async () => {
   const sessionData = {
     customEmailPoolEntries: [],

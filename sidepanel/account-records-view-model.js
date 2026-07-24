@@ -4,7 +4,8 @@
   }
 
   function normalizeEmail(value = '') {
-    return normalizeText(value).toLowerCase();
+    return globalScope.MultiPageAccountRecordSchema?.normalizeAccountId?.(value)
+      || normalizeText(value).toLowerCase();
   }
 
   function normalizeRetryCount(value) {
