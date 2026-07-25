@@ -67,3 +67,43 @@ test('custom email pool exhaustion is terminal and never retryable', () => {
   assert.equal(action.code, 'fail_custom_email_pool_empty');
   assert.equal(action.shouldStop, true);
 });
+
+test('explicit no-2FA UPI ineligibility skips same-round retries', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const result = policy.evaluateAttemptFailure({
+    error: new Error('免 2FA Free 路线：账号未通过 UPI 试用资格检测，未进入 Free：not-eligible'),
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    autoRunRetryNonFreeTrial: true,
+    maxAttemptsForRound: 4,
+  });
+  const action = policy.selectFailureAction(result);
+
+  assert.equal(result.blockedByUpiAccountIneligible, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(action.code, 'fail_upi_account_ineligible');
+  assert.equal(action.shouldRetry, undefined);
+});
+
+test('structured UPI ineligibility status is terminal even when the message changes', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const error = new Error('provider response rejected this account');
+  error.code = 'UPI_ACCOUNT_INELIGIBLE';
+  error.trialEligibilityStatus = 'ineligible';
+  const result = policy.evaluateAttemptFailure({
+    error,
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    maxAttemptsForRound: 4,
+  });
+
+  assert.equal(result.blockedByUpiAccountIneligible, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(policy.selectFailureAction(result).code, 'fail_upi_account_ineligible');
+});

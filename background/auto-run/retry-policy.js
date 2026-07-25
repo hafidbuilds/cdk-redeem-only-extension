@@ -103,7 +103,17 @@
       const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
       const message = String(getErrorMessage(error) || rawMessage);
       const combinedMessage = `${rawMessage}\n${message}`;
-      return /UPI_ACCOUNT_INELIGIBLE::|UPI\s*资格检查失败[：:][\s\S]*账号无资格|UPI[\s\S]*(?:account|账号)[\s\S]*(?:ineligible|无资格)/i.test(combinedMessage);
+      const status = String(
+        error?.trialEligibilityStatus
+        || error?.trialEligibilityDecision?.trialEligibilityStatus
+        || ''
+      ).trim().toLowerCase();
+      if (error?.code === 'UPI_ACCOUNT_INELIGIBLE' || status === 'ineligible') {
+        return true;
+      }
+      const hasUpiEligibilityContext = /UPI|试用资格|trial[\s_-]*eligibility/i.test(combinedMessage);
+      const hasExplicitIneligibleResult = /UPI_ACCOUNT_INELIGIBLE::|not[\s_-]*eligible|ineligible|无试用资格|账号[^\n]*无资格|未通过[^\n]*试用资格/i.test(combinedMessage);
+      return hasUpiEligibilityContext && hasExplicitIneligibleResult;
     }
 
     function getMaxAttemptsForRound(options = {}) {

@@ -318,7 +318,15 @@
         },
       });
       if (!eligibility?.eligible) {
-        throw new Error(`免 2FA Free 路线：账号未通过 UPI 试用资格检测，未进入 Free：${eligibility?.reason || '未知原因'}`);
+        const reason = eligibility?.reason || '未知原因';
+        const trialEligibilityStatus = normalizeString(eligibility?.trialEligibilityStatus).toLowerCase();
+        const error = new Error(`免 2FA Free 路线：账号未通过 UPI 试用资格检测，未进入 Free：${reason}`);
+        error.code = trialEligibilityStatus === 'ineligible'
+          ? 'UPI_ACCOUNT_INELIGIBLE'
+          : 'UPI_ELIGIBILITY_CHECK_FAILED';
+        error.trialEligibilityStatus = trialEligibilityStatus;
+        error.retryable = trialEligibilityStatus !== 'ineligible';
+        throw error;
       }
 
       await addStepLog(`免 2FA Free 路线：已检测到 UPI 试用资格，写入 Free：${email}。`, 'ok');
