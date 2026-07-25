@@ -196,44 +196,6 @@ async function fetchPage(page) {
   return { slug, label, title, url, file: `pages/${filename}`, status: 'ok' };
 }
 
-function renderReadme(results) {
-  const ok = results.filter((result) => result.status === 'ok');
-  const failed = results.filter((result) => result.status !== 'ok');
-  const lines = [
-    '# Chrome Extension Development Docs',
-    '',
-    '本目录是 Chrome 插件开发文档的本地离线参考，来源为官方 Chrome for Developers 文档。',
-    '',
-    `Downloaded: ${fetchedAt}`,
-    '',
-    '## 使用方式',
-    '',
-    '- 优先看 `pages/service-workers.md`、`pages/content-scripts.md`、`pages/messaging.md`、`pages/storage-and-cookies.md`，这些和当前扩展项目最相关。',
-    '- 需要查 API 时看 `pages/runtime-api.md`、`pages/storage-api.md`、`pages/tabs-api.md`、`pages/scripting-api.md`、`pages/cookies-api.md`。',
-    '- 文档可能随 Chrome 更新而变化，最准确版本仍以 `sources.json` 中的官方链接为准。',
-    '- 需要刷新本地副本时运行：`node scripts/download-chrome-extension-docs.mjs`。',
-    '',
-    '## 已下载页面',
-    '',
-    ...ok.map((result) => `- [${result.title}](${result.file}) - ${result.url}`),
-  ];
-
-  if (failed.length) {
-    lines.push('', '## 下载失败页面', '');
-    lines.push(...failed.map((result) => `- ${result.label} - ${result.url} - ${result.error}`));
-  }
-
-  lines.push(
-    '',
-    '## License',
-    '',
-    'Chrome for Developers 文档通常以 CC BY 4.0 授权，代码示例通常以 Apache 2.0 授权。具体以各官方页面页脚声明为准。',
-    '',
-  );
-
-  return lines.join('\n');
-}
-
 async function main() {
   await mkdir(pagesDir, { recursive: true });
 
@@ -259,11 +221,14 @@ async function main() {
 
   await writeFile(
     path.join(outDir, 'sources.json'),
-    JSON.stringify({ fetchedAt, source: 'https://developer.chrome.com/docs/extensions', pages: results }, null, 2),
+    JSON.stringify({
+      fetchedAt,
+      source: 'https://developer.chrome.com/docs/extensions',
+      snapshotAvailable: true,
+      pages: results,
+    }, null, 2),
     'utf8',
   );
-  await writeFile(path.join(outDir, 'README.md'), renderReadme(results), 'utf8');
-
   const failedCount = results.filter((result) => result.status !== 'ok').length;
   if (failedCount) {
     process.exitCode = 1;

@@ -1,5 +1,7 @@
 # Codex 执行任务书：补全 CDK Redeem Only 项目架构
 
+> 文档整理说明（2026-07-26）：本任务书中的新增文档路径只代表职责建议。当前使用说明统一在 `docs/USER_GUIDE.md`，架构、权限、测试和发布规范统一在 `docs/DEVELOPMENT.md`，版本说明统一在 `CHANGELOG.md`，故障与阶段记录统一在 `docs/audit/`，历史计划统一在 `docs/history/`。不得为了匹配下文的旧文件名重新建立重复 Markdown 文档。
+
 > 适用项目：`cdk-redeem-only-extension` / `CDK Redeem Only V1.0.14`
 >
 > 参考项目：`https://github.com/asz798838958/freeAgentIdentity`
@@ -15,8 +17,8 @@
 你现在是此仓库的主开发者。请完整阅读本任务书、仓库根目录的 `AGENTS.md`、`manifest.json`、`package.json`，以及：
 
 ```text
-docs/md/2026-07-25-account-task-provider-improvement-baseline.md
-docs/architecture/module-map.md
+docs/DEVELOPMENT.md
+docs/audit/project-completion-report.md
 ```
 
 然后在当前仓库中直接完成改造。

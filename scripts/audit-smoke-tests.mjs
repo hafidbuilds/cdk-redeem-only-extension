@@ -1712,7 +1712,7 @@ function checkPhoneSmsAudit() {
 
 function checkDocumentationDrift() {
   const readme = readText('README.md');
-  const chainDoc = readText('项目完整链路说明.md');
+  const userGuide = readText('docs/USER_GUIDE.md');
   const upiRedeemCode = [
     readText('background/steps/upi-redeem.js'),
     readText('background/steps/upi-redeem/channel-submission.js'),
@@ -1723,7 +1723,7 @@ function checkDocumentationDrift() {
   if (hasIdealCode && !/IDEAL/i.test(readme)) {
     warn('README.md does not mention IDEAL, but code contains IDEAL channel support.');
   }
-  if (hasAutoRedeemCode && /第 7 步不会自动兑换/.test(readme + chainDoc)) {
+  if (hasAutoRedeemCode && /第 7 步不会自动兑换/.test(readme + userGuide)) {
     warn('Docs still say step 7 does not auto redeem, but code contains main-flow auto redeem behavior.');
   }
 }

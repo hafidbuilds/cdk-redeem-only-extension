@@ -7,7 +7,7 @@ test('release builder includes runtime files and excludes project tooling', asyn
   assert.equal(release.shouldIncludeReleaseFile('background/steps/open-chatgpt.js'), true);
   assert.equal(release.shouldIncludeReleaseFile('sidepanel/sidepanel.html'), true);
   assert.equal(release.shouldIncludeReleaseFile('scripts/test-build-release.cjs'), false);
-  assert.equal(release.shouldIncludeReleaseFile('docs/CONFIG-USAGE.md'), false);
+  assert.equal(release.shouldIncludeReleaseFile('docs/USER_GUIDE.md'), false);
 });
 
 test('release builder rejects sensitive runtime artifacts', async () => {

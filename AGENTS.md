@@ -14,14 +14,13 @@ This repository is a Chrome Manifest V3 extension for CDK redeem and account sta
 
 ## Build, Test, and Development Commands
 
-There are no npm package scripts. Run checks directly with Node:
+Use the repository package scripts for the complete gates:
 
 ```powershell
-node --check background.js
-node --check sidepanel/sidepanel.js
-node --check background/steps/upi-redeem.js
-node scripts/audit-smoke-tests.mjs
-node --test scripts/test-*.cjs
+npm run syntax
+npm test
+npm run audit
+npm run check
 ```
 
 Use `chrome://extensions` with Developer Mode to load this directory as an unpacked extension. After background changes, reload the extension so the MV3 service worker uses the new code.
@@ -36,17 +35,17 @@ Tests use Node’s built-in `node:test` and `node:assert/strict`. Put focused un
 
 ### Browser E2E Environment
 
-All automated MV3 browser tests must run in an isolated test browser. Use Puppeteer with its downloaded, version-pinned Chrome for Testing and a fresh temporary profile. On Windows, launch with `pipe: true`; keep a small bounded retry around browser startup, and report an exhausted startup failure as test-infrastructure failure rather than an extension pass or business failure.
+All automated MV3 browser tests must run in an isolated test browser. Use Puppeteer with its downloaded, version-pinned Chrome for Testing and a fresh temporary profile. On Windows, launch with `pipe: true`; the repository harness may use `--no-sandbox` only for empty-profile local extension pages and must not navigate external sites in that mode. Keep a small bounded retry around browser startup, and report an exhausted startup failure as test-infrastructure failure rather than an extension pass or business failure.
 
 Never connect automated tests to the user's installed Google Chrome, default `User Data`, signed-in profile, cookies, history, or installed extensions. Do not silently fall back to Microsoft Edge, system Chrome, or another browser. Playwright Chromium, Edge, Google Chrome, and Chrome for Testing are distinct targets: print the actual product/version, executable source, and profile type in every E2E result, and name the result accordingly.
 
 The minimum browser E2E must verify the MV3 service worker, Side Panel rendering, expected account/task controls, runtime messaging, diagnostic clipboard export using a page-local clipboard stub, and zero uncaught page errors. Use only fake or empty test data. Close the browser in `finally`, confirm that no test-browser process remains, and never package the downloaded browser with the extension.
 
-Keep the browser harness in repository-owned test code once adopted; do not rely on undocumented one-off commands as release evidence. The evaluated tool choice, compatibility boundaries, and a verified isolated run are recorded in `docs/audit/2026-07-26-mv3-e2e-browser-tool-research.md`.
+Keep the browser harness in repository-owned test code once adopted; do not rely on undocumented one-off commands as release evidence. The evaluated tool choice, compatibility boundaries, and a verified isolated run are recorded in `docs/DEVELOPMENT.md#浏览器-e2e`.
 
 ## Issue and Fix Archive
 
-Every confirmed user-reported defect must have a dated record under `docs/audit/` and an entry in `docs/audit/issue-fix-index.md`. Keep the record in the same commit as the fix whenever practical.
+Every confirmed user-reported defect must have a dated section in the current monthly `docs/audit/issue-fix-archive-YYYY-MM.md` and an entry in `docs/audit/issue-fix-index.md`. Use a stable HTML anchor for each section and keep the record in the same commit as the fix whenever practical. Do not create a new Markdown file for each defect.
 
 Each record must include the observed symptom and diagnostic evidence, root cause, affected workflow, implementation changes, safety or compatibility boundaries, regression coverage, actual verification results, and commit or release impact. Record only completed work and real command results; do not leave placeholders or planned test counts.
 

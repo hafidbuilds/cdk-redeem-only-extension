@@ -1,0 +1,870 @@
+# 2026-07 故障与修复档案
+
+本文件合并保存 2026 年 7 月已确认问题的原始记录。每条记录保留来源文件名、日期、证据、根因、实现、安全边界和验证结果；后续修复只能追加新记录并由索引关联。
+
+## 目录
+
+- [最近失败诊断锚点修复](#2026-07-25-failure-diagnostics-anchor-fix)
+- [最近失败诊断剪贴板导出](#2026-07-25-failure-diagnostics-clipboard)
+- [Free 分组误分类修复](#2026-07-25-free-group-classification-fix)
+- [免 2FA Free 导出兼容修复](#2026-07-25-no2fa-free-export-fix)
+- [原始检出目录用户改动合并](#2026-07-25-original-checkout-user-edits-merge)
+- [ChatGPT modal Continue button recovery](#2026-07-26-chatgpt-modal-continue-button)
+- [ChatGPT Session 主 Frame 切换恢复](#2026-07-26-chatgpt-session-frame-recovery)
+- [用户停止后日志连续刷新](#2026-07-26-manual-stop-log-replay)
+- [Safe settings import recovery](#2026-07-26-safe-settings-import-recovery)
+- [注册密码提交后过早重试与未知结果保护](#2026-07-26-signup-password-transition-timeout)
+- [步骤 4 内容脚本响应超时误重开注册](#2026-07-26-step4-content-response-timeout)
+- [步骤 6 安全设置页 interactive 误判](#2026-07-26-step6-interactive-settings-readiness)
+- [步骤 6 invalid_state 会话失效原地重启](#2026-07-26-step6-invalid-state-restart)
+- [步骤 6 invalid_state 恢复耗尽后误重开整轮](#2026-07-26-step6-invalid-state-round-restart)
+
+---
+
+<a id="2026-07-25-failure-diagnostics-anchor-fix"></a>
+
+<!-- archived-from: docs/audit/2026-07-25-failure-diagnostics-anchor-fix.md -->
+
+## 最近失败诊断锚点修复
+
+日期：2026-07-25
+
+### 问题
+
+真实诊断中，较早位置存在 `error` 级别的认证页内容脚本未响应错误，后续流程重试成功。导出器却把后面的普通 `info` 日志“等待完成信号（超时 150 秒）”识别成最近失败，因为旧规则只要正文包含“超时”就会命中。
+
+这会导致失败锚点、日志窗口和导出时页面状态被错误关联，也会让已成功完成的资料步骤看起来像发生了超时。
+
+### 修复
+
+- 第一轮从后向前查找 `error`、`failed`、`failure` 级别，保证真实失败级别优先于任何后续普通信息。
+- 只有完全没有失败级别时，才使用明确的失败或超时结果文本兜底。
+- “超时 150 秒”一类等待配置说明不再视为失败；“等待进入密码页超时。”一类明确结果仍可作为兜底锚点。
+- 诊断脱敏新增姓名字段规则，“已生成姓名”和“姓名已填写”后的值输出为 `[NAME_REDACTED]`。
+
+### 真实诊断回放
+
+使用用户提供的 schemaVersion 1 诊断重新运行选择器：
+
+- 修复前：错误选择后续 `info` 级别的 150 秒等待配置。
+- 修复后：选择 `18:11:33` 的 `error` 级别，即第 2 次尝试中认证页内容脚本未响应。
+- 后续成功日志不会覆盖真实失败锚点，但仍保留在失败后的日志窗口中。
+
+回放只输出时间、级别和脱敏错误摘要，没有复制账号、验证码或 Token。
+
+### 验证
+
+- 定向测试：9/9 通过。
+- 完整单元测试：427/427 通过。
+- E2E：1/1 通过。
+- 语法检查：383 个 tracked JavaScript 文件通过。
+- 审计：Smoke、Removed Network、Phone/SMS 均通过；仅保留既有 `background.js` 15264 行警告。
+- 本阶段未生成发布 ZIP。
+
+---
+
+<a id="2026-07-25-failure-diagnostics-clipboard"></a>
+
+<!-- archived-from: docs/audit/2026-07-25-failure-diagnostics-clipboard.md -->
+
+## 最近失败诊断剪贴板导出
+
+日期：2026-07-25
+
+### 实现
+
+- 顶部“配置”菜单新增“导出最近一次失败诊断”。
+- 点击后读取当前持久化日志，定位最近一条错误或失败消息，并保留其前后各 100 条日志。
+- 读取活动标签页 URL，并通过现有 `GET_LOGIN_AUTH_STATE` 内容脚本消息获取认证页面和验证码输入框状态。
+- 内容脚本不可用时仍导出日志、工作流状态、当前 URL 和脱敏后的探测错误。
+- 诊断以 schemaVersion 1 的 JSON 直接写入剪贴板，不创建本地文件；成功后提示“已导出至剪贴板”。
+
+### 安全边界
+
+- 诊断只选择必要的日志、工作流和页面布尔状态，不序列化完整 Background State 或 DOM。
+- 日志和页面错误再次脱敏验证码、密码、AT/JWT、Bearer Token、Cookie、2FA、API Key、CDK、长 Token 和完整邮箱。
+- URL 查询参数值全部替换为 `[REDACTED]`，包含敏感参数的 Hash 不保留原值。
+- 功能复用现有用户点击触发的 Clipboard API，没有新增 Manifest 权限。
+
+### 验证
+
+- 定向测试：7/7 通过，覆盖 201 条日志窗口、敏感信息脱敏、剪贴板内容和成功提示。
+- 完整单元测试：419/419 通过。
+- E2E：1/1 通过；真实点击菜单按钮、截获剪贴板 JSON、解析 schema 并验证成功 Toast。
+- 语法检查：382 个 tracked JavaScript 文件通过。
+- 审计：Smoke、Removed Network、Phone/SMS 均通过；仅保留既有 `background.js` 15243 行体积警告。
+- Manifest：34 个引用，0 个缺失。
+- CodeGraph：384 个文件、6899 个节点、26827 条边，索引 up to date。
+- 本阶段不生成发布 ZIP。
+
+---
+
+<a id="2026-07-25-free-group-classification-fix"></a>
+
+<!-- archived-from: docs/audit/2026-07-25-free-group-classification-fix.md -->
+
+## Free 分组误分类修复
+
+日期：2026-07-25
+
+### 问题
+
+导入 `multipage-settings-20260724-155641.json` 后，侧栏把邮箱池和运行历史中尚未完成会员检测的账号也显示为 Free，导致明确 Free 账号为 24 个时界面显示 95 个。
+
+根因有两处：统一账号兼容投影把 `membershipStatus: unknown` 默认映射为 Free；侧栏展示模型又会为只有凭据、没有明确检测结果的账号构造 Free 兜底结果。
+
+### 修复
+
+- 统一账号只在会员状态明确为 `free` 时投影 Free；明确的旧 `failed` 结果继续投影为失败，`unknown` 和 `expired` 不进入会员分组。
+- 侧栏只展示状态明确为 `free`、`paid` 或 `failed` 的会员结果。仅存在于凭据备份或邮箱池的账号继续保留在统一账号模型中，但不会被误归类。
+- 新增迁移兼容和侧栏展示回归测试，覆盖 100 条邮箱池、20 条额外历史账号和 24 条明确 Free 结果。
+
+### 真实配置验证
+
+验证只输出聚合数量，没有输出邮箱、密码、Token 或其他敏感字段：
+
+| 项目 | 数量 |
+| --- | ---: |
+| 邮箱池条目 | 100 |
+| 统一账号 | 120 |
+| 原始明确 Free | 24 |
+| 兼容投影条目 | 24 |
+| 侧栏 Free 行 | 24 |
+| Free 中缺少 AT | 0 |
+
+### 门禁
+
+- `npm test`: 415/415 通过。
+- `npm run syntax`: 380 个 tracked JavaScript 文件通过。
+- `npm run audit`: 通过；仅保留既有 `background.js` 15243 行体积警告。
+- `npm run e2e`: 1/1 通过。
+- Manifest 引用检查：0 个缺失。
+- 敏感数据扫描：未发现真实密钥、JWT 或被跟踪的运行时数据文件。
+- CodeGraph：同步后 up to date。
+
+本修复未重新生成发布 ZIP；已有 ZIP 不包含本次修复。
+
+---
+
+<a id="2026-07-25-no2fa-free-export-fix"></a>
+
+<!-- archived-from: docs/audit/2026-07-25-no2fa-free-export-fix.md -->
+
+## 免 2FA Free 导出兼容修复
+
+日期：2026-07-25
+
+### 问题
+
+用户配置的安全导出摘要显示 49 个明确 Free 账号，但 Free TXT 只有 1 个完整 2FA 账号。TXT 经检查确实只有 1 个非空行，不是换行或下载截断问题。
+
+根因是 Sidepanel 的 Free 分组已使用统一账号读模型，而后台 TXT 导出仍只读取旧会员结果存储。统一账号凭据和兼容投影还没有正式保留 `no2faFreeRoute`，导出器又要求该标记、AT，并在“取件地址：开”时要求取件地址，因此只存在于统一账号模型的免 2FA Free 账号被跳过。
+
+### 修复
+
+- 统一账号凭据正式保留 `no2faFreeRoute`，旧来源中的明确标记和 `no2faFreeRecordedAt` 可幂等迁移。
+- 兼容投影保留免 2FA 标记；对旧 V2 记录，如果账号明确为 Free、存在 AT，且没有密码、TOTP 或 Passkey，则在读模型中恢复免 2FA 路线。
+- 会员结果归一化使用相同结构规则，使缺少历史标记但结构完整的旧免 2FA Free 记录仍可导出。
+- 后台导出在旧会员结果上合并当前 `accountRecordsV2` 投影，导出数据源与 Sidepanel 显示数据源保持一致。
+- 修复只改变识别和导出，不删除或清空已有密码、TOTP、Passkey、AT、取件地址或旧存储数据。
+- 普通 2FA、Passkey、免 2FA，以及 UPI、IDEAL、PIX 状态继续使用现有格式和独立渠道规则。
+
+### 回归覆盖
+
+- 明确带免 2FA 标记的统一账号归一化和迁移。
+- 旧 V2 统一账号只有 Free + AT、没有密码/TOTP/Passkey 时的兼容恢复。
+- 旧会员结果中不存在账号、但统一账号模型存在该免 2FA Free 账号时的 TXT 导出。
+- 后续凭据备份补齐密码和 TOTP 时不会被过早误判为免 2FA。
+- 免 2FA 标记不会擦除任何已有密码或 TOTP 字段。
+
+### 验证
+
+- 定向测试：29/29 通过。
+- 完整单元测试：431/431 通过。
+- 语法检查：383 个 tracked JavaScript 文件通过。
+- 审计：Smoke、Removed Network、Phone/SMS 均通过；仅保留既有 `background.js` 15264 行非阻断警告。
+- 真实 MV3 E2E：1/1 通过。
+- Manifest：41 个引用、25 个唯一引用、0 缺失。
+- 敏感运行时文件和高置信密钥命中：0。
+- 本次未生成发布 ZIP，Manifest 版本保持 2.0.0。
+
+---
+
+<a id="2026-07-25-original-checkout-user-edits-merge"></a>
+
+<!-- archived-from: docs/audit/2026-07-25-original-checkout-user-edits-merge.md -->
+
+## 原始检出目录用户改动合并
+
+日期：2026-07-25
+
+### 比较范围
+
+- 来源目录：`cdk-redeem-only-extension-main`，基于 `v1.0.14` / `cf8d9b1`，保留 19 个已修改文件和 5 个未跟踪测试文件。
+- 目标目录：当前工程 `cdk-redeem-only-extension-v1.0.14-working-20260725`，比较前 `main` 工作树干净。
+- 比较方式：以当前工程初始提交 `e19e095` 为共同内容基线，先构造来源目录工作树相对该基线的增量，再对当前 `HEAD` 做三方应用；没有整文件覆盖当前阶段实现。
+
+24 个候选文件中，13 个来源改动在当前工程建立时已经存在，其中 11 个至今仍逐字节一致，另外 2 个已在当前工程后续阶段继续演进。来源目录在工程建立后又产生 11 个文件的增量。
+
+### 已合并
+
+- 步骤 4 验证码页等待时间扩展到 30 秒，给动态挂载的验证码输入框留出稳定时间。
+- 第一次出现“未找到验证码输入框”时先等待 3 秒并重新检测，不立即刷新有效验证页；第二次仍缺失时才刷新受信任的 OpenAI 验证页。
+- 步骤 5 增加资料字段完整性检测，name 或 age 不完整时禁止内容脚本和 Background 恢复逻辑提交空表单。
+- 页面重渲染清空资料字段后，使用既有输入函数重新填写并再次确认字段稳定，再允许提交。
+- 新增资料页回归测试，并扩展验证码输入框恢复测试。
+
+合并文件：
+
+- `background.js`
+- `background/verification/resend-controller.js`
+- `content/signup-page.js`
+- `content/signup-profile-page.js`
+- `scripts/test-signup-profile-page.cjs`
+- `scripts/test-step4-verification-input-recovery.cjs`
+
+### 未重复引入
+
+来源增量还包含日志区“导出诊断”按钮、下载 JSON 和一套局部脱敏逻辑，共 5 个文件。当前工程已经通过 `sidepanel/failure-diagnostics.js` 提供“导出最近一次失败诊断”到剪贴板，覆盖前后各 100 条日志、页面检测状态和更完整的敏感信息脱敏。
+
+为避免长期保留两套诊断入口、两套脱敏规则和“下载文件/复制剪贴板”两种冲突行为，旧诊断增量未合并。当前唯一行为仍为复制 JSON 到剪贴板，并提示“已导出至剪贴板”。
+
+### 验证
+
+- 定向测试：7/7 通过。
+- 完整单元测试：425/425 通过。
+- E2E：1/1 通过。
+- 语法检查：383 个 tracked JavaScript 文件通过。
+- 审计：Smoke、Removed Network、Phone/SMS 均通过；仅保留既有 `background.js` 15264 行警告。
+- 文件大小门禁：`background/verification/resend-controller.js` 2000 行，`content/signup-page.js` 7000 行，均未提高阈值。
+- Manifest：MV3，全部引用存在。
+- 敏感检查：被跟踪的敏感运行时文件 0，高置信密钥命中 0。
+- 本阶段未生成发布 ZIP，来源目录的未提交工作树未被修改。
+
+---
+
+<a id="2026-07-26-chatgpt-modal-continue-button"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-chatgpt-modal-continue-button.md -->
+
+## ChatGPT modal Continue button recovery
+
+### Problem
+
+On the `chatgpt.com` login modal, the email field could be filled while the email Continue button was still disabled. Step 2 retained that pre-fill button state and checked it immediately, so it reported that no clickable Continue button existed even though the page enabled the button shortly afterward.
+
+### Implementation
+
+- The signup entry helper now re-queries the current Continue button after filling the email.
+- It waits up to five seconds for the current button to become enabled, which also handles React replacing the original button node.
+- Stop requests remain active during the wait.
+- Existing exact action-text matching continues to exclude Google, Apple, phone, and other provider buttons.
+- The main signup content script remains within its existing 7000-line audit limit; no threshold was raised.
+
+### Verification
+
+- Focused authentication-entry tests: 11/11 passed.
+- Full Node test suite: 441/441 passed.
+- Syntax checks: 384 tracked JavaScript files passed.
+- Smoke, removed-network, and phone/SMS audits passed; only the existing `background.js` size warning remains.
+- Manifest references: 25 checked, 0 missing.
+- High-confidence tracked-source credential matches: 0.
+
+---
+
+<a id="2026-07-26-chatgpt-session-frame-recovery"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-chatgpt-session-frame-recovery.md -->
+
+## ChatGPT Session 主 Frame 切换恢复
+
+日期：2026-07-26
+
+### 故障样本
+
+诊断文件生成于 `2026-07-25T18:32:56.684Z`。免 2FA Free 路线中，步骤 5 已确认完成账号创建，步骤 6 随后读取 ChatGPT Session/AT 时失败：
+
+```text
+Frame with ID 0 was removed.
+```
+
+失败后旧逻辑把 Chrome 页面通信异常当成普通轮次失败，在“跳过失败”开启时开始同轮第 2 次尝试并选择另一个邮箱。诊断结束时的页面探测还出现 `Receiving end does not exist`，与主 Frame 跳转后内容脚本暂时不可用一致。
+
+### 根因
+
+- `readCurrentChatGptSessionForExport()` 只解析一次 ChatGPT/OpenAI 标签页。
+- 它通过 `chrome.scripting.executeScript()` 在目标标签页主 Frame 中请求 `/api/auth/session`。
+- 注册资料提交完成后，认证页会跳转或替换主 Frame；已经发起的脚本此时可能收到 Chrome 的 `Frame with ID 0 was removed`。
+- 旧实现没有把该错误归入页面生命周期异常，也没有重新解析当前标签页。
+- 上层自动运行策略把未分类错误归入通用重试，因此可能放弃已完成注册的账号并换邮箱重开整轮。
+
+该错误不表示邮箱无试用资格、AT 无效、验证码错误或账号被停用。原故障发生在读取 AT 之前，因此当时尚未完成资格检查，也尚未写入 Free。
+
+### 修复
+
+- 新增 `background/session-export-reader.js`，作为现有 Session 读取流程的恢复层，没有创建第二套账号或注册实现。
+- 识别主 Frame 被替换、Frame 不存在、消息接收端不存在和消息通道关闭等 Chrome 生命周期错误。
+- 每次恢复都会重新查询当前 ChatGPT/OpenAI 标签页，不复用已经失效的 Frame 或旧标签页快照。
+- 最多原地恢复 3 次，恢复期间记录“重新定位当前标签页”的结构化警告；成功后继续原步骤 6，不重开注册流程。
+- 普通 Session HTTP 失败、未登录和缺少 accessToken 不会被误判为 Frame 切换，不执行这类恢复。
+- 三次恢复仍失败时返回 `CHATGPT_SESSION_FRAME_UNAVAILABLE`，标记为可人工恢复但不可整轮自动重试。
+- 自动运行收到该错误后立即停止，保留当前账号现场，明确提示保持 ChatGPT 页面打开并重新执行步骤 6；即使开启“跳过失败”，也不会换邮箱重新注册。
+- 中央页面通信错误分类同步识别 Frame 被移除，供其它已有页面通信路径使用。
+
+### 回归覆盖
+
+- `Frame with ID 0 was removed` 和 `No frame with id` 的分类。
+- 旧 Frame 失败后重新解析到新标签页并成功读取 Session/AT。
+- 真正的 Session/accessToken 错误只执行一次，不进行 Frame 恢复。
+- 恢复耗尽后返回结构化人工恢复错误。
+- 自动运行策略在“跳过失败”开启时仍停止，不选择新邮箱。
+- 既有免 2FA 无资格终止、自定义邮箱池、自动运行恢复和发布包白名单行为保持不变。
+
+### 验证
+
+- 定向测试：17/17 通过。
+- 完整单元测试：446/446 通过。
+- 语法检查：386 个 tracked JavaScript 文件通过。
+- 真实 MV3 E2E：1/1 通过，本机 Edge 成功加载 Service Worker 和 Sidepanel。
+- Smoke、Removed Network、Phone/SMS 三项审计通过。
+- Manifest/运行时引用由发布包白名单测试覆盖，新模块存在真实 `importScripts()` 调用方。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高审计阈值。
+- 未生成发布 ZIP，未修改 Manifest 版本号。
+
+<a id="2026-07-26-isolated-chrome-e2e-harness"></a>
+
+## 2026-07-26：E2E 实际使用 Edge，却被记录为 Chrome 验证
+
+### 故障现象与证据
+
+- 旧 `scripts/test-extension-e2e.cjs` 在 Windows 上硬编码启动 Microsoft Edge。
+- 开发规范要求验证 Chrome Manifest V3 扩展，但旧测试的通过结果只能证明 Edge 环境可用，不能作为 Chrome 验证证据。
+- 本机正式版 Chrome 150 禁止通过旧命令行方式加载未打包扩展，无法作为稳定、可重复的自动化测试入口。
+
+### 根因
+
+- E2E 脚本依赖本机浏览器路径和已安装的 Playwright，而没有管理自己的 Chrome 测试运行时。
+- 测试报告没有区分 Edge 与 Chrome，导致浏览器证据边界不准确。
+- 本机 Profile 和调试端口会引入残留状态、并发实例及环境差异，不适合作为扩展回归测试基础。
+
+### 修复
+
+- 将 E2E 驱动从 `playwright` 迁移到 `puppeteer@25.3.0`，使用 Puppeteer 管理的 Chrome for Testing 150.0.7871.24。
+- 每次测试创建临时 Profile，并通过 `pipe: true` 连接浏览器，避免固定调试端口和用户浏览器数据。
+- 最多进行 3 次浏览器启动尝试；Windows 隔离环境使用 `--no-sandbox`，测试完成后关闭浏览器并清理临时目录。
+- 禁止通过 `PUPPETEER_EXECUTABLE_PATH` 覆盖为系统浏览器，保证 CI 和本机结果都明确来自受控 Chrome for Testing。
+- E2E 只打开扩展自身的 `chrome-extension://` 页面，不访问外部业务网页。
+- 验证 Service Worker、Side Panel、设置/账号/任务控件、Runtime 消息、诊断剪贴板 stub 和页面错误。
+- 开发文档写明隔离 Chrome E2E 规则，避免后续再次把 Edge 结果记作 Chrome 结果。
+
+### 安全与兼容边界
+
+- 不使用用户本地 Chrome Profile，不读取真实 Cookie、账号、密码、AT 或浏览历史。
+- `--no-sandbox` 仅用于不访问外部网站、使用临时 Profile 的受控测试进程，不改变扩展生产运行参数。
+- 本修复不修改账号、验证码、2FA、会员判断、Free/Plus 分组、CDK 兑换或 Provider 业务逻辑。
+- 未修改 `manifest.json`、扩展版本号或发布版本信息。
+
+### 修改文件
+
+- `package.json`
+- `package-lock.json`
+- `scripts/test-extension-e2e.cjs`
+- `AGENTS.md`
+- `CONTRIBUTING.md`
+- `docs/DEVELOPMENT.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖与验证
+
+- `npm run e2e` 连续运行 3 次，3/3 通过；每次均为 1/1 测试通过且首次启动成功。
+- 每次 E2E 后 Puppeteer Chrome 残留进程为 0。
+- 完整 `npm test`：466/466 通过。
+- `npm run syntax`：389 个 JavaScript 文件通过。
+- `npm run audit`：通过。
+- Manifest 引用和运行时加载检查通过。
+- 敏感信息检查未发现真实密钥或账号数据；仅有实施基线文件名中的 `sk-` 子串假阳性。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告；未提高审计阈值。
+- 未生成发布 ZIP，未提交 GitHub Release。
+
+---
+
+<a id="2026-07-26-manual-stop-log-replay"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-manual-stop-log-replay.md -->
+
+## 用户停止后日志连续刷新
+
+### 故障现象
+
+自动运行执行过至少一轮后，用户点击“停止”，侧栏日志会连续快速增加和滚动，看起来像停止后仍在疯狂刷新。
+
+### 诊断证据与根因
+
+停止按钮通过 `STOP_FLOW` 调用后台 `requestStop()`，停止标记随后使 `autoRunLoop()` 进入收尾分支。收尾代码无论是用户主动停止还是流程故障停机，都会调用 `replayPreviousSuccessfulAutoRunRoundLogSnapshot()`。
+
+快照回放最多读取上一成功轮的 120 条日志，并对每一条依次调用 `addLog()`。每次调用都会单独写入状态并广播一条 `LOG_ENTRY`，侧栏也会逐条追加和滚动。因此这是有限但密集的旧日志回放，不是停止按钮重复触发或无限循环。
+
+### 修复实现
+
+- `background/auto-run/session-runner.js` 在收尾时记录 `stoppedByUser`。
+- 用户主动停止时不再回放上一轮成功日志快照，只写入当前停止结果。
+- 流程因内部故障自行停止时仍保留原有快照回放，便于诊断失败上下文。
+- 快照仍保存在既有 `autoRunRoundLogSnapshots` 存储中，没有删除历史数据，也没有新建第二套日志系统。
+- `scripts/test-auto-run-session-runner.cjs` 增加真实 `autoRunLoop()` 回归场景：第一轮完成、第二轮收到用户停止，断言快照回放调用次数为 0，运行状态正常结束在第二轮。
+
+### 安全与兼容边界
+
+- 不改变 `requestStop()`、内容脚本 `STOP_FLOW` 广播、任务状态或账号记录行为。
+- 不改变故障停机的诊断快照回放。
+- 不改变 UPI、IDEAL、PIX、CDK、AT、Free/Plus 或注册流程规则。
+- 不修改 Manifest 权限和版本，不生成发布包。
+- 没有提高文件体积审计阈值；`session-runner.js` 保持在 1100 行限制内。
+
+### 验证结果
+
+- 定向测试：`6/6` 通过。
+- 完整单元测试：`465/465` 通过。
+- 语法检查：`389` 个 Git 跟踪的 JavaScript 文件通过。
+- MV3 E2E：`1/1` 通过，扩展和 Sidepanel 成功加载。
+- Smoke、Removed Network、Phone/SMS 三项审计通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- Manifest 引用：`41` 个引用、`25` 个唯一文件、`0` 缺失。
+- 差异敏感数据扫描：`0` 个凭证形态命中。
+- `git diff --check` 通过。
+
+### 提交与发布影响
+
+本修复使用独立本地 Git 提交，不打包、不修改版本号、不推送远端。
+
+---
+
+<a id="2026-07-26-safe-settings-import-recovery"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-safe-settings-import-recovery.md -->
+
+## Safe settings import recovery
+
+### Problem
+
+Schema V2 safe exports retained a redacted account run history and only a membership count summary. Import treated `containsSensitiveRuntimeData: false` as a reason to ignore all runtime data, so importing a safe bundle restored settings but left account identities and membership groups empty.
+
+### Implementation
+
+- Safe exports now include a whitelisted membership read model containing account identity, membership status, channel, timestamps, and status metadata only.
+- Passwords, 2FA material, access tokens, CDKs, cookies, private keys, and provider secrets remain excluded.
+- Safe imports restore the sanitized membership read model and sanitized account run history.
+- Summary-only legacy safe exports restore account history but do not fabricate membership rows from aggregate counts.
+- Runtime imports synchronously refresh the canonical account read model before broadcasting the completed import state.
+- The canonical migration keeps existing records authoritative during ordinary background synchronization. During an explicit settings import, membership rows present in the bundle instead restore their lifecycle state and clear stale Free/Plus deletion tombstones for those rows only.
+- Explicit imported credential fields update the canonical record, including an intentionally blank token after confirmed invalidation. Password, 2FA, and other credential fields absent from the bundle remain unchanged, and accounts absent from the import are not removed.
+- The configuration menu and confirmation dialogs label safe exports versus complete backups, list the data each mode can restore, and repeat the distinction before import. Update guidance now directs users to the complete backup when they need email-pool and credential recovery.
+- Explicit `ineligible` results from the no-2FA registration route now carry a non-retryable account error code. Auto-run ends that round immediately and advances to the next account instead of applying the generic same-round retry policy.
+
+### Legacy recovery
+
+`multipage-settings-20260725-084547.json` predates the redacted membership detail format, so its `freeCount: 49` cannot identify the 49 accounts by itself. A separate recovered sensitive bundle was generated from the persisted `test2` task ledger and pre-import backup. It contains 100 email-pool entries and 49 verified Free rows; one remotely confirmed invalid access token remains cleared.
+
+### Verification
+
+- Focused settings transfer and migration tests cover safe export redaction, safe detail import, summary-only legacy import, and account read-model synchronization.
+- Live `test2` verification after extension reload and re-import rendered 49 Free rows and loaded 100 email-pool entries. Canonical storage contained 49 matching Free records, no stale Free deletion tombstones, and 48 complete access tokens; the remaining row is shown as missing AT.
+- Final verification passed 440/440 Node tests, syntax checks for 384 tracked scripts, all three audits, 25 Manifest file references with no missing files, and tracked-source credential scans. The smoke audit retains the pre-existing `background.js` size warning.
+
+---
+
+<a id="2026-07-26-signup-password-transition-timeout"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-signup-password-transition-timeout.md -->
+
+## 注册密码提交后过早重试与未知结果保护
+
+日期：2026-07-26
+
+### 故障样本
+
+诊断文件生成于 `2026-07-25T19:42:14.259Z`。第 13/76 轮使用一个已脱敏的 iCloud 邮箱进入密码页，步骤 3 填入 14 位自定义密码后发生以下时间线：
+
+```text
+03:41:45.529 初次密码表单提交
+03:41:47.331 第 1 次重新点击 Continue
+03:41:51.793 第 2 次重新点击 Continue
+03:41:56.279 第 3 次重新点击 Continue
+03:41:58.197 按“已尝试 3/3 轮”判定失败
+03:41:58.632 安排同轮第 2 次尝试
+```
+
+旧流程在约 13 秒内连续提交四次，随后清理现场并准备重新注册。错误发生在进入验证码页之前，不是邮箱取码失败，也不能证明密码无效或远端账号创建失败。
+
+### 根因
+
+- `prepareSignupVerificationFlow()` 虽收到 `timeoutMs: 75000`，循环条件还绑定了三次恢复计数。
+- 每轮只观察 2.5 秒；按钮恢复可点击就立即再次提交，因此三次短轮询提前耗尽并绕过 75 秒总观察时间。
+- 观察轮数和远端表单重交次数混用，页面仍在处理时也会重复点击。
+- 初次和恢复提交只调用模拟点击，没有优先使用表单原生 `requestSubmit()`。
+- 密码错误探测缺少 `aria-errormessage`、无效输入的 `aria-describedby`、结构化错误属性和 assertive live region。
+- 超时错误没有稳定错误码，自动运行策略把它归入 `retry_generic`，即使远端提交结果未知也会清 Cookie、换邮箱并重开注册。
+
+### 修复
+
+- 保留现有 `content/signup-password-page.js` 和 `prepareSignupVerificationFlow()` 调用链，没有新增第二套注册流程。
+- 步骤 3 初次提交后先观察 10 秒；步骤 4 恢复入口先观察 8 秒。
+- 密码页最多只允许一次恢复提交；发生内容脚本重连时不再重复获得提交额度。
+- 一次恢复提交后继续观察到完整 75 秒上限，不再按三次短轮询提前退出。
+- 初次和恢复提交统一优先调用 `form.requestSubmit(button)`，表单关联不可用时才回退到现有点击方式。
+- 密码错误探测新增 ARIA 关联、`data-error-message`、错误 test id、alert 和 assertive live region；普通密码规则提示不会在输入有效时被当成错误。
+- 明确密码错误会立即停止当前观察，不再补交密码表单。
+- 75 秒后仍无法确认页面状态时抛出 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，并跨内容脚本消息保留错误码、不可重试和保留会话标记。
+- 自动运行把该错误映射为 `fail_signup_password_submit_uncertain`，无论是否开启“跳过失败”都立即停止，保持当前邮箱、Cookie、标签页和认证会话。
+- 停止日志明确提示保持认证页打开，并从密码或验证码步骤人工继续。
+
+### 安全边界
+
+密码提交后的未知结果不能解释为提交失败，也不能解释为账号创建成功。未知状态下禁止清理 Cookie、切换邮箱、重开注册或继续自动提交；只能保留现场，等待人工检查当前认证页。明确页面错误仍按真实错误处理，验证码、密码和完整 AT 不写入档案或普通日志。
+
+### 修改文件
+
+- `content/signup-password-page.js`
+- `content/signup-page.js`
+- `background/signup-flow-helpers.js`
+- `background/auto-run/retry-policy.js`
+- `background/auto-run/session-runner.js`
+- `scripts/test-signup-password-transition.cjs`
+- `scripts/test-auto-run-email-guard.cjs`
+- `scripts/test-auto-run-session-runner.cjs`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 初次提交后的 10 秒观察期内不补交。
+- 观察期结束后最多只补交一次，并继续观察至总超时。
+- 原生 `requestSubmit()` 与点击回退路径。
+- 明确密码错误和普通密码提示的区分。
+- 结构化未知结果映射到终止动作。
+- 开启“跳过失败”时仍只执行一次，不选择下一个邮箱。
+- 既有免 2FA、自定义邮箱池、步骤 4 验证码恢复和自动运行恢复行为。
+
+### 验证
+
+- 定向测试：22/22 通过。
+- 完整单元测试：454/454 通过。
+- 语法检查：387 个 tracked JavaScript 文件通过。
+- 真实 MV3 E2E：1/1 通过，本机 Edge 成功加载 Service Worker 和 Sidepanel。
+- Smoke、Removed Network、Phone/SMS 三项审计通过。
+- 受限文件保持原阈值：重试策略 396/400 行、自动运行会话 1100/1100 行、注册内容脚本 6993/7000 行、密码页模块 300/350 行。
+- Manifest 和运行时注入继续引用现有 `content/signup-password-page.js`；没有新增孤立运行时文件。
+- 敏感数据检查未发现真实邮箱、密码、验证码、完整 AT、API Key 或 Cookie。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高审计阈值。
+- 未生成发布 ZIP，未修改 Manifest 版本号。
+
+---
+
+<a id="2026-07-26-step4-content-response-timeout"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-step4-content-response-timeout.md -->
+
+## 步骤 4 内容脚本响应超时误重开注册
+
+日期：2026-07-26
+
+关联记录：[注册密码提交后过早重试与未知结果保护](2026-07-26-signup-password-transition-timeout.md)
+
+### 故障样本
+
+诊断文件生成于 `2026-07-25T21:29:31.423Z`。第 6/57 轮中，步骤 2 已提交一个脱敏的自定义邮箱，并确认页面直接进入验证码页、跳过步骤 3。随后出现以下时间线：
+
+```text
+步骤 4 开始确认验证码页面
+30.2 秒后：认证页内容脚本 30 秒内未响应
+自动流程沿用当前邮箱回到 open-chatgpt 重开
+步骤 1 再次清理 30 个 ChatGPT / OpenAI cookies
+```
+
+同一问题连续出现。诊断导出时的页面探测结果却明确显示：
+
+```text
+path: /email-verification
+state: verification_page
+verificationInput.detected: true
+verificationInput.pageVisible: true
+```
+
+因此该错误不是验证码输入框不存在、邮箱取码失败或账号未创建，而是后台在页面完成响应前先触发了调用端超时。
+
+### 根因
+
+- 步骤 4 内容脚本的页面准备流程可能持续观察密码到验证码的过渡，并等待验证码输入框真正可交互。
+- 上一修复已允许内容脚本观察更长时间，但 `background/steps/fetch-signup-code.js` 仍把总等待和单次响应窗口都固定为 30 秒。
+- 该调用优先选择无恢复能力的 `sendToContentScript()`；只要它耗尽完整 30 秒，后面的恢复分支已经没有剩余时间。
+- 通信超时以普通错误进入 `fetch-signup-code` 内部重开逻辑，先回到 `open-chatgpt` 并清 Cookie，最多重开三次后才交给自动运行总策略。
+- 页面已经进入验证码阶段时重开注册会丢失当前认证现场，并可能重复提交同一个邮箱。
+
+### 修复
+
+- 保留现有步骤 4 执行器和验证码流程，没有新增第二套取码或注册实现。
+- `PREPARE_SIGNUP_VERIFICATION` 明确传入 75 秒页面观察窗口。
+- 步骤 4 只确认验证码页，不再获得额外密码补交额度，避免通信恢复时重复提交密码表单。
+- 后台响应窗口扩大到 95 秒，总恢复窗口扩大到 105 秒，为页面观察、文档稳定和消息开销留出余量。
+- 步骤 4 优先使用已有 `sendToContentScriptResilient()`，页面 Frame 或内容脚本短暂切换时可重新定位并继续等待；仅在该能力未注入时回退到直接通信。
+- 移除已被内容脚本内部认证重试恢复覆盖的外层 30 秒循环，避免两套恢复计数互相抢先超时。
+- 恢复窗口耗尽时返回结构化 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，标记为不可自动重试并要求保留注册会话。
+- `fetch-signup-code` 内部重开逻辑在该未知状态出现时立即向上抛出，不增加步骤 4 重开计数，不回到步骤 1，不清 Cookie。
+- 自动运行沿用既有终止保护，提示保持当前认证页面打开并从密码或验证码步骤继续。
+- 内容脚本返回的错误码、可重试标记和保留会话标记在步骤 4 后台调用链中继续保留。
+
+### 安全与兼容边界
+
+- 页面通信超时不能解释为验证码错误、密码错误、邮箱无效或 Token 无效。
+- 当注册页面状态无法确认时，禁止清 Cookie、切换邮箱、重新提交注册或继续自动取码；只能保留当前标签页供人工恢复。
+- 明确的登录 TOTP、用户已存在、HTTP 错误页和真实验证码缺失仍使用原有独立处理，不被本修复固定为成功。
+- 邮箱 Provider、验证码新邮件基线、免 2FA Free 写入、UPI 资格检查和 CDK 状态没有改动。
+- 日志和档案仅保留脱敏邮箱与计时信息，不保存验证码、密码、完整 AT、Cookie 或敏感 URL 参数。
+
+### 修改文件
+
+- `background/steps/fetch-signup-code.js`
+- `background.js`
+- `background/auto-run/session-runner.js`
+- `scripts/test-fetch-signup-code-prepare-timeout.cjs`
+- `scripts/test-fetch-signup-code-restart-policy.cjs`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 步骤 4 使用可恢复通信通道，并传递 75/95/105 秒三层窗口。
+- 直接通信仅作为可恢复通道缺失时的兼容回退。
+- 通信恢复耗尽返回不可重试、保留会话的结构化错误。
+- 未知注册过渡状态在任何步骤 4 内部重开计数之前向上抛出。
+- 自动运行即使开启“跳过失败”也不选择下一个邮箱。
+- 既有验证码输入框短暂缺失、页面刷新恢复、密码页过渡、自定义邮箱池和免 2FA 路线保持通过。
+
+### 验证
+
+- 定向测试：24/24 通过。
+- 完整单元测试：457/457 通过。
+- 语法检查：388 个 tracked JavaScript 文件通过。
+- 真实 MV3 E2E：1/1 通过，本机 Edge 成功加载 Service Worker 和 Sidepanel。
+- Smoke、Removed Network、Phone/SMS 三项审计通过。
+- 受限文件保持原阈值：自动运行会话 1100/1100 行、重试策略 396/400 行、注册内容脚本 6993/7000 行、密码页模块 300/350 行。
+- Manifest 和运行时注入检查通过；新增文件只有自动测试和档案，没有孤立运行时模块。
+- 敏感数据检查未发现真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高审计阈值。
+- 未生成发布 ZIP，未修改 Manifest 版本号，修复使用独立本地提交。
+
+---
+
+<a id="2026-07-26-step6-interactive-settings-readiness"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-step6-interactive-settings-readiness.md -->
+
+## 步骤 6 安全设置页 interactive 误判
+
+### 故障现象
+
+账号注册和资料提交已经完成，步骤 6 打开 `https://chatgpt.com/#settings/Security` 后，页面长期保持 `document.readyState=interactive`。插件等待 30 秒后报“ChatGPT 安全设置页长时间未完成加载”，并把错误当作普通失败，从步骤 1 开始整轮重试。
+
+脱敏诊断同时显示：步骤 1 至 5 已完成，失败发生在 `set-gpt-password`；停止前页面仍可访问，没有验证码输入错误、账号停用或诊断采集错误。
+
+### 根因
+
+`startSetGptPasswordResetFlow()` 在查询密码入口前，先调用 `waitForDocumentLoadComplete()`，硬性要求安全设置页达到 `readyState=complete`。
+
+ChatGPT 设置页是动态页面，关键控件可以在 `interactive` 状态下已经可用，而部分资源可能使 `complete` 长时间不出现。这道硬门槛会阻止后续既有的密码入口和安全导航轮询，并抛出未结构化的普通错误，最终触发整轮注册重试。
+
+### 修复实现
+
+- 移除安全设置页专用的 `readyState=complete` 前置硬门槛。
+- 继续复用 `waitForChatGptSettingsPasswordAction(25000)`，按可见、启用的密码入口或安全设置导航判断页面是否可操作。
+- 页面处于 `interactive` 且关键控件已出现时直接继续步骤 6。
+- 关键控件确实未出现时返回既有 `resetEntryMissing` 结构化结果，由后台使用同一账号限次重启步骤 6。
+- 恢复耗尽后仍按既有保护停止当前轮，不返回步骤 1，不清理当前账号现场，也不重新注册邮箱。
+
+### 安全与兼容边界
+
+- 不改变步骤 1 至 5、验证码、账号、AT、Free/Plus、UPI、IDEAL、PIX 或 CDK 行为。
+- 不固定返回成功；必须找到真实可操作的密码入口，或者进入既有受限恢复。
+- 不删除账号或历史数据，不修改 Manifest、版本号或权限，不生成发布包。
+- `content/signup-page.js` 从 6999 行降至 6998 行，没有提高 7000 行审计阈值。
+
+### 回归覆盖
+
+- 新增测试确认 `startSetGptPasswordResetFlow()` 不再调用 `waitForDocumentLoadComplete()`。
+- 新增测试确认该流程仍调用密码入口轮询并保留 `resetEntryMissing` 结果。
+- 既有测试确认缺少入口时使用同一邮箱重启步骤 6，不打开无状态新密码 URL。
+- 既有测试确认步骤 6 恢复次数受限，耗尽后停止且不重启注册轮。
+
+### 验证结果
+
+- 定向测试：`17/17` 通过。
+- 完整单元测试：`466/466` 通过。
+- 语法检查：`389` 个 Git 跟踪的 JavaScript 文件通过。
+- MV3 E2E：`1/1` 通过，扩展与 Sidepanel 成功加载。
+- Smoke、Removed Network、Phone/SMS 三项审计通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- Manifest 引用：`41` 个引用、`25` 个唯一文件、`0` 缺失。
+- 差异敏感数据扫描：`0` 个凭证形态命中。
+- `git diff --check` 通过。
+
+### 提交与发布影响
+
+本修复使用独立本地 Git 提交，不打包、不修改版本号、不推送远端。
+
+---
+
+<a id="2026-07-26-step6-invalid-state-restart"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-step6-invalid-state-restart.md -->
+
+## 步骤 6 invalid_state 会话失效原地重启
+
+日期：2026-07-26
+
+关联记录：[ChatGPT Session 主 Frame 切换恢复](2026-07-26-chatgpt-session-frame-recovery.md)
+
+### 故障现象
+
+步骤 6“设置 GPT 密码”执行期间，OpenAI 认证页明确显示：
+
+```text
+Session ended
+Your sign-in session is no longer valid. Please start over to continue.
+error_code: invalid_state
+```
+
+侧边栏同时显示 `set-gpt-password` 节点停止。该页面说明本次密码重置认证状态已经失效，不代表注册账号失效，也不要求回到步骤 1 更换邮箱重新注册。
+
+### 根因
+
+- 原有第 6 步只识别带 Try again 按钮的认证超时页，没有识别 `Session ended + error_code: invalid_state` 的终止状态。
+- 页面状态因此可能落入未知页面或通信恢复分支，最终停止节点。
+- 密码提交后的后台确认曾把“URL 已离开 `/reset-password/new-password`”直接视为成功；若跳到 OpenAI 认证错误页，存在误报密码设置成功的风险。
+- 自动运行的通用整轮重试粒度过大，不适合这个已完成注册、只需重建密码重置状态的故障。
+
+### 修复
+
+- 在现有认证页恢复模块中增加精确检测：必须同时出现会话结束语义和完整 `error_code: invalid_state`，单独出现任一文本都不触发。
+- `signup-page.js` 将命中页面转换为 `session_expired_page`，并抛出结构化 `SET_GPT_PASSWORD_SESSION_EXPIRED` 错误。
+- 在现有 `set-gpt-password` 执行器内部捕获该错误，重新打开 ChatGPT 安全设置并从第 6 步起点重建密码重置流程。
+- 重启沿用当前邮箱和已保存 GPT 密码，不清 Cookie、不切换邮箱、不重置步骤 1-5，也不重新提交注册。
+- 单次节点执行最多自动重启第 6 步两次；第三次仍失效时保留真实错误并停止，防止无限循环。
+- OpenAI 认证域页面不再仅凭“离开新密码 URL”判定成功，必须继续读取页面状态；`session_expired_page` 会进入第 6 步恢复。
+
+### 安全与兼容边界
+
+- 普通 `invalid_state` 文本、其他认证错误码或没有会话结束语义的页面不会触发本恢复。
+- 已明确设置成功、密码重复、验证码错误、HTTP 500、Try again 恢复和内容脚本通信恢复继续使用原有独立路径。
+- 账号身份在每次重启前与最新持久状态复核；检测到邮箱变化时停止，不跨账号继续。
+- 本修复不修改邮箱 Provider、验证码新邮件基线、2FA、UPI 资格、CDK 幂等账本或兑换状态。
+- 日志只记录错误类型和重启次数，不输出邮箱、验证码、密码、AT、Cookie 或敏感 URL 参数。
+
+### 修改文件
+
+- `content/auth-page-recovery.js`
+- `content/signup-page.js`
+- `background/steps/set-gpt-password.js`
+- `scripts/test-set-gpt-password-session-expiry.cjs`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 只有 `Session ended`/登录会话失效语义与 `error_code: invalid_state` 同时存在时才命中。
+- 同一账号首次失效后原地重启第 6 步并完成密码设置。
+- 连续失效只允许两次重启，随后抛出原结构化错误。
+- OpenAI 认证错误 URL 会继续探测页面状态，不会固定返回成功。
+- 无关 `invalid_state` 不触发第 6 步重启。
+
+### 验证
+
+- 定向测试：8/8 通过。
+- 完整单元测试：462/462 通过。
+- 语法检查：388 个 tracked JavaScript 文件通过。
+- 真实 MV3 E2E：1/1 通过，本机浏览器成功加载 Service Worker 和 Sidepanel。
+- Smoke、Removed Network、Phone/SMS 三项审计通过。
+- `content/signup-page.js` 为 6999/7000 行；没有提高任何体积审计阈值。
+- Manifest 引用检查通过：22 个唯一引用文件均存在。
+- 差异敏感数据检查未发现真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理；自动测试只使用 `.test` 虚构账号。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- 未生成发布 ZIP，未修改 Manifest 版本号。
+
+---
+
+<a id="2026-07-26-step6-invalid-state-round-restart"></a>
+
+<!-- archived-from: docs/audit/2026-07-26-step6-invalid-state-round-restart.md -->
+
+## 步骤 6 invalid_state 恢复耗尽后误重开整轮
+
+日期：2026-07-26
+
+关联记录：[步骤 6 invalid_state 会话失效原地重启](2026-07-26-step6-invalid-state-restart.md)
+
+### 故障样本
+
+诊断文件生成于 `2026-07-25T22:16:03.293Z`。第 2/53 轮使用一个脱敏 iCloud 账号完成步骤 2-5 后进入 `set-gpt-password`：
+
+```text
+点击 ChatGPT 密码入口后 6 秒未跳转
+直接打开 auth.openai.com/reset-password/new-password
+填写并提交 GPT 密码
+Session ended / invalid_state
+原地重启步骤 6（1/2）
+再次直接打开 new-password 并提交，仍为 invalid_state
+原地重启步骤 6（2/2）
+第三次提交仍为 invalid_state
+第 2/53 轮第 1 次尝试失败
+自动运行开始第 2 次整轮尝试，并在步骤 1 清理 39 个 Cookie
+```
+
+这不是 Token、验证码或网络错误。步骤 5 已完成，账号已经创建；问题发生在步骤 6 的密码重置状态和恢复耗尽后的自动运行策略。
+
+### 根因
+
+- 密码入口点击后的观察窗口只有 6 秒，慢跳转会被过早判为点击失败。
+- 入口缺失或未跳转时，后台直接打开 `/reset-password/new-password`。该地址可以显示密码表单，但没有经过邮箱验证或密码入口建立的有效重置状态，提交时 OpenAI 返回 `invalid_state`。
+- 第 6 步内部两次原地恢复耗尽后，结构化错误没有进入“保留认证现场”的终止分类。
+- 自动运行把它当作普通可重试失败，进入同一轮第 2 次整轮尝试，从步骤 1 清 Cookie 并重新注册。
+
+### 修复
+
+- 将 ChatGPT 密码入口点击后的状态观察窗口从 6 秒延长到 20 秒。
+- 密码入口缺失或未跳转时返回结构化 `SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE`，不再直接打开无状态的 `/reset-password/new-password`。
+- 该错误沿用现有第 6 步局部恢复：重新打开 ChatGPT 安全设置并保留同一账号，最多重启两次。
+- `SESSION_EXPIRED` 和 `RESET_ENTRY_UNAVAILABLE` 在局部恢复耗尽后均进入现有认证现场保护分类。
+- 自动运行此时直接停止并保留当前账号和步骤 1-5 进度，不再进入整轮第 2 次尝试，不清 Cookie、不切换邮箱、不重新注册。
+- `/reset-password/new-password` 只保留在邮箱已经明确验证、需要进入新密码页的现有合法路径中。
+
+### 安全与兼容边界
+
+- 本修复不把 `invalid_state` 固定解释成成功，也不在状态未知时重复确认密码已设置。
+- 第 6 步局部恢复仍有两次上限，避免无休止点击和提交。
+- 密码重复、验证码错误、HTTP 500、Try again 页面及明确密码设置成功继续使用各自原有路径。
+- 邮箱 Provider、验证码新邮件基线、2FA、UPI 资格、Free/Plus 分组及 CDK 幂等账本没有改动。
+- 日志和档案不包含真实邮箱、密码、验证码、AT、Cookie 或敏感 URL 参数。
+
+### 修改文件
+
+- `content/signup-page.js`
+- `background/steps/set-gpt-password.js`
+- `background/auto-run/retry-policy.js`
+- `background/auto-run/session-runner.js`
+- `scripts/test-set-gpt-password-session-expiry.cjs`
+- `scripts/test-auto-run-email-guard.cjs`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 密码入口未建立重置状态时原地重启第 6 步。
+- 局部恢复不会导航到无状态的 `/reset-password/new-password`。
+- `SESSION_EXPIRED` 恢复耗尽时不可进行整轮重试。
+- 终止策略不要求新标签页、不切换邮箱并保留当前认证现场。
+- 既有 `invalid_state` 精确检测、同账号重启、两次上限和认证错误页防误报覆盖继续通过。
+
+### 验证
+
+- 定向测试：21/21 通过。
+- 完整单元测试：464/464 通过。
+- 语法检查：389 个 tracked JavaScript 文件通过。
+- 真实 MV3 E2E：1/1 通过，本机浏览器成功加载 Service Worker 和 Sidepanel。
+- Smoke、Removed Network、Phone/SMS 三项审计通过。
+- 受限文件保持原阈值：注册内容脚本 6999/7000 行、重试策略 396/400 行、自动运行会话 1100/1100 行。
+- Manifest 引用和运行时加载检查通过；没有新增运行时模块或孤立实现。
+- 敏感数据检查仅命中 `.test` 虚构邮箱，未发现真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
+- 仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高审计阈值。
+- 未生成发布 ZIP，未修改 Manifest 版本号。

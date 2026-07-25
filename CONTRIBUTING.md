@@ -1,27 +1,39 @@
 # Contributing
 
-欢迎提交 Issue 和 Pull Request。
+欢迎提交 Issue 和 Pull Request。开始前请阅读 [AGENTS.md](AGENTS.md) 和 [开发指南](docs/DEVELOPMENT.md)。
 
-## 开始前
+## 改动原则
 
-请先确认以下几点：
+- 以当前仓库真实代码和测试为准，不创建第二套前后端或重复账号、任务、Provider、兑换系统。
+- 保持 UPI、IDEAL、PIX 三个渠道状态独立。
+- 远端结果未知时保持 query-only，不重新提交 CDK。
+- 网络错误不能直接解释为 Token 无效。
+- 修改现有职责最接近的模块，并为真实调用方和状态变化增加回归测试。
+- 不删除失败测试、不固定返回成功、不提高审计阈值掩盖问题。
 
-- 不要提交真实账号、密码、API Key、代理、Cookie、回调地址或任何其他敏感信息
-- 不要把本地调试生成的运行记录、日志或配置文件一起提交
-- 修改涉及第三方来源代码时，保留原有版权声明与许可说明
+## 提交前
 
-## 提交建议
+```powershell
+git status --short --branch
+npm run syntax
+npm test
+npm run audit
+git diff --check
+```
 
-- 优先提交小而清晰的改动
-- 提交前至少自测相关功能
-- 如果改动会影响默认配置、外部服务地址或发布流程，请在 PR 描述里说明原因和影响范围
+浏览器行为变更还要遵守 [隔离浏览器 E2E 规范](docs/DEVELOPMENT.md#浏览器-e2e)。只改文档时可以跳过完整代码测试，但必须检查链接、乱码、敏感信息和 diff。
+
+## 安全
+
+不得提交真实邮箱、密码、Access Token、验证码、2FA Secret、Cookie、API Key、CDK、代理、手机号、敏感 URL 参数、本地配置、运行日志或浏览器 Profile。
+
+涉及安全问题时遵守 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中提供可直接利用的敏感细节。
 
 ## 文档
 
-如果你的改动会影响安装、配置、发布或兼容性，请同步更新以下文件中的对应内容：
+- 用户行为、配置或导入导出变化：更新 `docs/USER_GUIDE.md`。
+- 架构、模块、测试、权限或发布变化：更新 `docs/DEVELOPMENT.md`。
+- 已确认故障：追加到当月故障档案并更新 `docs/audit/issue-fix-index.md`。
+- 发布版本：更新 `CHANGELOG.md`。
 
-- `README.md`
-- `THIRD_PARTY_NOTICES.md`
-- `RELEASING.md`
-
-感谢你的贡献。
+Pull Request 应说明实际行为变化、风险边界、运行过的命令和未验证事项。默认目标分支以仓库当前维护分支为准，不要套用其他项目的 `dev/master` 流程。

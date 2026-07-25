@@ -1,4 +1,6 @@
-# Release Notes
+# 变更记录
+
+本文档按版本保留历史发布说明。当前版本以 `manifest.json` 为准；安装和配置请查看 [使用指南](docs/USER_GUIDE.md)，发布步骤请查看 [开发指南](docs/DEVELOPMENT.md#发布流程)。
 
 ## CDK Redeem Only V2.1.0
 
@@ -721,7 +723,7 @@ V2.0.0 是基于现有 Chrome Manifest V3 扩展完成的可靠性与数据安�
 - `CDK 池`
 - `兑换轮数`
 
-详细说明见 [docs/CONFIG-USAGE.md](docs/CONFIG-USAGE.md)。
+详细说明见 [使用指南](docs/USER_GUIDE.md)。
 
 ### 脱敏要求
 

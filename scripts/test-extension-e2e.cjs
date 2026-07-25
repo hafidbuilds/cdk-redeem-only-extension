@@ -1,41 +1,81 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { chromium } = require('playwright');
+const puppeteer = require('puppeteer');
 
 const extensionRoot = path.resolve(__dirname, '..');
+const launchAttempts = 3;
 
-test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', { timeout: 60000 }, async (t) => {
-  const context = await chromium.launchPersistentContext('', {
-    headless: false,
-    executablePath: process.env.CHROME_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    args: [
-      `--disable-extensions-except=${extensionRoot}`,
-      `--load-extension=${extensionRoot}`,
-      '--no-sandbox',
-    ],
-  });
-  t.after(async () => context.close());
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  let serviceWorker = context.serviceWorkers()[0];
-  if (!serviceWorker) {
-    serviceWorker = await context.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
+async function launchIsolatedBrowser() {
+  assert.equal(
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    undefined,
+    'E2E must use Puppeteer-managed Chrome for Testing, not a system browser override',
+  );
+
+  let lastError;
+  for (let attempt = 1; attempt <= launchAttempts; attempt += 1) {
+    try {
+      const browser = await puppeteer.launch({
+        headless: true,
+        pipe: true,
+        args: ['--no-sandbox'],
+        enableExtensions: [extensionRoot],
+      });
+      return { browser, attempt };
+    } catch (error) {
+      lastError = error;
+      if (attempt < launchAttempts) await sleep(1000);
+    }
   }
+
+  throw new Error(
+    `Chrome for Testing failed to start after ${launchAttempts} attempts: ${lastError?.message || lastError}`,
+    { cause: lastError },
+  );
+}
+
+test('isolated Chrome for Testing loads MV3 extension and sidepanel', { timeout: 90000 }, async (t) => {
+  const executablePath = await puppeteer.executablePath();
+  const { browser, attempt } = await launchIsolatedBrowser();
+  t.after(async () => browser.close());
+
+  const serviceWorker = await browser.waitForTarget(
+    (target) => target.type() === 'service_worker' && target.url().endsWith('/background.js'),
+    { timeout: 30000 },
+  );
   assert.ok(serviceWorker, 'MV3 service worker should start');
+
   const extensionId = new URL(serviceWorker.url()).host;
-  const page = await context.newPage();
+  const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto(`chrome-extension://${extensionId}/sidepanel/sidepanel.html`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
-  await page.locator('#settings-card').waitFor({ state: 'visible', timeout: 15000 });
-  assert.ok(await page.locator('#btn-config-menu').isVisible());
-  assert.equal(await page.locator('#btn-export-failure-diagnostics').count(), 1);
-  assert.ok(await page.locator('#account-records-list').count());
-  assert.ok(await page.locator('#account-task-list').count());
 
-  const sendMessage = (message) => page.evaluate(async ({ payload, extensionId: targetExtensionId }) => {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+  await page.goto(`chrome-extension://${extensionId}/sidepanel/sidepanel.html`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 15000,
+  });
+  await page.waitForSelector('#settings-card', { visible: true, timeout: 15000 });
+
+  const controls = await page.evaluate(() => ({
+    configMenu: Boolean(document.querySelector('#btn-config-menu')),
+    failureDiagnostics: Boolean(document.querySelector('#btn-export-failure-diagnostics')),
+    accountRecords: Boolean(document.querySelector('#account-records-list')),
+    accountTasks: Boolean(document.querySelector('#account-task-list')),
+  }));
+  assert.deepEqual(controls, {
+    configMenu: true,
+    failureDiagnostics: true,
+    accountRecords: true,
+    accountTasks: true,
+  });
+
+  const sendMessage = (message) => page.evaluate(async ({ payload, targetExtensionId }) => {
+    for (let messageAttempt = 0; messageAttempt < 20; messageAttempt += 1) {
       try {
         const response = await Promise.race([
           chrome.runtime.sendMessage(targetExtensionId, payload),
@@ -47,12 +87,14 @@ test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', 
       }
     }
     return { response: { error: 'E2E_MESSAGE_TIMEOUT' }, lastError: '' };
-  }, { payload: message, extensionId });
+  }, { payload: message, targetExtensionId: extensionId });
+
   const saveEnvelope = await sendMessage({
     type: 'SAVE_SETTING', source: 'sidepanel', payload: { autoStepDelaySeconds: 4 },
   });
   assert.equal(saveEnvelope?.lastError, '', JSON.stringify(saveEnvelope));
   assert.equal(saveEnvelope?.response?.ok, true, JSON.stringify(saveEnvelope));
+
   const stateEnvelope = await sendMessage({ type: 'GET_STATE', source: 'sidepanel' });
   assert.equal(stateEnvelope?.lastError, '', JSON.stringify(stateEnvelope));
   assert.equal(Number(stateEnvelope?.response?.autoStepDelaySeconds), 4, JSON.stringify(stateEnvelope));
@@ -65,9 +107,15 @@ test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', 
       },
     });
   });
-  await page.locator('#btn-config-menu').click();
-  await page.locator('#btn-export-failure-diagnostics').click();
-  await page.locator('.toast-success .toast-msg').filter({ hasText: '已导出至剪贴板' }).waitFor({ timeout: 5000 });
+
+  await page.click('#btn-config-menu');
+  await page.click('#btn-export-failure-diagnostics');
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.toast-success .toast-msg')]
+      .some((node) => node.textContent?.includes('已导出至剪贴板')),
+    { timeout: 5000 },
+  );
+
   const copiedDiagnostics = await page.evaluate(() => window.__copiedFailureDiagnostics || '');
   const diagnosticPayload = JSON.parse(copiedDiagnostics);
   assert.equal(diagnosticPayload.schemaVersion, 1);
@@ -75,4 +123,12 @@ test('MV3 extension loads and sidepanel renders settings, accounts, and tasks', 
   assert.ok(Array.isArray(diagnosticPayload.logWindow.entries));
   assert.equal(typeof diagnosticPayload.verificationInput.detected, 'boolean');
   assert.deepEqual(errors, []);
+
+  console.log(JSON.stringify({
+    browser: await browser.version(),
+    executablePath,
+    profile: 'temporary-isolated',
+    transport: 'pipe',
+    launchAttempt: attempt,
+  }));
 });

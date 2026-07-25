@@ -1,5 +1,7 @@
 # Codex 执行提示词：仅基于当前 CDK Redeem Only 项目改造
 
+> 文档整理说明（2026-07-26）：本任务书保留原始工程补全要求，但文档已按当前职责合并。`README-UPI-ONLY.md`、`docs/CONFIG-USAGE.md` 和 `项目完整链路说明.md` 由 `docs/USER_GUIDE.md` 取代；`项目文件结构说明.md`、`项目开发规范（AI协作）.md`、`docs/architecture/*` 和 `RELEASING.md` 由 `docs/DEVELOPMENT.md` 取代；`Release.md` 更名为 `CHANGELOG.md`；阶段报告、单问题档案和 `docs/superpowers/` 已分别合并到 `docs/audit/` 与 `docs/history/`。不得为了匹配本任务书中的旧路径重新创建这些零散文件，职责以当前文档入口和真实目录为准。
+
 请接管当前已经解压的 Chrome 扩展项目，并直接在当前项目中完成改造。
 
 本次工作只能以当前仓库的真实代码、真实目录、现有测试和现有业务行为为基础。不要套用其他项目的目录结构，不要重新创建另一套工程，也不要为了结构看起来漂亮而大规模搬迁文件。

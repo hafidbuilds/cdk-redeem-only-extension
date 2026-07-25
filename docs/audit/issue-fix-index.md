@@ -1,38 +1,38 @@
-# 故障与修复档案索引
+# 故障与修复索引
 
-本索引用于快速查询真实出现过的问题及其修复。每个问题保留一份独立档案，记录脱敏诊断证据、根因、修改范围、业务边界、测试结果和发布影响。
+本索引用于快速查询真实出现过的问题。详细记录按月合并，避免每个问题产生一个 Markdown 文件，同时保留原始日期、脱敏证据、根因、实现、安全边界和验证结果。
 
-## 查询方式
+## 查询
 
 ```powershell
-rg -n "关键词" docs/audit
+rg -n "关键词" docs/audit/issue-fix-archive-*.md
 git log --oneline -- docs/audit
 ```
 
-## 档案
+## 2026-07
 
 | 日期 | 问题 | 修复结论 | 详细记录 |
 | --- | --- | --- | --- |
-| 2026-07-25 | 邮箱池和未知会员状态被误归入 Free | 只有明确 `free` 的账号进入 Free 分组 | [Free 分组误分类修复](2026-07-25-free-group-classification-fix.md) |
-| 2026-07-25 | 最近失败诊断需要反复保存和发送文件 | 诊断脱敏后直接写入剪贴板并提示成功 | [最近失败诊断剪贴板导出](2026-07-25-failure-diagnostics-clipboard.md) |
-| 2026-07-25 | 普通“超时配置”日志被误选为最近失败 | 优先使用真实错误级别并排除配置说明 | [最近失败诊断锚点修复](2026-07-25-failure-diagnostics-anchor-fix.md) |
-| 2026-07-25 | 免 2FA Free 账号在 TXT 导出中缺失 | 导出合并统一账号模型并保留免 2FA 路线 | [免 2FA Free 导出兼容修复](2026-07-25-no2fa-free-export-fix.md) |
-| 2026-07-26 | 安全配置导入后账号和 Free/Plus 分组为空 | 安全导出保存脱敏账号明细，导入后同步统一账号模型 | [安全配置导入恢复](2026-07-26-safe-settings-import-recovery.md) |
-| 2026-07-26 | ChatGPT 登录弹窗 Continue 稍晚启用时被误报不可点击 | 填写邮箱后重新查询按钮并等待启用 | [ChatGPT Continue 按钮恢复](2026-07-26-chatgpt-modal-continue-button.md) |
-| 2026-07-26 | 步骤 6 读取 Session/AT 时主 Frame 被替换，随后错误换邮箱重试 | 原地重新定位标签页；恢复耗尽则停止，禁止换邮箱重注册 | [ChatGPT Session 主 Frame 切换恢复](2026-07-26-chatgpt-session-frame-recovery.md) |
-| 2026-07-26 | 注册密码提交后快速重复点击并在远端结果未知时换邮箱重试 | 先观察、最多补交一次；未知结果保留页面和邮箱后停机 | [注册密码提交未知结果保护](2026-07-26-signup-password-transition-timeout.md) |
-| 2026-07-26 | 步骤 4 后台 30 秒响应超时早于验证码页真实就绪，随后清 Cookie 重开注册 | 对齐 75/95/105 秒窗口；通信耗尽时保留验证码页并禁止内部重开 | [步骤 4 内容脚本响应超时](2026-07-26-step4-content-response-timeout.md) |
-| 2026-07-26 | 步骤 6 出现 Session ended / invalid_state 后直接停止或可能误判成功 | 保留同一账号并受限重启 set-gpt-password，认证错误页必须继续探测 | [步骤 6 invalid_state 原地重启](2026-07-26-step6-invalid-state-restart.md) |
-| 2026-07-26 | 步骤 6 恢复反复打开无状态新密码页，耗尽后回到步骤 1 清 Cookie 重注册 | 延长入口观察并禁止裸 new-password；耗尽后保留现场并停止整轮重试 | [步骤 6 invalid_state 误重开整轮](2026-07-26-step6-invalid-state-round-restart.md) |
-| 2026-07-26 | 用户停止自动运行后日志连续快速刷新 | 主动停止不再逐条回放上一轮最多 120 条日志，故障快照仍保留 | [用户停止后日志连续刷新](2026-07-26-manual-stop-log-replay.md) |
-| 2026-07-26 | 步骤 6 安全设置页停在 interactive 时被误判加载失败并整轮重试 | 按真实密码入口就绪继续；缺失时只限次重启步骤 6 | [步骤 6 安全设置页 interactive 误判](2026-07-26-step6-interactive-settings-readiness.md) |
+| 2026-07-25 | 邮箱池和未知会员状态被误归入 Free | 只有明确 `free` 的账号进入 Free 分组 | [记录](issue-fix-archive-2026-07.md#2026-07-25-free-group-classification-fix) |
+| 2026-07-25 | 最近失败诊断需要反复保存和发送文件 | 诊断脱敏后直接写入剪贴板并提示成功 | [记录](issue-fix-archive-2026-07.md#2026-07-25-failure-diagnostics-clipboard) |
+| 2026-07-25 | 普通超时配置日志被误选为最近失败 | 优先真实错误级别并排除配置说明 | [记录](issue-fix-archive-2026-07.md#2026-07-25-failure-diagnostics-anchor-fix) |
+| 2026-07-25 | 免 2FA Free 账号在 TXT 导出中缺失 | 导出合并统一账号模型并保留免 2FA 路线 | [记录](issue-fix-archive-2026-07.md#2026-07-25-no2fa-free-export-fix) |
+| 2026-07-26 | 安全配置导入后账号和 Free/Plus 分组为空 | 安全导出保存脱敏账号明细，导入后同步统一账号模型 | [记录](issue-fix-archive-2026-07.md#2026-07-26-safe-settings-import-recovery) |
+| 2026-07-26 | ChatGPT 登录弹窗 Continue 稍晚启用时被误报不可点击 | 填写邮箱后重新查询按钮并等待启用 | [记录](issue-fix-archive-2026-07.md#2026-07-26-chatgpt-modal-continue-button) |
+| 2026-07-26 | 步骤 6 读取 Session/AT 时主 Frame 被替换 | 原地重新定位标签页；耗尽后停止并禁止换邮箱 | [记录](issue-fix-archive-2026-07.md#2026-07-26-chatgpt-session-frame-recovery) |
+| 2026-07-26 | 注册密码提交后快速重复点击并换邮箱重试 | 最多补交一次；未知结果保留页面和邮箱后停机 | [记录](issue-fix-archive-2026-07.md#2026-07-26-signup-password-transition-timeout) |
+| 2026-07-26 | 步骤 4 后台响应超时早于验证码页就绪 | 对齐等待窗口；通信耗尽时保留页面并禁止内部重开 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step4-content-response-timeout) |
+| 2026-07-26 | 步骤 6 出现 `invalid_state` 后直接停止或误判成功 | 保留同一账号并受限重启步骤 6 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-invalid-state-restart) |
+| 2026-07-26 | 步骤 6 恢复耗尽后回步骤 1 清 Cookie | 禁止裸新密码页；耗尽后保留现场并停止 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-invalid-state-round-restart) |
+| 2026-07-26 | 用户停止自动运行后日志连续刷新 | 主动停止不再回放旧日志，故障快照仍保留 | [记录](issue-fix-archive-2026-07.md#2026-07-26-manual-stop-log-replay) |
+| 2026-07-26 | 步骤 6 页面停在 interactive 时被误判加载失败 | 按密码入口是否可操作判断；缺失时仅限次重启步骤 6 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-interactive-settings-readiness) |
+| 2026-07-26 | E2E 实际使用 Edge，却被记录为 Chrome 验证 | 改用隔离的 Chrome for Testing 和临时 Profile | [记录](issue-fix-archive-2026-07.md#2026-07-26-isolated-chrome-e2e-harness) |
 
-## 新档案要求
+## 新记录规则
 
-每次确认并修复新问题时：
-
-1. 新建 `docs/audit/YYYY-MM-DD-<issue-slug>.md`。
-2. 写明故障现象、诊断证据、根因、修改文件和真实调用链。
-3. 写明哪些业务行为必须保持不变，以及失败后的安全处理方式。
-4. 记录定向测试、完整测试、语法检查、审计、Manifest 引用、敏感数据检查和必要的 E2E 结果。
-5. 在本索引增加一行，并在提交或发布后补充准确影响；不得写 TODO、虚构测试数或敏感数据。
+1. 在当月 `issue-fix-archive-YYYY-MM.md` 追加完整记录，不再新建单问题 Markdown。
+2. 使用 `YYYY-MM-DD-issue-slug` 形式的稳定 HTML 锚点。
+3. 写明故障现象、脱敏证据、根因、真实调用链、实现和业务安全边界。
+4. 记录定向测试、完整测试、语法检查、审计、Manifest、敏感数据和必要 E2E 的真实结果。
+5. 在本索引增加一行，并在提交或发布后补充准确影响。
+6. 不写 TODO、虚构测试数或任何真实敏感数据；后续修复通过新增记录取代旧结论，不静默改写历史。
