@@ -8,6 +8,8 @@
       isActionEnabled,
       getActionText,
       getPageTextSnapshot,
+      sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      throwIfStopped = () => {},
     } = context;
 
     const authPageDetectors = context.authPageDetectors || root.MultiPageAuthPageDetectors || {};
@@ -117,6 +119,27 @@
       }) || null;
     }
 
+    async function waitForEnabledSignupEmailContinueButton(options = {}) {
+      const timeout = Math.max(0, Math.floor(Number(options.timeout) || 5000));
+      const pollInterval = Math.max(25, Math.floor(Number(options.pollInterval) || 100));
+      const sleepBetweenPolls = typeof options.sleep === 'function' ? options.sleep : sleep;
+      const checkStopped = typeof options.throwIfStopped === 'function' ? options.throwIfStopped : throwIfStopped;
+      const startedAt = Date.now();
+
+      while (true) {
+        checkStopped();
+        const candidate = getSignupEmailContinueButton({ allowDisabled: true });
+        if (candidate && isActionEnabled(candidate)) {
+          return candidate;
+        }
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= timeout) {
+          return null;
+        }
+        await sleepBetweenPolls(Math.min(pollInterval, Math.max(1, timeout - elapsed)));
+      }
+    }
+
     function isExcludedSignupEntryActionText(text = '') {
       return Boolean(authPageDetectors.isExcludedSignupEntryText?.(text));
     }
@@ -188,6 +211,7 @@
       findSignupUseEmailTrigger,
       findSignupMoreOptionsTrigger,
       getSignupEmailContinueButton,
+      waitForEnabledSignupEmailContinueButton,
       isExcludedSignupEntryActionText,
       isSignupEntryTriggerText,
       isSignupAuthEntryTriggerText,

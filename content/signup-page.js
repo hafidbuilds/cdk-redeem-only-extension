@@ -1324,8 +1324,8 @@ async function fillSignupEmailAndContinue(email, step) {
   });
   log(`步骤 ${step}：邮箱已填写`);
 
-  const continueButton = snapshot.continueButton || getSignupEmailContinueButton({ allowDisabled: true });
-  if (!continueButton || !isActionEnabled(continueButton)) {
+  const continueButton = await getSignupEntryPageHelpers().waitForEnabledSignupEmailContinueButton?.({ timeout: 5000, sleep, throwIfStopped });
+  if (!continueButton) {
     throw new Error(`步骤 ${step}：未找到可点击的“继续”按钮。URL: ${location.href}`);
   }
 

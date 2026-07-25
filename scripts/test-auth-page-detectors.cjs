@@ -116,6 +116,38 @@ test('signup entry helper ignores OAuth provider continue buttons', () => {
   assert.equal(helper.getSignupEmailContinueButton(), continueButton);
 });
 
+test('signup entry waits for the current email Continue button to become enabled', async () => {
+  const continueButton = makeAction('Continue', { enabled: false });
+  continueButton.getAttribute = function getAttribute(name) {
+    if (name === 'aria-disabled') return this.disabled ? 'true' : 'false';
+    return '';
+  };
+  let waitCount = 0;
+  const helper = globalThis.MultiPageSignupEntryPage.createSignupEntryPage({
+    ...domContext,
+    authPageDetectors: detectors,
+    documentRef: {
+      ...makeDocument([continueButton]),
+      querySelector() {
+        return continueButton;
+      },
+    },
+    windowRef: { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHeight: 768 },
+    sleep: async () => {
+      waitCount += 1;
+      continueButton.disabled = false;
+    },
+  });
+
+  const result = await helper.waitForEnabledSignupEmailContinueButton({
+    timeout: 1000,
+    pollInterval: 25,
+  });
+
+  assert.equal(result, continueButton);
+  assert.equal(waitCount, 1);
+});
+
 test('page detector and verification helper use shared action detectors', () => {
   const provider = makeAction('Continue with Google');
   const continueButton = makeAction('Continue');
