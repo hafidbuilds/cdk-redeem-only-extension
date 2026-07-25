@@ -107,3 +107,26 @@ test('structured UPI ineligibility status is terminal even when the message chan
   assert.equal(result.canRetry, false);
   assert.equal(policy.selectFailureAction(result).code, 'fail_upi_account_ineligible');
 });
+
+test('exhausted session frame recovery stops instead of registering another email', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const error = new Error('ChatGPT page frame recovery exhausted');
+  error.code = 'CHATGPT_SESSION_FRAME_UNAVAILABLE';
+  error.retryable = false;
+  const result = policy.evaluateAttemptFailure({
+    error,
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    maxAttemptsForRound: 4,
+  });
+  const action = policy.selectFailureAction(result);
+
+  assert.equal(result.blockedBySessionFrameUnavailable, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(action.code, 'fail_session_frame_unavailable');
+  assert.equal(action.shouldStop, true);
+  assert.equal(action.forceFreshTabsNextRun, false);
+});

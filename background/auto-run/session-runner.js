@@ -589,6 +589,24 @@
               break;
             }
 
+            if (failureAction.code === 'fail_session_frame_unavailable') {
+              await markRoundFailed(reason, error);
+              cancelPendingCommands('ChatGPT 页面切换导致 SESSION/AT 读取未完成。');
+              await broadcastStopToContentScripts();
+              await addLog(
+                `第 ${targetRun}/${totalRuns} 轮账号创建已完成，但 SESSION/AT 读取时页面主 Frame 持续切换；自动运行已停止，不会换邮箱重新注册。请保持当前 ChatGPT 页面打开，重新执行步骤 6 或继续当前进度。`,
+                'error'
+              );
+              stoppedEarly = true;
+              await broadcastAutoRunStatus('stopped', {
+                currentRun: targetRun,
+                totalRuns,
+                attemptRun,
+                sessionId: 0,
+              });
+              break;
+            }
+
             if (failureAction.code === 'retry_plus_non_free_trial') {
               const retryIndex = attemptRun;
               await addLog(`第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试没有 Plus 免费试用资格：${reason}`, 'warn');

@@ -116,6 +116,12 @@
       return hasUpiEligibilityContext && hasExplicitIneligibleResult;
     }
 
+    function isSessionFrameUnavailableFailure(error) {
+      const message = String(getErrorMessage(error) || error?.message || error || '');
+      return error?.code === 'CHATGPT_SESSION_FRAME_UNAVAILABLE'
+        || /CHATGPT_SESSION_FRAME_UNAVAILABLE|读取 SESSION\/AT 时持续切换|重新定位标签页\s*\d+\s*次仍未恢复/i.test(message);
+    }
+
     function getMaxAttemptsForRound(options = {}) {
       const attemptRun = Math.max(1, Math.floor(Number(options.attemptRun) || 1));
       const maxRetriesPerRound = Math.max(0, Math.floor(Number(deps.AUTO_RUN_MAX_RETRIES_PER_ROUND) || 0));
@@ -140,6 +146,7 @@
         : rawReason;
 
       const blockedByUpiAccountIneligible = isUpiAccountIneligibleFailure(error);
+      const blockedBySessionFrameUnavailable = isSessionFrameUnavailableFailure(error);
       const blockedByPlusNonFreeTrial = !blockedByUpiAccountIneligible
         && typeof deps.isChatgptSessionReaderNonFreeTrialFailure === 'function'
         && deps.isChatgptSessionReaderNonFreeTrialFailure(error);
@@ -180,6 +187,7 @@
       const retryableHostedCheckoutCardFallback = blockedByHostedCheckoutCardFallback
         && attemptRun < maxRetryAttempts;
       const canRetry = !blockedByUpiAccountIneligible
+        && !blockedBySessionFrameUnavailable
         && !blockedByCustomEmailPoolEmpty
         && !blockedByPlusNonFreeTrial
         && !blockedByUpiRedeemBackendFailure
@@ -209,6 +217,7 @@
         blockedByHostedCheckoutVerificationResendLimit,
         blockedByPlusNonFreeTrial,
         blockedBySignupUserAlreadyExists,
+        blockedBySessionFrameUnavailable,
         blockedByStep4Route405,
         blockedByUpiAccountIneligible,
         blockedByUpiRedeemBackendFailure,
@@ -228,6 +237,14 @@
       if (result.blockedByCustomEmailPoolEmpty) {
         return {
           code: 'fail_custom_email_pool_empty',
+          forceFreshTabsNextRun: false,
+          shouldFailRound: true,
+          shouldStop: true,
+        };
+      }
+      if (result.blockedBySessionFrameUnavailable) {
+        return {
+          code: 'fail_session_frame_unavailable',
           forceFreshTabsNextRun: false,
           shouldFailRound: true,
           shouldStop: true,

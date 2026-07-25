@@ -8,6 +8,7 @@ importScripts(
   'shared/sensitive-data-redactor.js',
   'shared/task-schema.js',
   'shared/session-to-json-converter.js',
+  'background/session-export-reader.js',
   'managed-alias-utils.js',
   'mail2925-utils.js',
   'background/account-run-history.js',
@@ -8062,28 +8063,25 @@ async function readChatGptSessionFromTabForExport(tab) {
 }
 
 async function readCurrentChatGptSessionForExport() {
-  const tabs = await resolveCurrentSessionExportTabs();
-  if (!tabs.length) {
-    throw new Error('未找到 ChatGPT / OpenAI 标签页，请先打开一个已登录页面后再导出。');
+  const createReader = self.MultiPageBackgroundSessionExportReader?.createSessionExportReader;
+  if (typeof createReader !== 'function') {
+    throw new Error('ChatGPT SESSION 读取恢复模块未加载。');
   }
-  const orderedTabs = [
-    pickPreferredSessionExportTab(tabs),
-    ...tabs,
-  ].filter(Boolean);
-  const seen = new Set();
-  const errors = [];
-  for (const tab of orderedTabs) {
-    if (!tab?.id || seen.has(tab.id)) {
-      continue;
-    }
-    seen.add(tab.id);
-    try {
-      return await readChatGptSessionFromTabForExport(tab);
-    } catch (error) {
-      errors.push(error?.message || String(error || ''));
-    }
-  }
-  throw new Error(errors.find(Boolean) || '读取当前 SESSION 失败，请确认 ChatGPT / OpenAI 页面已登录。');
+  const reader = createReader({
+    resolveTabs: resolveCurrentSessionExportTabs,
+    pickPreferredTab: pickPreferredSessionExportTab,
+    readFromTab: readChatGptSessionFromTabForExport,
+    isRetryableTransportError: isRetryableContentScriptTransportError,
+    sleep: sleepWithStop,
+    maxAttempts: 3,
+    retryDelayMs: 750,
+    onRetry: ({ nextAttempt, maxAttempts }) => addLog(
+      `读取 ChatGPT SESSION/AT 时页面主 Frame 已切换，正在重新定位当前标签页后重试（${nextAttempt}/${maxAttempts}）。`,
+      'warn',
+      { step: 6, stepKey: 'persist-no-2fa-free' }
+    ),
+  });
+  return reader.readCurrentSession();
 }
 
 function getCpaSessionExportApi() {
@@ -8597,7 +8595,7 @@ function isStopError(error) {
 
 function isRetryableContentScriptTransportError(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
-  return /back\/forward cache|message channel is closed|Receiving end does not exist|port closed before a response was received|A listener indicated an asynchronous response|内容脚本\s+\d+(?:\.\d+)?\s*秒内未响应|did not respond in \d+s|failed to fetch|networkerror|network error|fetch failed|load failed/i.test(message);
+  return /back\/forward cache|message channel is closed|Receiving end does not exist|port closed before a response was received|A listener indicated an asynchronous response|frame with id \d+ was removed|no frame with id \d+ in tab|the frame was removed|内容脚本\s+\d+(?:\.\d+)?\s*秒内未响应|did not respond in \d+s|failed to fetch|networkerror|network error|fetch failed|load failed/i.test(message);
 }
 
 function isStepFetchNetworkRetryableError(error) {
