@@ -24,6 +24,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 步骤 4 后台 30 秒响应超时早于验证码页真实就绪，随后清 Cookie 重开注册 | 对齐 75/95/105 秒窗口；通信耗尽时保留验证码页并禁止内部重开 | [步骤 4 内容脚本响应超时](2026-07-26-step4-content-response-timeout.md) |
 | 2026-07-26 | 步骤 6 出现 Session ended / invalid_state 后直接停止或可能误判成功 | 保留同一账号并受限重启 set-gpt-password，认证错误页必须继续探测 | [步骤 6 invalid_state 原地重启](2026-07-26-step6-invalid-state-restart.md) |
 | 2026-07-26 | 步骤 6 恢复反复打开无状态新密码页，耗尽后回到步骤 1 清 Cookie 重注册 | 延长入口观察并禁止裸 new-password；耗尽后保留现场并停止整轮重试 | [步骤 6 invalid_state 误重开整轮](2026-07-26-step6-invalid-state-round-restart.md) |
+| 2026-07-26 | 用户停止自动运行后日志连续快速刷新 | 主动停止不再逐条回放上一轮最多 120 条日志，故障快照仍保留 | [用户停止后日志连续刷新](2026-07-26-manual-stop-log-replay.md) |
 
 ## 新档案要求
 

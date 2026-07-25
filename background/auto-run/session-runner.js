@@ -1048,9 +1048,9 @@
       });
       await logAutoRunFinalSummary(totalRuns, roundSummaries);
 
-      const finalRuntime = runtime.get();
-      if (getStopRequested() || stoppedEarly) {
-        await replayPreviousSuccessfulAutoRunRoundLogSnapshot(sessionId, finalRuntime.autoRunCurrentRun);
+      const finalRuntime = runtime.get(), stoppedByUser = getStopRequested();
+      if (stoppedByUser || stoppedEarly) {
+        if (!stoppedByUser) await replayPreviousSuccessfulAutoRunRoundLogSnapshot(sessionId, finalRuntime.autoRunCurrentRun);
         await addLog(`=== 已停止，完成 ${successfulRuns}/${finalRuntime.autoRunTotalRuns} 轮 ===`, 'warn');
         await broadcastAutoRunStatus('stopped', {
           currentRun: finalRuntime.autoRunCurrentRun,
@@ -1075,14 +1075,14 @@
         autoRunRoundSummaries: serializeAutoRunRoundSummaries(totalRuns, roundSummaries),
         autoRunTimerPlan: null,
         scheduledAutoRunPlan: null,
-        ...getAutoRunStatusPayload(getStopRequested() || stoppedEarly ? 'stopped' : 'complete', {
-          currentRun: getStopRequested() || stoppedEarly ? afterRuntime.autoRunCurrentRun : afterRuntime.autoRunTotalRuns,
+        ...getAutoRunStatusPayload(stoppedByUser || stoppedEarly ? 'stopped' : 'complete', {
+          currentRun: stoppedByUser || stoppedEarly ? afterRuntime.autoRunCurrentRun : afterRuntime.autoRunTotalRuns,
           totalRuns: afterRuntime.autoRunTotalRuns,
           attemptRun: afterRuntime.autoRunAttemptRun,
           sessionId: 0,
         }),
       });
-      if (!(getStopRequested() || stoppedEarly)) {
+      if (!(stoppedByUser || stoppedEarly)) {
         clearStopRequest();
       }
     }

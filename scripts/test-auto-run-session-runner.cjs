@@ -492,3 +492,91 @@ test('auto-run parks cleanly when a workflow node schedules a timer resume', asy
   assert.equal(phases.includes('complete'), false);
   assert.equal(phases.includes('stopped'), false);
 });
+
+test('manual stop does not replay a previous round log snapshot', async () => {
+  let stopRequested = false;
+  let replayCalls = 0;
+  let runtimeState = {
+    autoRunActive: false,
+    autoRunCurrentRun: 0,
+    autoRunTotalRuns: 0,
+    autoRunAttemptRun: 0,
+    autoRunSessionId: 0,
+  };
+  let appState = { autoRunFallbackThreadIntervalMinutes: 0 };
+  const summaryBuilder = createAutoRunSummaryBuilder({ addLog: async () => {} });
+  const runner = createAutoRunSessionRunner({
+    ...summaryBuilder,
+    addLog: async () => {},
+    appendAccountRunRecord: async () => ({}),
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    AUTO_RUN_RETRY_DELAY_MS: 1,
+    AUTO_RUN_TIMER_KIND_BEFORE_RETRY: 'before_retry',
+    AUTO_RUN_TIMER_KIND_BETWEEN_ROUNDS: 'between_rounds',
+    broadcastAutoRunStatus: async () => {},
+    broadcastStopToContentScripts: async () => {},
+    cancelPendingCommands: () => {},
+    clearStopRequest: () => { stopRequested = false; },
+    createAutoRunRoundLogSnapshotMarker: () => ({}),
+    createAutoRunSessionId: () => 901,
+    ensureHotmailMailboxReadyForAutoRunRound: null,
+    evaluateAttemptFailure: () => {
+      throw new Error('manual stop must bypass failure evaluation');
+    },
+    getAutoRunRoundSnapshotReason: () => '',
+    getAutoRunRoundSnapshotStatus: (_summary, flags) => flags.stoppedEarly ? 'stopped' : 'success',
+    getAutoRunStatusPayload: (phase, payload) => ({
+      autoRunPhase: phase,
+      autoRunCurrentRun: payload.currentRun,
+      autoRunTotalRuns: payload.totalRuns,
+      autoRunAttemptRun: payload.attemptRun,
+      autoRunSessionId: payload.sessionId,
+    }),
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getFirstUnfinishedNodeId: () => null,
+    getMaxAttemptsForRound: () => 1,
+    getPendingAutoRunTimerPlan: () => null,
+    getRunningNodeIds: () => [],
+    getState: async () => appState,
+    getStopRequested: () => stopRequested,
+    hasSavedNodeProgress: () => false,
+    isStopError: (error) => error?.message === 'STOP',
+    launchAutoRunTimerPlan: async () => false,
+    logAutoRunFinalSummary: async () => {},
+    normalizeAutoRunFallbackThreadIntervalMinutes: () => 0,
+    persistAutoRunTimerPlan: async () => {},
+    replayPreviousSuccessfulAutoRunRoundLogSnapshot: async () => { replayCalls += 1; },
+    resetState: async () => { appState = {}; },
+    resolveAutoRunAccountRecordStatus: (status) => status,
+    runAutoSequenceFromNode: async (_nodeId, context) => {
+      if (context.targetRun === 2) {
+        stopRequested = true;
+        throw new Error('STOP');
+      }
+    },
+    runtime: {
+      get: () => runtimeState,
+      set: (patch) => { runtimeState = { ...runtimeState, ...patch }; },
+    },
+    saveAutoRunRoundLogSnapshot: async ({ round }) => ({
+      logCount: 1,
+      originalLogCount: 1,
+      round,
+      truncated: false,
+    }),
+    selectFailureAction: () => {
+      throw new Error('manual stop must bypass failure action selection');
+    },
+    setState: async (patch) => { appState = { ...appState, ...patch }; },
+    sleepWithStop: async () => {},
+    throwIfAutoRunSessionStopped: () => {},
+    waitForRunningNodesToFinish: async () => appState,
+    chrome: { runtime: { sendMessage: async () => {} } },
+  });
+
+  await runner.autoRunLoop(2);
+
+  assert.equal(runtimeState.autoRunActive, false);
+  assert.equal(runtimeState.autoRunCurrentRun, 2);
+  assert.equal(replayCalls, 0);
+});
