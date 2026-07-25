@@ -37,3 +37,13 @@ test('set GPT password supports the new settings fallback and inline success sta
   assert.match(source, /prepareResult\?\.resetEntryMissing\s*\|\|\s*prepareResult\?\.resetEntryClickFailed/);
   assert.match(source, /isPasswordUpdatedPageState\(pageState\)/);
 });
+
+test('step 6 settings reset waits for actionable controls instead of document complete', () => {
+  const resetFlow = contentSource.match(
+    /async function startSetGptPasswordResetFlow[\s\S]*?\r?\n}\r?\n\r?\nasync function prepareSetGptPasswordFlow/
+  )?.[0] || '';
+  assert.ok(resetFlow, 'startSetGptPasswordResetFlow should remain present');
+  assert.doesNotMatch(resetFlow, /waitForDocumentLoadComplete/);
+  assert.match(resetFlow, /const passwordAction = await waitForChatGptSettingsPasswordAction\(25000\)/);
+  assert.match(resetFlow, /resetEntryMissing:\s*true/);
+});

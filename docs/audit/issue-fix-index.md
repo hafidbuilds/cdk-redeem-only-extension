@@ -25,6 +25,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 步骤 6 出现 Session ended / invalid_state 后直接停止或可能误判成功 | 保留同一账号并受限重启 set-gpt-password，认证错误页必须继续探测 | [步骤 6 invalid_state 原地重启](2026-07-26-step6-invalid-state-restart.md) |
 | 2026-07-26 | 步骤 6 恢复反复打开无状态新密码页，耗尽后回到步骤 1 清 Cookie 重注册 | 延长入口观察并禁止裸 new-password；耗尽后保留现场并停止整轮重试 | [步骤 6 invalid_state 误重开整轮](2026-07-26-step6-invalid-state-round-restart.md) |
 | 2026-07-26 | 用户停止自动运行后日志连续快速刷新 | 主动停止不再逐条回放上一轮最多 120 条日志，故障快照仍保留 | [用户停止后日志连续刷新](2026-07-26-manual-stop-log-replay.md) |
+| 2026-07-26 | 步骤 6 安全设置页停在 interactive 时被误判加载失败并整轮重试 | 按真实密码入口就绪继续；缺失时只限次重启步骤 6 | [步骤 6 安全设置页 interactive 误判](2026-07-26-step6-interactive-settings-readiness.md) |
 
 ## 新档案要求
 
