@@ -190,6 +190,7 @@
 
 ---
 
+<!-- issue-index-exempt: 2026-07-25-original-checkout-user-edits-merge; reason: merge record, not a confirmed defect -->
 <a id="2026-07-25-original-checkout-user-edits-merge"></a>
 
 <!-- archived-from: docs/audit/2026-07-25-original-checkout-user-edits-merge.md -->

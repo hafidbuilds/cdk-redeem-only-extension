@@ -19,6 +19,7 @@ Use the repository package scripts for the complete gates:
 ```powershell
 npm run syntax
 npm test
+npm run docs:check
 npm run audit
 npm run check
 ```
@@ -50,6 +51,14 @@ Every confirmed user-reported defect must have a dated section in the current mo
 Each record must include the observed symptom and diagnostic evidence, root cause, affected workflow, implementation changes, safety or compatibility boundaries, regression coverage, actual verification results, and commit or release impact. Record only completed work and real command results; do not leave placeholders or planned test counts.
 
 Redact real emails, passwords, access tokens, verification codes, cookies, API keys, CDKs, proxies, phone numbers, and sensitive URL parameters. Preserve old records as historical evidence; when a later fix supersedes one, add a new record and link both entries instead of silently rewriting the history.
+
+## Documentation Lifecycle
+
+Treat `README.md`, `docs/USER_GUIDE.md`, `docs/DEVELOPMENT.md`, `CHANGELOG.md`, and `docs/audit/issue-fix-index.md` as living entry points. Update the affected entry in the same commit as the behavior change. Do not create a standalone Markdown file for a new proposal, implementation plan, release note, or defect when an existing current document or dated archive owns that responsibility.
+
+Completed design and implementation material belongs in the existing monthly files under `docs/history/`. Confirmed defects belong in the monthly issue archive plus the issue index. Historical files are append-only evidence and must never be edited to masquerade as the current specification.
+
+Run `npm run docs:check` before completion. The audit rejects unexpected Markdown files, deprecated document paths, broken current-document links, version drift, missing history disclaimers, and issue index/archive anchor drift. If a genuinely new documentation category is required, update the audit and this lifecycle rule deliberately in the same commit.
 
 ## Commit & Pull Request Guidelines
 

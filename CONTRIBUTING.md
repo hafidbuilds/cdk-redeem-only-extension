@@ -17,6 +17,7 @@
 git status --short --branch
 npm run syntax
 npm test
+npm run docs:check
 npm run audit
 git diff --check
 ```
@@ -31,9 +32,13 @@ git diff --check
 
 ## 文档
 
-- 用户行为、配置或导入导出变化：更新 `docs/USER_GUIDE.md`。
-- 架构、模块、测试、权限或发布变化：更新 `docs/DEVELOPMENT.md`。
-- 已确认故障：追加到当月故障档案并更新 `docs/audit/issue-fix-index.md`。
-- 发布版本：更新 `CHANGELOG.md`。
+- 用户行为、配置或导入导出变化：在同一个提交中更新 `docs/USER_GUIDE.md`。
+- 架构、模块、存储、工作流、Provider、测试、权限或发布流程变化：在同一个提交中更新 `docs/DEVELOPMENT.md`。
+- 已确认故障：在同一个提交中追加到当月故障档案，并更新 `docs/audit/issue-fix-index.md`。
+- 发布版本：同步更新 `manifest.json`、界面版本和 `CHANGELOG.md`。
+- 已完成或被取代的方案：合并进当月 `docs/history/` 归档，不保留单独的方案 Markdown。
+- 未实施的讨论方案优先放在 Issue 或 PR；不能把提案写成当前功能说明。
+
+完成前运行 `npm run docs:check`。新增 Markdown 会被默认拒绝；确实需要新文档类别时，必须同时修改文档审计并说明为什么现有入口无法承载。
 
 Pull Request 应说明实际行为变化、风险边界、运行过的命令和未验证事项。默认目标分支以仓库当前维护分支为准，不要套用其他项目的 `dev/master` 流程。

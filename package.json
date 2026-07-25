@@ -3,9 +3,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "docs:check": "node scripts/audit-documentation.mjs",
     "syntax": "node scripts/check-syntax.mjs",
     "test": "node --test scripts/test-*.cjs",
-    "audit": "node scripts/audit-smoke-tests.mjs && node scripts/audit-no-removed-network.mjs && node scripts/audit-no-phone-sms.mjs",
+    "audit": "npm run docs:check && node scripts/audit-smoke-tests.mjs && node scripts/audit-no-removed-network.mjs && node scripts/audit-no-phone-sms.mjs",
     "e2e": "node --test scripts/test-extension-e2e.cjs",
     "check": "npm run syntax && npm test && npm run audit",
     "package": "node scripts/build-release.mjs"
