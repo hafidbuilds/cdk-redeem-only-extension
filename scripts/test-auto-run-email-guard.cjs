@@ -131,6 +131,26 @@ test('exhausted session frame recovery stops instead of registering another emai
   assert.equal(action.forceFreshTabsNextRun, false);
 });
 
+test('exhausted step 6 reset recovery stops without restarting the registration round', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const result = policy.evaluateAttemptFailure({
+    error: new Error('SET_GPT_PASSWORD_SESSION_EXPIRED::step 6 reset state expired'),
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    maxAttemptsForRound: 4,
+  });
+  const action = policy.selectFailureAction(result);
+
+  assert.equal(result.blockedBySessionFrameUnavailable, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(action.code, 'fail_session_frame_unavailable');
+  assert.equal(action.shouldStop, true);
+  assert.equal(action.forceFreshTabsNextRun, false);
+});
+
 test('uncertain password submit always stops and preserves the current signup session', () => {
   const policy = createAutoRunRetryPolicy({
     AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,

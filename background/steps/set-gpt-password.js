@@ -73,7 +73,7 @@
 
   function isSetGptPasswordSessionExpiredError(error) {
     const message = normalizeString(typeof error === 'string' ? error : error?.message || '');
-    return /^SET_GPT_PASSWORD_SESSION_EXPIRED::/i.test(message);
+    return /^SET_GPT_PASSWORD_(?:SESSION_EXPIRED|RESET_ENTRY_UNAVAILABLE)::/i.test(message);
   }
 
   function isLikelyChatGptLoggedInAfterPasswordUrl(url = '') {
@@ -1294,15 +1294,7 @@
         email,
       }, visibleStep, 60000);
       if (prepareResult?.resetEntryMissing || prepareResult?.resetEntryClickFailed) {
-        await addStepLog(
-          visibleStep,
-          prepareResult?.resetEntryClickFailed
-            ? '设置 GPT 密码：ChatGPT 密码行点击后未跳转，正在直接打开 OpenAI 新密码页。'
-            : '设置 GPT 密码：新版 ChatGPT 设置页未提供密码入口，正在直接打开 OpenAI 新密码页。',
-          'warn'
-        );
-        authTabId = await openPasswordSetupNewPasswordPage(authTabId, visibleStep);
-        prepareResult = await sendSetPasswordPageMessage('PREPARE_SET_GPT_PASSWORD', {}, visibleStep, 30000);
+        throw new Error(`SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::步骤 ${visibleStep}：ChatGPT 密码入口未建立有效重置状态，需要重新启动当前步骤。`);
       }
       if (prepareResult?.resetTriggered) {
         if (typeof waitForTabStableComplete === 'function') {
@@ -1625,7 +1617,7 @@
           }
           await addStepLog(
             getVisibleStep(state),
-            `检测到 Session ended / invalid_state，保留当前账号并重新启动步骤 6（${restartCount + 1}/${SET_GPT_PASSWORD_SESSION_RESTART_LIMIT}）。`,
+            `检测到第 6 步密码重置状态未建立或已失效，保留当前账号并重新启动步骤 6（${restartCount + 1}/${SET_GPT_PASSWORD_SESSION_RESTART_LIMIT}）。`,
             'warn'
           );
         }

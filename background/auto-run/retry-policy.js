@@ -119,7 +119,7 @@
     function isSessionFrameUnavailableFailure(error) {
       const message = String(getErrorMessage(error) || error?.message || error || '');
       return error?.code === 'CHATGPT_SESSION_FRAME_UNAVAILABLE'
-        || /CHATGPT_SESSION_FRAME_UNAVAILABLE|读取 SESSION\/AT 时持续切换|重新定位标签页\s*\d+\s*次仍未恢复/i.test(message);
+        || /CHATGPT_SESSION_FRAME_UNAVAILABLE|SET_GPT_PASSWORD_(?:SESSION_EXPIRED|RESET_ENTRY_UNAVAILABLE)|读取 SESSION\/AT 时持续切换|重新定位标签页\s*\d+\s*次仍未恢复/i.test(message);
     }
 
     function isSignupPasswordSubmitUncertainFailure(error) {

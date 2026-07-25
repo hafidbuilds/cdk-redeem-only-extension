@@ -4332,7 +4332,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
   if (!passwordAction) {
     const diagnostics = getChatGptSettingsPasswordDiagnostics();
     log(
-      `步骤 ${visibleStep}：新版 ChatGPT 设置页未显示“密码”入口，将改用 OpenAI 直接设置密码页面。`,
+      `步骤 ${visibleStep}：新版 ChatGPT 设置页未显示“密码”入口，需要重新启动当前步骤建立有效重置状态。`,
       'warn',
       { step: visibleStep, stepKey: 'set-gpt-password' }
     );
@@ -4356,12 +4356,12 @@ async function startSetGptPasswordResetFlow(payload = {}) {
 
   const transition = await waitForSetGptPasswordPageState(
     (state) => state.state !== 'unknown' || location.href !== clickedUrl,
-    6000
+    20000
   );
   if (transition.state === 'unknown' && location.href === clickedUrl) {
     const diagnostics = getChatGptSettingsPasswordDiagnostics();
     log(
-      `步骤 ${visibleStep}：密码行入口点击后页面未跳转，将改用 OpenAI 直接设置密码页面。`,
+      `步骤 ${visibleStep}：密码行入口点击后页面未跳转，需要重新启动当前步骤建立有效重置状态。`,
       'warn',
       { step: visibleStep, stepKey: 'set-gpt-password' }
     );

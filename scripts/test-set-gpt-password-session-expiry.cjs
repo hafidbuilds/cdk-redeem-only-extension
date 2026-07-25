@@ -25,6 +25,7 @@ function createSessionExpiryHarness(options = {}) {
     complete: 0,
     resetEmails: [],
     tabUrls: [],
+    updatedUrls: [],
   };
   let resetCalls = 0;
   let passwordSubmitCalls = 0;
@@ -38,7 +39,10 @@ function createSessionExpiryHarness(options = {}) {
             ? 'https://auth.openai.com/error'
             : 'https://chatgpt.com/#settings/Security',
         }),
-        update: async () => ({}),
+        update: async (_tabId, update) => {
+          if (update?.url) calls.updatedUrls.push(update.url);
+          return {};
+        },
       },
     },
     completeNodeFromBackground: async () => { calls.complete += 1; },
@@ -54,6 +58,9 @@ function createSessionExpiryHarness(options = {}) {
         calls.resetEmails.push(message.payload.email);
         if (options.expireDuringPasswordPoll) {
           return { ready: true, alreadyOnNewPasswordPage: true };
+        }
+        if (options.resetEntryUnavailable && resetCalls === 1) {
+          return { ready: false, resetEntryClickFailed: true };
         }
         if (options.alwaysExpire || resetCalls === 1) {
           throw new Error('SET_GPT_PASSWORD_SESSION_EXPIRED::redacted session expired');
@@ -126,7 +133,17 @@ test('auth error URL is probed and restarts step 6 instead of being treated as p
   assert.equal(calls.complete, 1);
 });
 
+test('missing reset entry restarts step 6 without opening the stateless new-password URL', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ resetEntryUnavailable: true });
+  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+  assert.equal(result.gptPasswordSet, true);
+  assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
+  assert.equal(calls.updatedUrls.includes('https://auth.openai.com/reset-password/new-password'), false);
+  assert.equal(calls.complete, 1);
+});
+
 test('unrelated invalid_state text is not classified as a step 6 restart signal', () => {
   assert.equal(isSetGptPasswordSessionExpiredError(new Error('invalid_state')), false);
   assert.equal(isSetGptPasswordSessionExpiredError('SET_GPT_PASSWORD_SESSION_EXPIRED::redacted'), true);
+  assert.equal(isSetGptPasswordSessionExpiredError('SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::redacted'), true);
 });
