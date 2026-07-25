@@ -130,3 +130,27 @@ test('exhausted session frame recovery stops instead of registering another emai
   assert.equal(action.shouldStop, true);
   assert.equal(action.forceFreshTabsNextRun, false);
 });
+
+test('uncertain password submit always stops and preserves the current signup session', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const error = new Error('password transition still unknown');
+  error.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+  error.retryable = false;
+  error.preserveSignupSession = true;
+  const result = policy.evaluateAttemptFailure({
+    error,
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    maxAttemptsForRound: 4,
+  });
+  const action = policy.selectFailureAction(result);
+
+  assert.equal(result.blockedBySignupPasswordSubmitUncertain, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(action.code, 'fail_signup_password_submit_uncertain');
+  assert.equal(action.shouldStop, true);
+  assert.equal(action.forceFreshTabsNextRun, false);
+});

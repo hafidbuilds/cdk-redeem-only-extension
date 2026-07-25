@@ -67,7 +67,98 @@
     }
 
     function getSignupPasswordFieldErrorText() {
-      return getVisibleFieldErrorText();
+      const passwordInput = getSignupPasswordInput();
+      const normalizeText = (element) => String(element?.textContent || element?.getAttribute?.('data-error-message') || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const findVisibleText = (elements) => Array.from(elements || []).find((element) => (
+        isVisibleElement(element) && Boolean(normalizeText(element))
+      ));
+      const referencedIds = [];
+
+      if (passwordInput) {
+        const errorMessageId = String(passwordInput.getAttribute?.('aria-errormessage') || '').trim();
+        if (errorMessageId) referencedIds.push(errorMessageId);
+
+        if (String(passwordInput.getAttribute?.('aria-invalid') || '').toLowerCase() === 'true') {
+          const describedByIds = String(passwordInput.getAttribute?.('aria-describedby') || '').split(/\s+/);
+          referencedIds.push(...describedByIds.filter((id) => /error|invalid|message|alert/i.test(id)));
+        }
+      }
+
+      for (const id of referencedIds.filter(Boolean)) {
+        const referenced = documentRef.getElementById?.(id);
+        if (referenced && isVisibleElement(referenced) && normalizeText(referenced)) {
+          return normalizeText(referenced);
+        }
+      }
+
+      const explicitError = findVisibleText(documentRef.querySelectorAll([
+        '.react-aria-FieldError',
+        '[slot="errorMessage"]',
+        '[data-error-message]',
+        '[data-testid*="error" i]',
+        '[role="alert"]',
+        '[aria-live="assertive"]',
+        '[data-invalid="true"] + *',
+        '[aria-invalid="true"] + *',
+      ].join(', ')));
+      return explicitError ? normalizeText(explicitError) : '';
+    }
+
+    function submitSignupPasswordButton(button) {
+      if (!button) {
+        return { method: 'none' };
+      }
+
+      const form = button.form || button.closest?.('form');
+      if (form && typeof form.requestSubmit === 'function') {
+        try {
+          form.requestSubmit(button);
+          return { method: 'requestSubmit' };
+        } catch {
+          // A stale React button can lose its form association during hydration.
+        }
+      }
+
+      simulateClick(button);
+      return { method: 'click' };
+    }
+
+    function getSignupPasswordRecoveryDecision(options = {}) {
+      const elapsedMs = Math.max(0, Number(options.elapsedMs) || 0);
+      const initialObservationMs = Math.max(0, Number(options.initialObservationMs ?? 10000) || 0);
+      const recoverySubmitCount = Math.max(0, Math.floor(Number(options.recoverySubmitCount) || 0));
+      const maxRecoverySubmits = Math.max(0, Math.floor(Number(options.maxRecoverySubmits ?? 1) || 0));
+      if (elapsedMs < initialObservationMs) return 'observe';
+      if (recoverySubmitCount >= maxRecoverySubmits) return 'observe';
+      return options.submitReady ? 'resubmit' : 'observe';
+    }
+
+    function isSignupPasswordSubmitButtonReady(button) {
+      if (!button || !isActionEnabled(button)) return false;
+      if (String(button.getAttribute?.('aria-busy') || '').trim().toLowerCase() === 'true') return false;
+
+      const pendingAttr = [
+        button.getAttribute?.('data-loading'),
+        button.getAttribute?.('data-pending'),
+        button.getAttribute?.('data-submitting'),
+        button.getAttribute?.('data-state'),
+      ]
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter(Boolean)
+        .join(' ');
+      if (/\b(?:true|loading|pending|submitting|busy)\b/.test(pendingAttr)) return false;
+
+      let style = null;
+      try {
+        style = windowRef?.getComputedStyle?.(button) || null;
+      } catch {
+        style = null;
+      }
+      if (style?.pointerEvents === 'none') return false;
+      const opacity = Number.parseFloat(style?.opacity || '');
+      return !Number.isFinite(opacity) || opacity >= 0.8;
     }
 
     async function ensureSignupPasswordPageReady(timeout = 20000) {
@@ -152,7 +243,7 @@
         }
         await humanPause(500, 1300);
         await performOperationWithDelay({ stepKey: 'fill-password', kind: 'submit', label: submitLabel }, async () => {
-          simulateClick(submitBtn);
+          submitSignupPasswordButton(submitBtn);
         });
         log(`${contextLabel}：表单已提交`);
       };
@@ -197,8 +288,13 @@
       getSignupPasswordInput,
       getSignupPasswordSubmitButton,
       getSignupPasswordFieldErrorText,
+      getSignupPasswordRecoveryDecision,
+      isSignupPasswordSubmitButtonReady,
+      submitSignupPasswordButton,
     };
   }
 
-  root.MultiPageSignupPasswordPage = { createSignupPasswordPage };
-})(typeof self !== 'undefined' ? self : window);
+  const api = { createSignupPasswordPage };
+  root.MultiPageSignupPasswordPage = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof self !== 'undefined' ? self : globalThis);

@@ -297,16 +297,21 @@
               prepareSource: 'step3_finalize',
               prepareLogLabel: '步骤 3 收尾',
               timeoutMs: 75000,
+              maxPasswordRecoverySubmits: attempt === 1 ? 1 : 0,
             },
           }, {
-            timeoutMs: 80000,
-            responseTimeoutMs: 75000,
+            timeoutMs: 90000,
+            responseTimeoutMs: 82000,
             retryDelayMs: 700,
             logMessage: `步骤 ${step}：密码已提交，正在确认是否进入下一页面，必要时自动恢复重试页...`,
           });
 
           if (result?.error) {
-            throw new Error(result.error);
+            const contentError = new Error(result.error);
+            if (result.errorCode) contentError.code = String(result.errorCode);
+            if (typeof result.retryable === 'boolean') contentError.retryable = result.retryable;
+            if (result.preserveSignupSession === true) contentError.preserveSignupSession = true;
+            throw contentError;
           }
 
           return result || {};

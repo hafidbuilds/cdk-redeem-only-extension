@@ -20,6 +20,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 安全配置导入后账号和 Free/Plus 分组为空 | 安全导出保存脱敏账号明细，导入后同步统一账号模型 | [安全配置导入恢复](2026-07-26-safe-settings-import-recovery.md) |
 | 2026-07-26 | ChatGPT 登录弹窗 Continue 稍晚启用时被误报不可点击 | 填写邮箱后重新查询按钮并等待启用 | [ChatGPT Continue 按钮恢复](2026-07-26-chatgpt-modal-continue-button.md) |
 | 2026-07-26 | 步骤 6 读取 Session/AT 时主 Frame 被替换，随后错误换邮箱重试 | 原地重新定位标签页；恢复耗尽则停止，禁止换邮箱重注册 | [ChatGPT Session 主 Frame 切换恢复](2026-07-26-chatgpt-session-frame-recovery.md) |
+| 2026-07-26 | 注册密码提交后快速重复点击并在远端结果未知时换邮箱重试 | 先观察、最多补交一次；未知结果保留页面和邮箱后停机 | [注册密码提交未知结果保护](2026-07-26-signup-password-transition-timeout.md) |
 
 ## 新档案要求
 

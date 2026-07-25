@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { createAutoRunSessionRunner } = require('../background/auto-run/session-runner.js');
 const { createAutoRunSummaryBuilder } = require('../background/auto-run/summary-builder.js');
+const { createAutoRunRetryPolicy } = require('../background/auto-run/retry-policy.js');
 
 test('auto-run resume keeps retry attempt on the original round when next round has no history', async () => {
   const capturedRuns = [];
@@ -303,6 +304,97 @@ test('auto-run stops immediately when the custom email pool is exhausted', async
   assert.equal(attempts, 1);
   assert.equal(phases.includes('stopped'), true);
   assert.equal(logs.some((message) => message.includes('没有可用邮箱')), true);
+});
+
+test('auto-run does not restart or select another email after an uncertain password submit', async () => {
+  const logs = [];
+  const phases = [];
+  let attempts = 0;
+  let runtimeState = {
+    autoRunActive: false,
+    autoRunCurrentRun: 0,
+    autoRunTotalRuns: 0,
+    autoRunAttemptRun: 0,
+    autoRunSessionId: 0,
+  };
+  let appState = {
+    autoRunFallbackThreadIntervalMinutes: 0,
+    emailGenerator: 'custom-pool',
+    selectedCustomEmailPoolEmail: 'current@example.com',
+    customEmailPool: ['current@example.com', 'next@example.com'],
+  };
+  const summaryBuilder = createAutoRunSummaryBuilder({ addLog: async (message) => logs.push(message) });
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const runner = createAutoRunSessionRunner({
+    ...summaryBuilder,
+    addLog: async (message) => logs.push(message),
+    appendAccountRunRecord: async () => ({}),
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    AUTO_RUN_RETRY_DELAY_MS: 1,
+    AUTO_RUN_TIMER_KIND_BEFORE_RETRY: 'before_retry',
+    AUTO_RUN_TIMER_KIND_BETWEEN_ROUNDS: 'between_rounds',
+    broadcastAutoRunStatus: async (phase) => phases.push(phase),
+    broadcastStopToContentScripts: async () => {},
+    cancelPendingCommands: () => {},
+    clearStopRequest: () => {},
+    createAutoRunRoundLogSnapshotMarker: () => ({}),
+    createAutoRunSessionId: () => 654,
+    ensureHotmailMailboxReadyForAutoRunRound: null,
+    evaluateAttemptFailure: policy.evaluateAttemptFailure,
+    getAutoRunRoundSnapshotReason: () => '',
+    getAutoRunRoundSnapshotStatus: () => 'failed',
+    getAutoRunStatusPayload: (phase, payload) => ({
+      autoRunPhase: phase,
+      autoRunCurrentRun: payload.currentRun,
+      autoRunTotalRuns: payload.totalRuns,
+      autoRunAttemptRun: payload.attemptRun,
+      autoRunSessionId: payload.sessionId,
+    }),
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getFirstUnfinishedNodeId: () => null,
+    getMaxAttemptsForRound: policy.getMaxAttemptsForRound,
+    getPendingAutoRunTimerPlan: () => null,
+    getRunningNodeIds: () => [],
+    getState: async () => appState,
+    getStopRequested: () => false,
+    hasSavedNodeProgress: () => false,
+    isStopError: () => false,
+    launchAutoRunTimerPlan: async () => false,
+    logAutoRunFinalSummary: async () => {},
+    normalizeAutoRunFallbackThreadIntervalMinutes: () => 0,
+    persistAutoRunTimerPlan: async () => {},
+    replayPreviousSuccessfulAutoRunRoundLogSnapshot: async () => {},
+    resetState: async () => {},
+    resolveAutoRunAccountRecordStatus: (status) => status,
+    runAutoSequenceFromNode: async () => {
+      attempts += 1;
+      const error = new Error('SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::unknown remote result');
+      error.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+      error.preserveSignupSession = true;
+      throw error;
+    },
+    runtime: {
+      get: () => runtimeState,
+      set: (patch) => { runtimeState = { ...runtimeState, ...patch }; },
+    },
+    saveAutoRunRoundLogSnapshot: async () => null,
+    selectFailureAction: policy.selectFailureAction,
+    setState: async (patch) => { appState = { ...appState, ...patch }; },
+    sleepWithStop: async () => {},
+    throwIfAutoRunSessionStopped: () => {},
+    waitForRunningNodesToFinish: async () => appState,
+    chrome: { runtime: { sendMessage: async () => {} } },
+  });
+
+  await runner.autoRunLoop(3, { autoRunSkipFailures: true });
+
+  assert.equal(attempts, 1);
+  assert.equal(phases.includes('stopped'), true);
+  assert.equal(appState.selectedCustomEmailPoolEmail, 'current@example.com');
+  assert.equal(logs.some((message) => message.includes('不会清理 Cookie、切换邮箱或重新注册')), true);
 });
 
 test('auto-run parks cleanly when a workflow node schedules a timer resume', async () => {

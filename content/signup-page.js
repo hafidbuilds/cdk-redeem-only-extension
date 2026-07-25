@@ -83,20 +83,20 @@ if (document.documentElement.getAttribute(SIGNUP_PAGE_LISTENER_SENTINEL) !== '1'
           if (reportedStep) {
             log(`步骤 ${reportedStep || 8}：已被用户停止。`, 'warn');
           }
-          sendResponse({ stopped: true, error: err.message });
+          sendResponse({ stopped: true, ...serializeContentScriptError(err) });
           return;
         }
 
         if (message.type === 'STEP8_FIND_AND_CLICK') {
           log(err.message, 'error', { step: reportedStep || 9, stepKey: 'confirm-oauth' });
-          sendResponse({ error: err.message });
+          sendResponse(serializeContentScriptError(err));
           return;
         }
 
         if (reportedStep) {
           reportError(reportedNodeId || reportedStep, err.message);
         }
-        sendResponse({ error: err.message });
+        sendResponse(serializeContentScriptError(err));
       });
       return true;
     }
@@ -226,6 +226,15 @@ const CONTINUE_ACTION_PATTERN = SIGNUP_PAGE_DETECTOR_CONSTANTS.CONTINUE_ACTION_P
 const ADD_EMAIL_PAGE_PATTERN = SIGNUP_PAGE_DETECTOR_CONSTANTS.ADD_EMAIL_PAGE_PATTERN;
 const STEP6_PASSWORD_SUBMIT_TRANSITION_TIMEOUT_MS = 30000;
 const STEP4_VERIFICATION_INPUT_WAIT_MS = 30000;
+const SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+
+function serializeContentScriptError(error) {
+  const result = { error: String(error?.message || error || '未知错误') };
+  if (error?.code) result.errorCode = String(error.code);
+  if (typeof error?.retryable === 'boolean') result.retryable = error.retryable;
+  if (error?.preserveSignupSession === true) result.preserveSignupSession = true;
+  return result;
+}
 
 function getSignupDomUtils() {
   const rootScope = typeof self !== 'undefined' ? self : window;
@@ -3389,63 +3398,27 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
     Math.floor(Number(payload?.timeoutMs ?? timeout) || timeout)
   );
   const start = Date.now();
-  let recoveryRound = 0;
-  const maxRecoveryRounds = 3;
+  const initialPasswordObservationMs = prepareSource === 'step3_finalize' ? 10000 : 8000;
+  const maxPasswordRecoverySubmits = Math.max(
+    0,
+    Math.min(1, Math.floor(Number(payload?.maxPasswordRecoverySubmits ?? 1) || 0))
+  );
+  const maxAuthRetryRecoveries = 3;
+  let passwordRecoverySubmitCount = 0;
+  let authRetryRecoveryCount = 0;
   let passwordPageDiagnosticsLogged = false;
-  const isPasswordSubmitButtonReadyForRetry = (button) => {
-    if (!button || !isActionEnabled(button)) {
-      return false;
-    }
 
-    const ariaBusy = String(button.getAttribute?.('aria-busy') || '').trim().toLowerCase();
-    if (ariaBusy === 'true') {
-      return false;
-    }
+  log(`${prepareLogLabel}：密码提交后先观察页面状态，至少等待 ${Math.round(initialPasswordObservationMs / 1000)} 秒再决定是否补交。`, 'info');
 
-    const pendingAttr = [
-      button.getAttribute?.('data-loading'),
-      button.getAttribute?.('data-pending'),
-      button.getAttribute?.('data-submitting'),
-      button.getAttribute?.('data-state'),
-    ]
-      .map((value) => String(value || '').trim().toLowerCase())
-      .filter(Boolean)
-      .join(' ');
-    if (/\b(?:true|loading|pending|submitting|busy)\b/.test(pendingAttr)) {
-      return false;
-    }
-
-    let style = null;
-    try {
-      style = typeof window !== 'undefined' && window.getComputedStyle
-        ? window.getComputedStyle(button)
-        : null;
-    } catch {
-      style = null;
-    }
-
-    if (style?.pointerEvents === 'none') {
-      return false;
-    }
-
-    const opacity = Number.parseFloat(style?.opacity || '');
-    if (Number.isFinite(opacity) && opacity < 0.8) {
-      return false;
-    }
-
-    return true;
-  };
-
-  while (Date.now() - start < effectiveTimeout && recoveryRound < maxRecoveryRounds) {
+  while (Date.now() - start < effectiveTimeout) {
     throwIfStopped();
 
-    const roundNo = recoveryRound + 1;
-    log(`${prepareLogLabel}：正在等待页面进入验证码阶段（第 ${roundNo}/${maxRecoveryRounds} 轮，短轮询）...`, 'info');
-    const snapshot = await waitForSignupVerificationTransition(2500);
+    const remainingMs = Math.max(1, effectiveTimeout - (Date.now() - start));
+    const snapshot = await waitForSignupVerificationTransition(Math.min(2500, remainingMs));
 
     if (snapshot.state === 'step5') {
       log(`${prepareLogLabel}：页面已进入验证码后的下一阶段，本步骤按已完成处理。`, 'ok');
-      return { ready: true, alreadyVerified: true, retried: recoveryRound, prepareSource };
+      return { ready: true, alreadyVerified: true, retried: passwordRecoverySubmitCount, prepareSource };
     }
 
     if (snapshot.state === 'logged_in_home') {
@@ -3454,7 +3427,7 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
         ready: true,
         alreadyVerified: true,
         skipProfileStep: true,
-        retried: recoveryRound,
+        retried: passwordRecoverySubmitCount,
         prepareSource,
       };
     }
@@ -3465,7 +3438,7 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
         ready: true,
         alreadyVerified: true,
         passkeyEnrollmentRequired: true,
-        retried: recoveryRound,
+        retried: passwordRecoverySubmitCount,
         prepareSource,
       };
     }
@@ -3473,8 +3446,8 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
     if (snapshot.state === 'verification') {
       await waitForDocumentLoadComplete(15000, `${prepareLogLabel}：注册验证码页面`);
       await waitForVerificationCodeTarget(STEP4_VERIFICATION_INPUT_WAIT_MS);
-      log(`${prepareLogLabel}：验证码页面已完成加载并就绪${recoveryRound ? `（期间自动恢复 ${recoveryRound} 次）` : ''}。`, 'ok');
-      return { ready: true, retried: recoveryRound, prepareSource };
+      log(`${prepareLogLabel}：验证码页面已完成加载并就绪${passwordRecoverySubmitCount ? `（期间补交密码 ${passwordRecoverySubmitCount} 次）` : ''}。`, 'ok');
+      return { ready: true, retried: passwordRecoverySubmitCount, prepareSource };
     }
 
     if (snapshot.state === 'email_exists') {
@@ -3492,10 +3465,14 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
       if (snapshot.userAlreadyExistsBlocked) {
         throw createSignupUserAlreadyExistsError();
       }
-      recoveryRound += 1;
+      if (authRetryRecoveryCount >= maxAuthRetryRecoveries) {
+        await sleep(Math.min(1000, remainingMs));
+        continue;
+      }
+      authRetryRecoveryCount += 1;
       await recoverCurrentAuthRetryPage({
         flow: 'signup',
-        logLabel: `${prepareLogLabel}：检测到注册认证重试页，正在点击“重试”恢复（第 ${recoveryRound}/${maxRecoveryRounds} 次）`,
+        logLabel: `${prepareLogLabel}：检测到注册认证重试页，正在点击“重试”恢复（第 ${authRetryRecoveryCount}/${maxAuthRetryRecoveries} 次）`,
         step: 4,
         timeoutMs: 12000,
       });
@@ -3504,8 +3481,8 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
 
     if (snapshot.state === 'password') {
       if (snapshot.passwordErrorText) {
-        log(`${prepareLogLabel}：检测到密码页报错“${snapshot.passwordErrorText}”，当前轮将回到步骤 1 重新开始。`, 'warn');
-        throw new Error(`步骤 3：密码页返回错误，当前轮需要重新开始。页面提示：${snapshot.passwordErrorText}`);
+        log(`${prepareLogLabel}：检测到明确的密码页报错“${snapshot.passwordErrorText}”，停止等待且不会重复提交。`, 'warn');
+        throw new Error(`步骤 3：密码页返回明确错误。页面提示：${snapshot.passwordErrorText}`);
       }
       if (!passwordPageDiagnosticsLogged) {
         passwordPageDiagnosticsLogged = true;
@@ -3523,25 +3500,41 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
         });
       }
 
-      if (snapshot.submitButton && isPasswordSubmitButtonReadyForRetry(snapshot.submitButton)) {
-        recoveryRound += 1;
-        log(`${prepareLogLabel}：页面仍停留在密码页，正在重新点击“继续”（第 ${recoveryRound}/${maxRecoveryRounds} 次）...`, 'warn');
+      const passwordPageHelpers = getSignupPasswordPageHelpers();
+      const submitReady = passwordPageHelpers.isSignupPasswordSubmitButtonReady?.(snapshot.submitButton) === true;
+      const recoveryDecision = passwordPageHelpers.getSignupPasswordRecoveryDecision?.({
+        elapsedMs: Date.now() - start,
+        initialObservationMs: initialPasswordObservationMs,
+        recoverySubmitCount: passwordRecoverySubmitCount,
+        maxRecoverySubmits: maxPasswordRecoverySubmits,
+        submitReady,
+      }) || 'observe';
+
+      if (recoveryDecision === 'resubmit') {
+        passwordRecoverySubmitCount += 1;
+        log(`${prepareLogLabel}：观察期结束后仍停留在密码页，将只补交这 1 次“继续”；随后仅观察到总超时，不再重复提交。`, 'warn');
         await humanPause(350, 900);
         await performOperationWithDelay({ stepKey: 'fill-password', kind: 'submit', label: 'retry-submit-signup-password' }, async () => {
-          simulateClick(snapshot.submitButton);
+          passwordPageHelpers.submitSignupPasswordButton?.(snapshot.submitButton)
+            || simulateClick(snapshot.submitButton);
         });
         await sleep(1200);
         continue;
       }
 
-      log(`${prepareLogLabel}：页面仍停留在密码页，但“继续”按钮暂不可用，准备继续等待（${recoveryRound}/${maxRecoveryRounds}）...`, 'warn');
       continue;
     }
 
-    log(`${prepareLogLabel}：页面仍在切换中，准备继续等待（${recoveryRound}/${maxRecoveryRounds}）...`, 'warn');
+    await sleep(Math.min(200, remainingMs));
   }
 
-  throw new Error(`等待注册验证码页面就绪超时或自动恢复失败（已尝试 ${recoveryRound}/${maxRecoveryRounds} 轮）。URL: ${location.href}`);
+  const uncertainError = new Error(
+    `${SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE}::密码提交后等待 ${Math.round(effectiveTimeout / 1000)} 秒仍无法确认是否进入验证码页；远端账号创建状态未知，请保持当前认证页面打开并从密码/验证码步骤人工继续。URL: ${location.href}`
+  );
+  uncertainError.code = SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE;
+  uncertainError.retryable = false;
+  uncertainError.preserveSignupSession = true;
+  throw uncertainError;
 }
 
 

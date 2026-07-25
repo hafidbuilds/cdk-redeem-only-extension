@@ -122,6 +122,11 @@
         || /CHATGPT_SESSION_FRAME_UNAVAILABLE|读取 SESSION\/AT 时持续切换|重新定位标签页\s*\d+\s*次仍未恢复/i.test(message);
     }
 
+    function isSignupPasswordSubmitUncertainFailure(error) {
+      const message = String(getErrorMessage(error) || error?.message || error || '');
+      return error?.code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN' || /SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::/i.test(message);
+    }
+
     function getMaxAttemptsForRound(options = {}) {
       const attemptRun = Math.max(1, Math.floor(Number(options.attemptRun) || 1));
       const maxRetriesPerRound = Math.max(0, Math.floor(Number(deps.AUTO_RUN_MAX_RETRIES_PER_ROUND) || 0));
@@ -147,6 +152,7 @@
 
       const blockedByUpiAccountIneligible = isUpiAccountIneligibleFailure(error);
       const blockedBySessionFrameUnavailable = isSessionFrameUnavailableFailure(error);
+      const blockedBySignupPasswordSubmitUncertain = isSignupPasswordSubmitUncertainFailure(error);
       const blockedByPlusNonFreeTrial = !blockedByUpiAccountIneligible
         && typeof deps.isChatgptSessionReaderNonFreeTrialFailure === 'function'
         && deps.isChatgptSessionReaderNonFreeTrialFailure(error);
@@ -188,6 +194,7 @@
         && attemptRun < maxRetryAttempts;
       const canRetry = !blockedByUpiAccountIneligible
         && !blockedBySessionFrameUnavailable
+        && !blockedBySignupPasswordSubmitUncertain
         && !blockedByCustomEmailPoolEmpty
         && !blockedByPlusNonFreeTrial
         && !blockedByUpiRedeemBackendFailure
@@ -218,6 +225,7 @@
         blockedByPlusNonFreeTrial,
         blockedBySignupUserAlreadyExists,
         blockedBySessionFrameUnavailable,
+        blockedBySignupPasswordSubmitUncertain,
         blockedByStep4Route405,
         blockedByUpiAccountIneligible,
         blockedByUpiRedeemBackendFailure,
@@ -234,22 +242,10 @@
     }
 
     function selectFailureAction(result = {}) {
-      if (result.blockedByCustomEmailPoolEmpty) {
-        return {
-          code: 'fail_custom_email_pool_empty',
-          forceFreshTabsNextRun: false,
-          shouldFailRound: true,
-          shouldStop: true,
-        };
-      }
-      if (result.blockedBySessionFrameUnavailable) {
-        return {
-          code: 'fail_session_frame_unavailable',
-          forceFreshTabsNextRun: false,
-          shouldFailRound: true,
-          shouldStop: true,
-        };
-      }
+      const terminalStop = (code) => ({ code, forceFreshTabsNextRun: false, shouldFailRound: true, shouldStop: true });
+      if (result.blockedByCustomEmailPoolEmpty) return terminalStop('fail_custom_email_pool_empty');
+      if (result.blockedBySessionFrameUnavailable) return terminalStop('fail_session_frame_unavailable');
+      if (result.blockedBySignupPasswordSubmitUncertain) return terminalStop('fail_signup_password_submit_uncertain');
       if (result.retryablePlusNonFreeTrial) {
         return {
           code: 'retry_plus_non_free_trial',

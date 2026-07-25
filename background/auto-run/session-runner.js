@@ -589,14 +589,14 @@
               break;
             }
 
-            if (failureAction.code === 'fail_session_frame_unavailable') {
+            if (['fail_session_frame_unavailable', 'fail_signup_password_submit_uncertain'].includes(failureAction.code)) {
+              const passwordSubmitUnknown = failureAction.code === 'fail_signup_password_submit_uncertain';
               await markRoundFailed(reason, error);
-              cancelPendingCommands('ChatGPT 页面切换导致 SESSION/AT 读取未完成。');
+              cancelPendingCommands(passwordSubmitUnknown ? '密码提交结果未知，已保留当前注册现场并停止自动运行。' : 'ChatGPT 页面切换导致 SESSION/AT 读取未完成。');
               await broadcastStopToContentScripts();
-              await addLog(
-                `第 ${targetRun}/${totalRuns} 轮账号创建已完成，但 SESSION/AT 读取时页面主 Frame 持续切换；自动运行已停止，不会换邮箱重新注册。请保持当前 ChatGPT 页面打开，重新执行步骤 6 或继续当前进度。`,
-                'error'
-              );
+              await addLog(passwordSubmitUnknown
+                ? `第 ${targetRun}/${totalRuns} 轮密码提交结果仍未知，自动运行已停止。请保持当前认证页面打开，并从密码或验证码步骤继续；系统不会清理 Cookie、切换邮箱或重新注册。`
+                : `第 ${targetRun}/${totalRuns} 轮账号创建已完成，但 SESSION/AT 读取时页面主 Frame 持续切换；自动运行已停止，不会换邮箱重新注册。请保持当前 ChatGPT 页面打开，重新执行步骤 6 或继续当前进度。`, 'error');
               stoppedEarly = true;
               await broadcastAutoRunStatus('stopped', {
                 currentRun: targetRun,
