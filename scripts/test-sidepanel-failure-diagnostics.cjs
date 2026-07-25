@@ -20,14 +20,41 @@ test('failure diagnostics keeps one hundred log entries around the latest failur
   assert.equal(selected.logs.at(-1).timestamp, 251);
 });
 
+test('failure diagnostics does not let an informational timeout setting replace a real error', () => {
+  const logs = [
+    { timestamp: 1, level: 'error', message: '认证页 内容脚本 20 秒内未响应，请刷新页面后重试。' },
+    { timestamp: 2, level: 'info', message: '自动运行：节点 fill-profile 已发起，正在等待完成信号（超时 150 秒）。' },
+    { timestamp: 3, level: 'ok', message: '步骤 5：资料提交成功。' },
+  ];
+
+  const selected = diagnostics.selectFailureLogWindow(logs);
+
+  assert.equal(selected.failureIndex, 0);
+  assert.equal(selected.failure.message, logs[0].message);
+});
+
+test('failure diagnostics accepts explicit timeout outcomes but ignores timeout configuration text', () => {
+  const ignored = diagnostics.selectFailureLogWindow([
+    { level: 'info', message: '正在等待完成信号（超时 150 秒）。' },
+  ]);
+  const selected = diagnostics.selectFailureLogWindow([
+    { level: 'warn', message: '等待进入密码页超时。URL: https://auth.openai.com/' },
+  ]);
+
+  assert.equal(ignored.failureFound, false);
+  assert.equal(selected.failureFound, true);
+  assert.equal(selected.failureIndex, 0);
+});
+
 test('failure diagnostics redacts credentials, verification codes, emails, and URL parameters', () => {
   const sanitized = diagnostics.sanitizeDiagnosticText(
-    '邮箱 user@example.com 验证码：123456 password=hunter2 access_token=abcdef '
+    '姓名已填写：Mary Sanchez，邮箱 user@example.com 验证码：123456 password=hunter2 access_token=abcdef '
       + 'Bearer secret-token-123456789 https://auth.example.com/callback?code=oauth-code&state=session-state'
   );
 
-  assert.doesNotMatch(sanitized, /user@example\.com|123456|hunter2|abcdef|secret-token|oauth-code|session-state/);
+  assert.doesNotMatch(sanitized, /Mary Sanchez|user@example\.com|123456|hunter2|abcdef|secret-token|oauth-code|session-state/);
   assert.match(sanitized, /u\*\*\*@example\.com/);
+  assert.match(sanitized, /NAME_REDACTED/);
   assert.match(sanitized, /REDACTED/);
 });
 

@@ -3,7 +3,8 @@
   root.SidepanelFailureDiagnostics = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function createFailureDiagnosticsModule(root) {
-  const FAILURE_PATTERN = /\b(?:error|failed|failure|exception|timeout)\b|失败|错误|异常|超时/i;
+  const FAILURE_MESSAGE_PATTERN = /\b(?:failed|failure|exception)\b|(?:^|[\s:：])(?:失败|错误|异常)(?=[：:，,。！!\s]|$)/i;
+  const TIMEOUT_OUTCOME_PATTERN = /\b(?:timed\s+out|timeout)(?=\s*(?:[.:!]|$))|超时(?=\s*(?:[：:，,。！!]|URL\b|$))/i;
   const FAILURE_LEVELS = new Set(['error', 'failed', 'failure']);
   const LOG_RADIUS = 100;
 
@@ -17,6 +18,7 @@
         const label = match.match(/^(?:验证码|校验码|verification\s*code|one[- ]time\s*code|otp|code)/i)?.[0] || 'code';
         return `${label} [REDACTED]`;
       })
+      .replace(/((?:已生成)?姓名(?:已填写)?\s*[:：]?\s*)(?:[A-Z][A-Z .'-]{1,80}|[\u3400-\u9fff·]{2,20})(?=\s*(?:[,，。;；]|$))/gi, '$1[NAME_REDACTED]')
       .replace(/\b[A-Za-z0-9._~+\/-]{20,}\b/g, '[TOKEN_REDACTED]')
       .replace(/\b\d{4,8}\b/g, '[NUMBER_REDACTED]')
       .replace(/\b([A-Z0-9._%+-])[A-Z0-9._%+-]*@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi, '$1***@$2');
@@ -46,9 +48,23 @@
     return sanitizePlainText(withSafeUrls);
   }
 
-  function isFailureLog(entry = {}) {
-    const level = String(entry?.level || '').trim().toLowerCase();
-    return FAILURE_LEVELS.has(level) || FAILURE_PATTERN.test(String(entry?.message || ''));
+  function isFailureLevel(entry = {}) {
+    return FAILURE_LEVELS.has(String(entry?.level || '').trim().toLowerCase());
+  }
+
+  function isExplicitFailureMessage(entry = {}) {
+    const message = String(entry?.message || '');
+    return FAILURE_MESSAGE_PATTERN.test(message) || TIMEOUT_OUTCOME_PATTERN.test(message);
+  }
+
+  function findLatestFailureIndex(source = []) {
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      if (isFailureLevel(source[index])) return index;
+    }
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      if (isExplicitFailureMessage(source[index])) return index;
+    }
+    return -1;
   }
 
   function normalizeLogEntry(entry = {}) {
@@ -65,13 +81,7 @@
   function selectFailureLogWindow(logs = [], radius = LOG_RADIUS) {
     const source = Array.isArray(logs) ? logs : [];
     const safeRadius = Math.max(0, Math.floor(Number(radius) || 0));
-    let failureIndex = -1;
-    for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (isFailureLog(source[index])) {
-        failureIndex = index;
-        break;
-      }
-    }
+    const failureIndex = findLatestFailureIndex(source);
     const anchor = failureIndex >= 0 ? failureIndex : Math.max(0, source.length - 1);
     const start = source.length ? Math.max(0, anchor - safeRadius) : 0;
     const end = source.length ? Math.min(source.length, anchor + safeRadius + 1) : 0;
