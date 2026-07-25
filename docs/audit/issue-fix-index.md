@@ -21,6 +21,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | ChatGPT 登录弹窗 Continue 稍晚启用时被误报不可点击 | 填写邮箱后重新查询按钮并等待启用 | [ChatGPT Continue 按钮恢复](2026-07-26-chatgpt-modal-continue-button.md) |
 | 2026-07-26 | 步骤 6 读取 Session/AT 时主 Frame 被替换，随后错误换邮箱重试 | 原地重新定位标签页；恢复耗尽则停止，禁止换邮箱重注册 | [ChatGPT Session 主 Frame 切换恢复](2026-07-26-chatgpt-session-frame-recovery.md) |
 | 2026-07-26 | 注册密码提交后快速重复点击并在远端结果未知时换邮箱重试 | 先观察、最多补交一次；未知结果保留页面和邮箱后停机 | [注册密码提交未知结果保护](2026-07-26-signup-password-transition-timeout.md) |
+| 2026-07-26 | 步骤 4 后台 30 秒响应超时早于验证码页真实就绪，随后清 Cookie 重开注册 | 对齐 75/95/105 秒窗口；通信耗尽时保留验证码页并禁止内部重开 | [步骤 4 内容脚本响应超时](2026-07-26-step4-content-response-timeout.md) |
 
 ## 新档案要求
 

@@ -450,64 +450,32 @@
           password: signupPassword,
           prepareSource: 'step4_execute',
           prepareLogLabel: '步骤 4 执行',
+          timeoutMs: 75000,
+          maxPasswordRecoverySubmits: 0,
         },
       };
-      const prepareTimeoutMs = 30000;
-      const prepareResponseTimeoutMs = 30000;
-      const prepareStartAt = Date.now();
+      const prepareTimeoutMs = 105000;
+      const prepareResponseTimeoutMs = 95000;
       let prepareResult = null;
 
-      while (Date.now() - prepareStartAt < prepareTimeoutMs) {
-        throwIfStopped();
-
-        try {
-          prepareResult = typeof sendToContentScript === 'function'
-            ? await sendToContentScript('signup-page', prepareRequest, {
-              responseTimeoutMs: prepareResponseTimeoutMs,
-            })
-            : await sendToContentScriptResilient('signup-page', prepareRequest, {
-              timeoutMs: Math.max(1000, prepareTimeoutMs - (Date.now() - prepareStartAt)),
-              responseTimeoutMs: prepareResponseTimeoutMs,
-              retryDelayMs: 700,
-              logMessage: '步骤 4：认证页正在切换，等待页面重新就绪后继续检测...',
-            });
-          break;
-        } catch (error) {
-          if (!isRetryableContentScriptTransportError(error)) {
-            throw error;
-          }
-
-          const remainingMs = Math.max(0, prepareTimeoutMs - (Date.now() - prepareStartAt));
-          if (remainingMs <= 0) {
-            throw error;
-          }
-
-          if (await reloadSignupAuthHttpErrorPage(signupTabId, error?.message || error)) {
-            continue;
-          }
-
-          const recoverResult = await sendToContentScriptResilient('signup-page', {
-            type: 'RECOVER_AUTH_RETRY_PAGE',
-            step: 4,
-            source: 'background',
-            payload: {
-              flow: 'signup',
-              step: 4,
-              timeoutMs: Math.min(12000, remainingMs),
-              maxClickAttempts: 2,
-              logLabel: '步骤 4：检测到注册认证重试页，正在点击“重试”恢复',
-            },
-          }, {
-            timeoutMs: Math.min(12000, remainingMs),
-            responseTimeoutMs: Math.min(12000, remainingMs),
+      try {
+        prepareResult = typeof sendToContentScriptResilient === 'function'
+          ? await sendToContentScriptResilient('signup-page', prepareRequest, {
+            timeoutMs: prepareTimeoutMs,
+            responseTimeoutMs: prepareResponseTimeoutMs,
             retryDelayMs: 700,
             logMessage: '步骤 4：认证页正在切换，等待页面重新就绪后继续检测...',
+          })
+          : await sendToContentScript('signup-page', prepareRequest, {
+            responseTimeoutMs: prepareResponseTimeoutMs,
           });
-
-          if (recoverResult?.error) {
-            throw new Error(recoverResult.error);
-          }
-        }
+      } catch (error) {
+        if (!isRetryableContentScriptTransportError(error)) throw error;
+        const uncertainError = new Error(`SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::步骤 4 等待验证码页面就绪期间认证页通信超时；当前注册页面状态未知，请保持页面打开并从验证码步骤继续。原因：${error?.message || error}`);
+        uncertainError.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+        uncertainError.retryable = false;
+        uncertainError.preserveSignupSession = true;
+        throw uncertainError;
       }
 
       if (!prepareResult) {
@@ -515,7 +483,11 @@
       }
 
       if (prepareResult && prepareResult.error) {
-        throw new Error(prepareResult.error);
+        const prepareError = new Error(prepareResult.error);
+        if (prepareResult.errorCode) prepareError.code = String(prepareResult.errorCode);
+        if (typeof prepareResult.retryable === 'boolean') prepareError.retryable = prepareResult.retryable;
+        if (prepareResult.preserveSignupSession === true) prepareError.preserveSignupSession = true;
+        throw prepareError;
       }
       if (prepareResult?.alreadyVerified) {
         await completeNodeFromBackground('fetch-signup-code', prepareResult?.skipProfileStep ? { skipProfileStep: true } : {});

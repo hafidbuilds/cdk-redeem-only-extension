@@ -8818,6 +8818,11 @@ function isSignupVerificationInputMissingFailure(error) {
     && /\/email-verification(?:[/?#]|$)/i.test(message);
 }
 
+function isSignupTransitionUncertainFailure(error) {
+  const message = String(error?.message || error || '');
+  return error?.code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN' || /SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::/i.test(message);
+}
+
 async function parkFetchSignupCodeRestart(error, options = {}) {
   const cooldownMs = Math.max(
     0,
@@ -12265,6 +12270,9 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
       const step = getDisplayStepForNode(nodeId, latestState);
       if (nodeId === 'fetch-signup-code') {
+        if (isSignupTransitionUncertainFailure(err)) {
+          throw err;
+        }
         if (isSignupUserAlreadyExistsFailure(err)) {
           throw err;
         }
