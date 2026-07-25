@@ -47,6 +47,13 @@
       }) || null;
     }
 
+    function isSessionEndedInvalidStatePage() {
+      const text = `${typeof document !== 'undefined' ? document.title || '' : ''} ${typeof getPageTextSnapshot === 'function' ? getPageTextSnapshot() : ''}`;
+      const sessionEndedMatched = /session\s+ended|sign-?in\s+session\s+is\s+no\s+longer\s+valid|登录会话(?:已|已经)?(?:结束|失效|无效)/i.test(text);
+      const invalidStateMatched = /error[_\s-]*code\s*:\s*invalid_state\b/i.test(text);
+      return sessionEndedMatched && invalidStateMatched;
+    }
+
     function getAuthTimeoutErrorPageState(options = {}) {
       const { pathPatterns = [] } = options;
       const pathname = location.pathname || '';
@@ -289,6 +296,7 @@
     return {
       getAuthRetryButton,
       getAuthTimeoutErrorPageState,
+      isSessionEndedInvalidStatePage,
       recoverAuthRetryPage,
     };
   }

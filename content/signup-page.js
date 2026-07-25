@@ -4021,6 +4021,9 @@ function isResetPasswordReuseErrorText(value = '') {
 }
 
 function getSetGptPasswordPageState() {
+  if (authPageRecovery?.isSessionEndedInvalidStatePage?.()) {
+    return { state: 'session_expired_page', url: location.href, errorCode: 'invalid_state' };
+  }
   const resetInputs = getResetPasswordInputs();
   if (isResetPasswordNewPasswordPage()) {
     const successText = getResetPasswordSuccessText();
@@ -4134,6 +4137,7 @@ async function waitForSetGptPasswordInteractiveReady(visibleStep, label, timeout
   while (Date.now() - start < timeout) {
     throwIfStopped();
     snapshot = getSetGptPasswordPageState();
+    if (snapshot.state === 'session_expired_page') throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
     if (snapshot.state === 'auth_retry_page') {
       await recoverSetGptPasswordAuthRetryPage(visibleStep, label);
       continue;
@@ -4315,6 +4319,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
   await waitForDocumentLoadComplete(30000, `步骤 ${visibleStep}：ChatGPT 安全设置页`);
 
   const existingAuthState = getSetGptPasswordPageState();
+  if (existingAuthState.state === 'session_expired_page') throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
   if (
     existingAuthState.state === 'email_verification_page'
     || existingAuthState.state === 'new_password_page'
@@ -4432,6 +4437,7 @@ async function waitForSetGptPasswordCodeSubmitOutcome(visibleStep, timeout = 300
   while (Date.now() - start < timeout) {
     throwIfStopped();
     lastSnapshot = getSetGptPasswordPageState();
+    if (lastSnapshot.state === 'session_expired_page') throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
     if (lastSnapshot.state === 'auth_retry_page') {
       await recoverSetGptPasswordAuthRetryPage(visibleStep, '设置 GPT 密码验证码提交后');
       continue;

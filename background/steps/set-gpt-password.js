@@ -24,6 +24,7 @@
   const PASSWORD_SETUP_RESEND_BUTTON_TIMEOUT_MS = 25000;
   const PASSWORD_SETUP_RESEND_MESSAGE_TIMEOUT_MS = 45000;
   const PASSWORD_SETUP_RESEND_RETRY_DELAY_MS = 1500;
+  const SET_GPT_PASSWORD_SESSION_RESTART_LIMIT = 2;
 
   function normalizeString(value = '') {
     return String(value || '').trim();
@@ -60,6 +61,19 @@
     } catch {
       return /\/reset-password\/new-password(?:[/?#]|$)/i.test(String(url || ''));
     }
+  }
+
+  function isOpenAiAuthUrl(url = '') {
+    try {
+      return ['auth.openai.com', 'auth0.openai.com', 'accounts.openai.com'].includes(new URL(String(url || '')).hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
+
+  function isSetGptPasswordSessionExpiredError(error) {
+    const message = normalizeString(typeof error === 'string' ? error : error?.message || '');
+    return /^SET_GPT_PASSWORD_SESSION_EXPIRED::/i.test(message);
   }
 
   function isLikelyChatGptLoggedInAfterPasswordUrl(url = '') {
@@ -551,7 +565,7 @@
           };
         }
         return {
-          state: url && !isSetGptPasswordNewPasswordUrl(url)
+          state: url && !isSetGptPasswordNewPasswordUrl(url) && !isOpenAiAuthUrl(url)
             ? 'left_new_password_page'
             : 'new_password_unreachable',
           url,
@@ -625,7 +639,7 @@
       }
 
       const currentUrl = normalizeString(recoverResult?.url) || await getCurrentAuthTabUrl(tabId);
-      if (currentUrl && !isSetGptPasswordNewPasswordUrl(currentUrl)) {
+      if (currentUrl && !isSetGptPasswordNewPasswordUrl(currentUrl) && !isOpenAiAuthUrl(currentUrl)) {
         await addStepLog(visibleStep, '设置 GPT 密码：Try again 后已离开新密码页，按密码设置成功继续。', 'success');
         return {
           success: true,
@@ -730,7 +744,7 @@
           url: currentUrl,
         };
       }
-      if (currentUrl && !isSetGptPasswordNewPasswordUrl(currentUrl)) {
+      if (currentUrl && !isSetGptPasswordNewPasswordUrl(currentUrl) && !isOpenAiAuthUrl(currentUrl)) {
         await addStepLog(visibleStep, '设置 GPT 密码：已检测到页面离开新密码页，按密码设置成功继续。', 'success');
         return {
           success: true,
@@ -761,6 +775,9 @@
       }
 
       const pageState = await readSetPasswordPageState(tabId, visibleStep);
+      if (pageState.state === 'session_expired_page') {
+        throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
+      }
       if (isPasswordUpdatedPageState(pageState)) {
         await addStepLog(visibleStep, '设置 GPT 密码：页面状态确认密码已更新成功。', 'success');
         return createPasswordSubmitSuccess(pageState, {
@@ -778,7 +795,7 @@
           url: pageState.url,
         };
       }
-      if (pageState.url && !isSetGptPasswordNewPasswordUrl(pageState.url)) {
+      if (pageState.url && !isSetGptPasswordNewPasswordUrl(pageState.url) && !isOpenAiAuthUrl(pageState.url)) {
         await addStepLog(visibleStep, '设置 GPT 密码：页面状态探测确认已离开新密码页，按密码设置成功继续。', 'success');
         return {
           success: true,
@@ -856,6 +873,9 @@
       if (!currentUrl || isSetGptPasswordNewPasswordUrl(currentUrl)) {
         return null;
       }
+      if (isOpenAiAuthUrl(currentUrl)) {
+        return null;
+      }
       if (isReloadableAuthHttpErrorUrl(currentUrl)) {
         return null;
       }
@@ -922,6 +942,10 @@
           waitForUrlAfterError: false,
         });
         lastState = pageState;
+
+        if (pageState.state === 'session_expired_page') {
+          throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
+        }
 
         const currentTabUrlAfterProbe = await getCurrentAuthTabUrl(tabId).catch(() => '');
         const urlSuccessAfterProbe = await confirmPasswordSubmitSuccessFromUrl(
@@ -1229,7 +1253,7 @@
       };
     }
 
-    async function executeSetGptPassword(state = {}) {
+    async function executeSetGptPasswordAttempt(state = {}) {
       throwIfStopped();
       const initialState = await getMergedState(state);
       const visibleStep = getVisibleStep(initialState);
@@ -1585,6 +1609,30 @@
       return patch;
     }
 
+    async function executeSetGptPassword(state = {}) {
+      const initialIdentity = resolvePasswordAccountIdentity(await getMergedState(state));
+      for (let restartCount = 0; restartCount <= SET_GPT_PASSWORD_SESSION_RESTART_LIMIT; restartCount += 1) {
+        try {
+          return await executeSetGptPasswordAttempt(state);
+        } catch (error) {
+          if (!isSetGptPasswordSessionExpiredError(error) || restartCount >= SET_GPT_PASSWORD_SESSION_RESTART_LIMIT) {
+            throw error;
+          }
+          const latestState = typeof getState === 'function' ? await getState().catch(() => ({})) : {};
+          const latestIdentity = resolvePasswordAccountIdentity({ ...(state || {}), ...(latestState || {}) });
+          if (!initialIdentity.email || latestIdentity.email !== initialIdentity.email) {
+            throw error;
+          }
+          await addStepLog(
+            getVisibleStep(state),
+            `检测到 Session ended / invalid_state，保留当前账号并重新启动步骤 6（${restartCount + 1}/${SET_GPT_PASSWORD_SESSION_RESTART_LIMIT}）。`,
+            'warn'
+          );
+        }
+      }
+      throw new Error('步骤 6：设置 GPT 密码会话恢复次数已耗尽。');
+    }
+
     return {
       executeSetGptPassword,
     };
@@ -1592,5 +1640,6 @@
 
   return {
     createSetGptPasswordExecutor,
+    isSetGptPasswordSessionExpiredError,
   };
 });
