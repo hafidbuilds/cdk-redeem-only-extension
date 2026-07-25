@@ -34,6 +34,16 @@ Use plain JavaScript and existing browser-extension patterns. Keep indentation a
 
 Tests use Node’s built-in `node:test` and `node:assert/strict`. Put focused unit tests in `scripts/test-*.cjs`; put static integration checks in `scripts/audit-smoke-tests.mjs`. For feature changes, run the relevant `node --check` files plus at least the matching test script. Add regression coverage for import/export formats, redeem state transitions, and trial eligibility decisions.
 
+### Browser E2E Environment
+
+All automated MV3 browser tests must run in an isolated test browser. Use Puppeteer with its downloaded, version-pinned Chrome for Testing and a fresh temporary profile. On Windows, launch with `pipe: true`; keep a small bounded retry around browser startup, and report an exhausted startup failure as test-infrastructure failure rather than an extension pass or business failure.
+
+Never connect automated tests to the user's installed Google Chrome, default `User Data`, signed-in profile, cookies, history, or installed extensions. Do not silently fall back to Microsoft Edge, system Chrome, or another browser. Playwright Chromium, Edge, Google Chrome, and Chrome for Testing are distinct targets: print the actual product/version, executable source, and profile type in every E2E result, and name the result accordingly.
+
+The minimum browser E2E must verify the MV3 service worker, Side Panel rendering, expected account/task controls, runtime messaging, diagnostic clipboard export using a page-local clipboard stub, and zero uncaught page errors. Use only fake or empty test data. Close the browser in `finally`, confirm that no test-browser process remains, and never package the downloaded browser with the extension.
+
+Keep the browser harness in repository-owned test code once adopted; do not rely on undocumented one-off commands as release evidence. The evaluated tool choice, compatibility boundaries, and a verified isolated run are recorded in `docs/audit/2026-07-26-mv3-e2e-browser-tool-research.md`.
+
 ## Issue and Fix Archive
 
 Every confirmed user-reported defect must have a dated record under `docs/audit/` and an entry in `docs/audit/issue-fix-index.md`. Keep the record in the same commit as the fix whenever practical.
