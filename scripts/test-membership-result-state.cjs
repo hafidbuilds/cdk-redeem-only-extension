@@ -180,6 +180,22 @@ test('URL-less no-2FA Free rows export only when verification URLs are disabled'
   assert.deepEqual(resultState.buildResultExportRows(results, 'free'), []);
 });
 
+test('legacy Free rows with AT and no 2FA material infer the no-2FA export route', () => {
+  const rows = resultState.buildResultExportRows({
+    items: [{
+      email: 'legacy-no2fa@example.com',
+      verificationUrl: 'https://pickup.example/legacy-no2fa',
+      accessToken: 'legacy-at',
+      recordedAt: 1700000000,
+      status: 'free',
+    }],
+  }, 'free');
+
+  assert.deepEqual(rows, [
+    'legacy-no2fa@example.com---https://pickup.example/legacy-no2fa---legacy-at---2023-11-15 06:13:20',
+  ]);
+});
+
 test('normalizeResultsPayload preserves redeemPlusDeletedEmailsByChannel', () => {
   const payload = resultState.normalizeResultsPayload({
     items: [],

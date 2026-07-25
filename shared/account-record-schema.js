@@ -77,6 +77,7 @@
       credentials: {
         password: '',
         totpSecret: '',
+        no2faFreeRoute: false,
         accessToken: '',
         accessTokenStatus: 'missing',
         accessTokenUpdatedAt: '',
@@ -109,10 +110,15 @@
   function normalizeCredentials(value = {}) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const accessToken = normalizeText(source.accessToken);
+    const no2faFreeRoute = source.no2faFreeRoute === true;
+    const password = normalizeText(source.password);
+    const totpSecret = normalizeText(source.totpSecret).replace(/\s+/g, '').toUpperCase();
     return {
       ...source,
-      password: normalizeText(source.password),
-      totpSecret: normalizeText(source.totpSecret).replace(/\s+/g, '').toUpperCase(),
+      password,
+      totpSecret,
+      no2faFreeRoute,
+      twoFactorEnabled: no2faFreeRoute ? false : (source.twoFactorEnabled === true || Boolean(totpSecret)),
       accessToken,
       accessTokenStatus: normalizeEnum(
         source.accessTokenStatus,

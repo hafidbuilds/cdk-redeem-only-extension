@@ -48,3 +48,22 @@ test('merging one redemption channel does not overwrite the other channels', () 
   assert.equal(merged.redemption.ideal.remoteJobId, 'job_ideal');
   assert.equal(merged.redemption.pix.status, 'pending');
 });
+
+test('canonical credentials preserve the no-2FA Free route marker', () => {
+  const record = schema.normalizeAccountRecord({
+    id: 'no2fa@example.com',
+    credentials: {
+      no2faFreeRoute: true,
+      password: 'stale-password',
+      totpSecret: 'STALETOTP',
+      accessToken: 'fixture-token',
+      verificationUrl: 'https://pickup.example/no2fa',
+    },
+    lifecycle: { membershipStatus: 'free' },
+  });
+
+  assert.equal(record.credentials.no2faFreeRoute, true);
+  assert.equal(record.credentials.password, 'stale-password');
+  assert.equal(record.credentials.totpSecret, 'STALETOTP');
+  assert.equal(record.credentials.twoFactorEnabled, false);
+});

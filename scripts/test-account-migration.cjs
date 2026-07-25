@@ -20,6 +20,13 @@ function buildSources() {
       updatedAt: '2026-07-25T01:30:00Z',
       items: [
         { email: 'dup@example.com', status: 'free', trialEligibilityStatus: 'eligible', accessToken: 'token-fixture' },
+        {
+          email: 'no2fa@example.com',
+          status: 'free',
+          accessToken: 'no2fa-token-fixture',
+          verificationUrl: 'https://pickup.example/no2fa',
+          no2faFreeRecordedAt: 1700000000,
+        },
         { email: 'multi@example.com', status: 'paid', planType: 'plus', redeemChannel: 'ideal', redeemStatus: 'success' },
         { email: 'multi@example.com', status: 'paid', planType: 'plus', redeemChannel: 'pix', redeemStatus: 'pending' },
       ],
@@ -47,6 +54,8 @@ test('migration merges duplicates, filters invalid rows, and preserves separate 
   assert.equal(root.items['dup@example.com'].lifecycle.validityStatus, 'valid');
   assert.equal(root.items['dup@example.com'].lifecycle.membershipStatus, 'free');
   assert.equal(root.items['dup@example.com'].lifecycle.eligibilityStatus, 'eligible');
+  assert.equal(root.items['no2fa@example.com'].credentials.no2faFreeRoute, true);
+  assert.equal(root.items['no2fa@example.com'].credentials.twoFactorEnabled, false);
   assert.equal(root.items['deactivated@example.com'].lifecycle.validityStatus, 'deactivated');
 });
 

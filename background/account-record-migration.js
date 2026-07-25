@@ -116,15 +116,21 @@
 
   function buildCredentialPatch(item = {}) {
     const source = asObject(item);
+    const password = firstText(source.password, source.gptPassword);
+    const totpSecret = firstText(source.totpSecret, source.totpMfaSecret).replace(/\s+/g, '').toUpperCase();
     const accessToken = firstText(
       source.accessToken,
       source.access_token,
       source.token,
       source.upiRedeemAccessToken
     );
+    const verificationUrl = firstText(source.verificationUrl, source.emailVerificationUrl, source.url);
+    const no2faFreeRoute = source.no2faFreeRoute === true
+      || Boolean(Math.floor(Number(source.no2faFreeRecordedAt) || 0));
     const patch = {
-      password: firstText(source.password, source.gptPassword),
-      totpSecret: firstText(source.totpSecret, source.totpMfaSecret).replace(/\s+/g, '').toUpperCase(),
+      password,
+      totpSecret,
+      no2faFreeRoute,
       accessToken,
       accessTokenStatus: inferAccessTokenStatus(source, accessToken),
       accessTokenUpdatedAt: firstText(source.accessTokenUpdatedAt, source.checkedAt, source.updatedAt),
@@ -138,6 +144,8 @@
     optionalFields.forEach((key) => {
       if (source[key] !== undefined) patch[key] = source[key];
     });
+    if (verificationUrl && patch.verificationUrl === undefined) patch.verificationUrl = verificationUrl;
+    if (no2faFreeRoute) patch.twoFactorEnabled = false;
     return patch;
   }
 

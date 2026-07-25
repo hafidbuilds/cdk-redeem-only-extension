@@ -49,3 +49,21 @@ test('latest legacy rows override stale projected fields while tombstones are me
   assert.deepEqual(projected.redeemPlusDeletedEmailsByChannel.upi, ['live@example.com']);
   assert.deepEqual(projected.redeemPlusDeletedEmailsByChannel.pix, ['pix-deleted@example.com']);
 });
+
+test('compatibility projection restores no-2FA route for legacy canonical Free credentials', () => {
+  const canonical = schema.normalizeAccountRecord({
+    id: 'no2fa@example.com',
+    credentials: {
+      accessToken: 'fixture-token',
+      verificationUrl: 'https://pickup.example/no2fa',
+    },
+    lifecycle: { validityStatus: 'valid', membershipStatus: 'free' },
+  });
+  const projected = adapter.projectAccountRecordsToMembershipResults({
+    schemaVersion: 2,
+    items: { [canonical.id]: canonical },
+  });
+
+  assert.equal(projected.items[0].no2faFreeRoute, true);
+  assert.equal(projected.items[0].twoFactorEnabled, false);
+});

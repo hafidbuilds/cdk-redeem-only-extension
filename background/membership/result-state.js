@@ -350,6 +350,17 @@
     const status = ['paid', 'free', 'failed'].includes(normalizeString(item.status))
       ? normalizeString(item.status)
       : 'failed';
+    const password = normalizeString(item.password);
+    const totpMfaSecret = normalizeTotpSecret(item.totpMfaSecret);
+    const passkeyEnabled = item.passkeyEnabled === true
+      || Boolean(normalizeString(item.passkeyCredentialId || item.credentialId || item.credential_id));
+    const no2faFreeRoute = item.no2faFreeRoute === true || (
+      status === 'free'
+      && Boolean(accessToken)
+      && !password
+      && !totpMfaSecret
+      && !passkeyEnabled
+    );
     const shouldClearInternalRedeemFailure = isInternalRedeemImplementationError(item);
     const rawRedeemChannel = normalizeString(item.redeemChannel || item.channel || item.paymentChannel);
     const redeemChannel = shouldClearInternalRedeemFailure ? '' : (rawRedeemChannel ? normalizeRedeemChannel(rawRedeemChannel) : '');
@@ -368,23 +379,24 @@
     const passkeyNumericMetadataPatch = buildPasskeyNumericMetadataPatch(item);
     const normalized = {
       email,
-      password: normalizeString(item.password),
-      totpMfaSecret: normalizeTotpSecret(item.totpMfaSecret),
+      password,
+      totpMfaSecret,
       gptPassword: normalizeString(item.gptPassword || item.password),
       verificationUrl: normalizeString(item.verificationUrl || item.emailVerificationUrl || item.url),
       recordedAt: Math.max(0, Math.floor(Number(item.recordedAt || item.no2faFreeRecordedAt) || 0)),
-      no2faFreeRoute: item.no2faFreeRoute === true,
-      passkeyEnabled: item.passkeyEnabled === true || Boolean(normalizeString(item.passkeyCredentialId || item.credentialId || item.credential_id)),
+      no2faFreeRoute,
+      passkeyEnabled,
       passkeyEnabledAt: normalizeString(item.passkeyEnabledAt), passkeyCredentialId: normalizeString(item.passkeyCredentialId || item.credentialId || item.credential_id),
       passkeyFactorId: normalizeString(item.passkeyFactorId || item.factorId || item.factor_id), passkeyRpId: normalizeString(item.passkeyRpId || item.rpId || item.rp_id),
       passkeyUserHandle: normalizeString(item.passkeyUserHandle || item.userHandle || item.user_handle),
       passkeyPrivateJwk: item.passkeyPrivateJwk && typeof item.passkeyPrivateJwk === 'object' && !Array.isArray(item.passkeyPrivateJwk) ? item.passkeyPrivateJwk : null,
       passkeyPublicKeyCose: normalizeString(item.passkeyPublicKeyCose || item.publicKeyCose || item.public_key_cose), ...passkeyNumericMetadataPatch,
       passkeyApiPersisted: item.passkeyApiPersisted === true || item.persisted === true,
-      twoFactorEnabled: item.twoFactorEnabled === true
-        || Boolean(normalizeTotpSecret(item.totpMfaSecret))
-        || item.passkeyEnabled === true
-        || Boolean(normalizeString(item.passkeyCredentialId || item.credentialId || item.credential_id)),
+      twoFactorEnabled: no2faFreeRoute ? false : (
+        item.twoFactorEnabled === true
+        || Boolean(totpMfaSecret)
+        || passkeyEnabled
+      ),
       status,
       planType: normalizePlanType(item.planType),
       checkedAt: normalizeString(item.checkedAt),

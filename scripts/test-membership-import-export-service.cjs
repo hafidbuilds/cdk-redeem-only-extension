@@ -3,8 +3,10 @@ const test = require('node:test');
 
 const api = require('../background/membership/import-export-service.js');
 const resultState = require('../background/membership/result-state.js');
+const schema = require('../shared/account-record-schema.js');
+const adapter = require('../shared/account-compatibility-adapter.js');
 
-function createService({ buildRows, deleteResults, results, state = {} }) {
+function createService({ buildRows, deleteResults, projectResults = null, results, state = {} }) {
   return api.createImportExportService({
     buildRedeemAccountUnlockedPatch: () => ({}),
     buildResultExportRows: buildRows,
@@ -31,6 +33,7 @@ function createService({ buildRows, deleteResults, results, state = {} }) {
     normalizeResultItem: (item) => item,
     normalizeResultsPayload: (value) => value,
     normalizeString: (value) => String(value || '').trim().toLowerCase(),
+    projectAccountRecordsToMembershipResults: projectResults,
     resolveInputCredentials: () => [],
     saveResults: async (value) => value,
   });
@@ -134,6 +137,40 @@ test('Free export backfills a missing pickup URL from the email pool when the to
   const fields = exported.fileContent.trim().split('---');
   assert.equal(fields.length, 6);
   assert.equal(fields[3], verificationUrl);
+});
+
+test('Free export merges canonical no-2FA rows that are absent from legacy result storage', async () => {
+  const canonical = schema.normalizeAccountRecord({
+    id: 'canonical-no2fa@example.com',
+    credentials: {
+      accessToken: 'canonical-at',
+      accessTokenUpdatedAt: '2023-11-14T22:13:20.000Z',
+      verificationUrl: 'https://pickup.example/canonical-no2fa',
+    },
+    lifecycle: { validityStatus: 'valid', membershipStatus: 'free' },
+  });
+  const service = createService({
+    buildRows: resultState.buildResultExportRows,
+    projectResults: adapter.projectAccountRecordsToMembershipResults,
+    results: { items: [] },
+    state: {
+      accountRecordsV2: {
+        schemaVersion: 2,
+        items: { [canonical.id]: canonical },
+      },
+    },
+  });
+
+  const output = await service.exportUpiCredentialMembershipCheckResults({
+    status: 'free',
+    emails: ['canonical-no2fa@example.com'],
+  });
+
+  assert.equal(output.count, 1);
+  assert.equal(
+    output.fileContent,
+    'canonical-no2fa@example.com---https://pickup.example/canonical-no2fa---canonical-at---2023-11-15 06:13:20\n'
+  );
 });
 
 test('PIX Plus export filters paid-pix rows, names the file, and preserves channel on removal', async () => {

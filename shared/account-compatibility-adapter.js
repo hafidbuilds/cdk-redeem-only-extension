@@ -33,6 +33,7 @@
       gptPassword: credentials.password || '',
       totpMfaSecret: credentials.totpSecret || '',
       totpSecret: credentials.totpSecret || '',
+      no2faFreeRoute: credentials.no2faFreeRoute === true,
       accessToken: credentials.accessToken || '',
       accessTokenStatus: credentials.accessTokenStatus || 'missing',
       accessTokenUpdatedAt: credentials.accessTokenUpdatedAt || '',
@@ -57,9 +58,19 @@
     const normalized = schema.normalizeAccountRecord(record);
     if (!normalized) return [];
     const lifecycle = normalized.lifecycle;
+    const credentialProjection = buildCredentialProjection(normalized);
+    const no2faFreeRoute = credentialProjection.no2faFreeRoute === true || (
+      lifecycle.membershipStatus === 'free'
+      && Boolean(credentialProjection.accessToken)
+      && !credentialProjection.password
+      && !credentialProjection.totpMfaSecret
+      && credentialProjection.passkeyEnabled !== true
+    );
     const base = {
       email: normalized.id,
-      ...buildCredentialProjection(normalized),
+      ...credentialProjection,
+      no2faFreeRoute,
+      twoFactorEnabled: no2faFreeRoute ? false : credentialProjection.twoFactorEnabled,
       reasonCode: lifecycle.reasonCode,
       reason: lifecycle.reason,
       checkedAt: lifecycle.checkedAt,

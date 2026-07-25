@@ -27,6 +27,7 @@
       normalizeResultItem,
       normalizeResultsPayload,
       normalizeString,
+      projectAccountRecordsToMembershipResults = null,
       resolveInputCredentials,
       saveResults,
     } = deps;
@@ -239,6 +240,16 @@
         ? 'paid'
         : rawStatus;
       let results = await getStoredResults();
+      if (typeof projectAccountRecordsToMembershipResults === 'function') {
+        const latestState = typeof getState === 'function'
+          ? await getState().catch(() => ({}))
+          : {};
+        if (latestState?.accountRecordsV2?.items) {
+          results = normalizeResultsPayload(
+            projectAccountRecordsToMembershipResults(latestState.accountRecordsV2, results)
+          );
+        }
+      }
       const removeAfterExport = input.removeAfterExport === true || input.clearAfterExport === true;
       if (removeAfterExport && (results.running || results.redeeming)) {
         throw new Error('UPI 备份账号核验/补兑正在运行，请先停止后再导出并清空当前批次。');

@@ -184,6 +184,17 @@
     }
   }
 
+  function getAccountCompatibilityAdapter() {
+    const rootScope = typeof self !== 'undefined' ? self : globalThis;
+    if (rootScope.MultiPageAccountCompatibilityAdapter) {
+      return rootScope.MultiPageAccountCompatibilityAdapter;
+    }
+    if (typeof require === 'function') {
+      return require('../shared/account-compatibility-adapter.js');
+    }
+    return {};
+  }
+
   function getRedeemAttemptHistoryModule() {
     const rootScope = typeof self !== 'undefined' ? self : globalThis;
     if (rootScope.MultiPageRedeemAttemptHistory) {
@@ -2669,6 +2680,7 @@
       normalizeResultItem,
       normalizeResultsPayload,
       normalizeString,
+      projectAccountRecordsToMembershipResults: getAccountCompatibilityAdapter().projectAccountRecordsToMembershipResults,
       resolveInputCredentials,
       saveResults,
     });
