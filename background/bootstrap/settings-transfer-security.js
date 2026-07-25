@@ -4,6 +4,45 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createSettingsTransferSecurity() {
   const SENSITIVE_KEY = /password|passphrase|authorization|access.?token|refresh.?token|cookie|totp|2fa|api.?key|secret|private.?jwk|proxy.?password|cdkey|cdk|mail.?body|message.?body|raw.?mail|customEmailPool|hotmailAccounts|mail2925Accounts/i;
+  const SAFE_MEMBERSHIP_ITEM_KEYS = [
+    'email',
+    'accountIdentifier',
+    'status',
+    'membershipStatus',
+    'planType',
+    'redeemChannel',
+    'channel',
+    'paymentChannel',
+    'checkedAt',
+    'updatedAt',
+    'source',
+    'reasonCode',
+    'errorCode',
+    'trialEligibilityStatus',
+    'eligibilityStatus',
+    'redeemStatus',
+    'remoteStatus',
+    'accountValidityStatus',
+    'validityStatus',
+    'accountDeactivated',
+    'enabled',
+  ];
+  const SAFE_MEMBERSHIP_ROOT_KEYS = [
+    'total',
+    'completed',
+    'paidCount',
+    'freeCount',
+    'failedCount',
+    'startedAt',
+    'finishedAt',
+    'updatedAt',
+    'source',
+    'redeemAutoDeletedCount',
+    'redeemAutoDeletedEmails',
+    'redeemPlusDeletedCountByChannel',
+    'redeemPlusDeletedEmailsByChannel',
+    'trialEligibilitySummary',
+  ];
 
   function omitSensitiveFields(value, seen = new WeakSet()) {
     if (value === null || value === undefined || typeof value !== 'object') return value;
@@ -32,6 +71,24 @@
     };
   }
 
+  function buildSafeMembershipResults(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const output = {};
+    SAFE_MEMBERSHIP_ROOT_KEYS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        output[key] = omitSensitiveFields(value[key]);
+      }
+    });
+    output.items = (Array.isArray(value.items) ? value.items : [])
+      .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+      .map((item) => Object.fromEntries(SAFE_MEMBERSHIP_ITEM_KEYS
+        .filter((key) => Object.prototype.hasOwnProperty.call(item, key))
+        .map((key) => [key, omitSensitiveFields(item[key])])));
+    output.running = false;
+    output.redeeming = false;
+    return output;
+  }
+
   function buildSafeRuntimeData(runtimeData = {}, helpers = {}) {
     const membership = helpers.normalizeMembership?.(runtimeData.upiCredentialMembershipCheckResults);
     const history = helpers.normalizeHistory?.(runtimeData.accountRunHistory) || [];
@@ -45,6 +102,9 @@
         failedCount: membership.failedCount,
         updatedAt: membership.updatedAt,
       } : null,
+      ...(membership ? {
+        upiCredentialMembershipCheckResults: buildSafeMembershipResults(membership),
+      } : {}),
       accountRunHistory: omitSensitiveFields(history),
       aliasSummary: {
         manualAliasCount: Object.keys(aliases.manualAliasUsage || {}).length,
@@ -82,5 +142,11 @@
     return backup;
   }
 
-  return { buildSafeRuntimeData, migrateSettingsBundle, omitSensitiveFields, saveImportBackup };
+  return {
+    buildSafeMembershipResults,
+    buildSafeRuntimeData,
+    migrateSettingsBundle,
+    omitSensitiveFields,
+    saveImportBackup,
+  };
 });

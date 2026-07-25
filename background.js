@@ -2772,6 +2772,7 @@ function getSettingsTransferManager() {
       broadcastDataUpdate,
       ensureManualInteractionAllowed,
       getState,
+      synchronizeAccountReadModel,
     });
   }
   return settingsTransferManager;

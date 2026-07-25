@@ -51,13 +51,16 @@ test('migrates v1 to v2 idempotently and rejects future versions', () => {
 
 test('ordinary export omits sensitive settings and runtime credentials', async () => {
   const harness = createHarness({
-    getSettingsRuntimeDataForExport: async () => ({
-      upiCredentialMembershipCheckResults: { items: [{ email: 'a@example.com', accessToken: 'at-secret' }] },
-      upiAccountCredentialBackups: { 'a@example.com': { password: 'pw' } },
-      accountRunHistory: [{ email: 'a@example.com', accessToken: 'at-secret' }],
-      aliasState: { manualAliasUsage: { 'a@example.com': true }, preservedAliases: {}, icloudAliasCache: [] },
+    getPersistedAliasState: async () => ({
+      manualAliasUsage: { 'a@example.com': true },
+      preservedAliases: {},
+      icloudAliasCache: [],
     }),
   });
+  harness.local.upiCredentialMembershipCheckResults = {
+    items: [{ email: 'a@example.com', status: 'free', accessToken: 'at-secret' }],
+  };
+  harness.local.upiAccountCredentialBackups = { 'a@example.com': { password: 'pw' } };
   const result = await harness.transfer.exportSettingsBundle();
   const bundle = JSON.parse(result.fileContent);
   assert.equal(bundle.schemaVersion, 2);
@@ -69,6 +72,9 @@ test('ordinary export omits sensitive settings and runtime credentials', async (
   assert.equal(JSON.stringify(bundle).includes('pool-password'), false);
   assert.equal(Object.hasOwn(bundle.runtimeData, 'upiAccountCredentialBackups'), false);
   assert.equal(JSON.stringify(bundle).includes('at-secret'), false);
+  assert.equal(bundle.runtimeData.upiCredentialMembershipCheckResults.items.length, 1);
+  assert.equal(bundle.runtimeData.upiCredentialMembershipCheckResults.items[0].email, 'a@example.com');
+  assert.equal(Object.hasOwn(bundle.runtimeData.upiCredentialMembershipCheckResults.items[0], 'accessToken'), false);
 });
 
 test('sensitive export requires explicit confirmation', async () => {
@@ -93,4 +99,62 @@ test('import stores a bounded raw backup before applying sensitive runtime data'
   assert.equal(Array.isArray(harness.local.settingsImportBackupsV1), true);
   assert.equal(harness.local.settingsImportBackupsV1.length, 1);
   assert.equal(harness.local.settingsImportBackupsV1[0].settings.customPassword, 'secret-password');
+});
+
+test('safe import restores redacted membership rows and account history without credentials', async () => {
+  let syncReason = '';
+  const harness = createHarness({
+    synchronizeAccountReadModel: async (reason) => {
+      syncReason = reason;
+      return { root: { schemaVersion: 2, items: { 'free@example.com': { id: 'free@example.com' } } } };
+    },
+  });
+  await harness.transfer.importSettingsBundle({
+    schemaVersion: 2,
+    exportMode: 'safe',
+    containsSensitiveRuntimeData: false,
+    settings: { safeSetting: 'imported' },
+    runtimeData: {
+      upiCredentialMembershipCheckResults: {
+        items: [{
+          email: 'free@example.com',
+          status: 'free',
+          accessToken: 'must-not-import',
+          password: 'must-not-import',
+        }],
+      },
+      accountRunHistory: [{
+        email: 'free@example.com',
+        finalStatus: 'success',
+        accessToken: 'must-not-import',
+        password: 'must-not-import',
+      }],
+    },
+  });
+
+  assert.equal(syncReason, 'settings-import');
+  assert.equal(harness.local.upiCredentialMembershipCheckResults.items.length, 1);
+  assert.equal(harness.local.upiCredentialMembershipCheckResults.items[0].status, 'free');
+  assert.equal(Object.hasOwn(harness.local.upiCredentialMembershipCheckResults.items[0], 'accessToken'), false);
+  assert.equal(Object.hasOwn(harness.local.upiCredentialMembershipCheckResults.items[0], 'password'), false);
+  assert.equal(harness.local.accountRunHistory.length, 1);
+  assert.equal(Object.hasOwn(harness.local.accountRunHistory[0], 'accessToken'), false);
+  assert.equal(Object.hasOwn(harness.local.accountRunHistory[0], 'password'), false);
+});
+
+test('summary-only safe import restores history without fabricating Free membership rows', async () => {
+  const harness = createHarness();
+  await harness.transfer.importSettingsBundle({
+    schemaVersion: 2,
+    exportMode: 'safe',
+    containsSensitiveRuntimeData: false,
+    settings: { safeSetting: 'imported' },
+    runtimeData: {
+      membershipSummary: { total: 49, freeCount: 49 },
+      accountRunHistory: [{ email: 'history@example.com', finalStatus: 'success' }],
+    },
+  });
+
+  assert.equal(harness.local.accountRunHistory.length, 1);
+  assert.equal(Object.hasOwn(harness.local, 'upiCredentialMembershipCheckResults'), false);
 });

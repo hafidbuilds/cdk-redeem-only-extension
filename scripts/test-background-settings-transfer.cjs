@@ -81,3 +81,27 @@ test('builds runtime import updates for membership backups history and alias sta
   assert.equal(updates.manualAliasUsage['a@example.com'], true);
   assert.equal(updates.icloudAliasCacheAt, 123);
 });
+
+test('builds safe runtime import updates from redacted details but ignores summary-only counts', () => {
+  const transfer = createTransfer();
+  const updates = transfer.buildSettingsRuntimeDataImportUpdates({
+    runtimeData: transfer.buildSafeRuntimeData({
+      membershipSummary: { total: 49, freeCount: 49 },
+      upiCredentialMembershipCheckResults: {
+        items: [{ email: 'free@example.com', status: 'free', accessToken: 'secret-at' }],
+      },
+      accountRunHistory: [{ email: 'free@example.com', password: 'secret-password' }],
+    }),
+  });
+
+  assert.equal(updates.upiCredentialMembershipCheckResults.items.length, 1);
+  assert.equal(updates.upiCredentialMembershipCheckResults.freeCount, 1);
+  assert.equal(Object.hasOwn(updates.upiCredentialMembershipCheckResults.items[0], 'accessToken'), false);
+  assert.equal(updates.accountRunHistory.length, 1);
+  assert.equal(Object.hasOwn(updates.accountRunHistory[0], 'password'), false);
+
+  const summaryOnly = transfer.buildSettingsRuntimeDataImportUpdates({
+    runtimeData: transfer.buildSafeRuntimeData({ membershipSummary: { total: 49, freeCount: 49 } }),
+  });
+  assert.equal(Object.hasOwn(summaryOnly, 'upiCredentialMembershipCheckResults'), false);
+});

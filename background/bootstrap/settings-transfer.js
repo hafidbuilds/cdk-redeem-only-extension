@@ -35,10 +35,10 @@
       broadcastDataUpdate = () => {},
       ensureManualInteractionAllowed = async () => ({}),
       getState = async () => ({}),
+      synchronizeAccountReadModel = async () => null,
       settingsImportBackupStorageKey = 'settingsImportBackupsV1',
       settingsImportBackupLimit = 3,
     } = context;
-
     const CURRENT_SCHEMA_VERSION = Math.max(1, Number(settingsExportSchemaVersion) || 1);
     const membershipResultsStorageKey = storageKeys.membershipResults || 'upiCredentialMembershipCheckResults';
     const credentialBackupsStorageKey = storageKeys.credentialBackups || 'upiAccountCredentialBackups';
@@ -314,9 +314,9 @@
 
       await saveImportBackup();
       await setPersistentSettings(importedSettings);
-      const runtimeDataUpdates = migratedBundle.containsSensitiveRuntimeData === true
-        ? buildSettingsRuntimeDataImportUpdates(migratedBundle)
-        : {};
+      const runtimeDataUpdates = buildSettingsRuntimeDataImportUpdates(migratedBundle.containsSensitiveRuntimeData === true
+        ? migratedBundle
+        : { runtimeData: buildSafeRuntimeData(normalizeSettingsRuntimeObject(migratedBundle.runtimeData, {})) });
       if (Object.keys(runtimeDataUpdates).length > 0) {
         await chromeApi.storage.local.set(runtimeDataUpdates);
       }
@@ -343,9 +343,11 @@
       };
 
       await setState(sessionUpdates);
+      const accountReadModelSync = await synchronizeAccountReadModel('settings-import');
       broadcastDataUpdate({
         ...importedSettings,
         ...runtimeDataUpdates,
+        ...(accountReadModelSync?.root ? { accountRecordsV2: accountReadModelSync.root } : {}),
         currentHotmailAccountId: null,
         ...(sessionUpdates.email !== undefined ? { email: sessionUpdates.email } : {}),
         registrationEmailState: sessionUpdates.registrationEmailState,
