@@ -34,6 +34,14 @@ Use plain JavaScript and existing browser-extension patterns. Keep indentation a
 
 Tests use Node’s built-in `node:test` and `node:assert/strict`. Put focused unit tests in `scripts/test-*.cjs`; put static integration checks in `scripts/audit-smoke-tests.mjs`. For feature changes, run the relevant `node --check` files plus at least the matching test script. Add regression coverage for import/export formats, redeem state transitions, and trial eligibility decisions.
 
+## Issue and Fix Archive
+
+Every confirmed user-reported defect must have a dated record under `docs/audit/` and an entry in `docs/audit/issue-fix-index.md`. Keep the record in the same commit as the fix whenever practical.
+
+Each record must include the observed symptom and diagnostic evidence, root cause, affected workflow, implementation changes, safety or compatibility boundaries, regression coverage, actual verification results, and commit or release impact. Record only completed work and real command results; do not leave placeholders or planned test counts.
+
+Redact real emails, passwords, access tokens, verification codes, cookies, API keys, CDKs, proxies, phone numbers, and sensitive URL parameters. Preserve old records as historical evidence; when a later fix supersedes one, add a new record and link both entries instead of silently rewriting the history.
+
 ## Commit & Pull Request Guidelines
 
 Recent history uses concise conventional prefixes such as `fix:`, `refactor:`, and `docs:`, plus release commits like `Prepare v1.0.7 release`. Keep commits small and behavior-focused.
