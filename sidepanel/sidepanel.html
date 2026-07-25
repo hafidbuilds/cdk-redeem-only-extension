@@ -78,8 +78,16 @@
         <button id="btn-config-menu" class="btn btn-ghost btn-sm header-config-btn" type="button" aria-haspopup="menu"
           aria-expanded="false">配置</button>
         <div id="config-menu" class="header-dropdown" role="menu" aria-labelledby="btn-config-menu" hidden>
-          <button id="btn-export-settings" class="header-dropdown-item" type="button" role="menuitem">导出配置</button>
-          <button id="btn-export-sensitive-settings" class="header-dropdown-item" type="button" role="menuitem">导出敏感备份</button>
+          <button id="btn-export-settings" class="header-dropdown-item" type="button" role="menuitem"
+            title="可恢复设置、账号邮箱、Free/Plus 分组和历史；不包含邮箱池、完整 AT、密码或 2FA。">
+            <span class="header-dropdown-item-label">安全导出</span>
+            <span class="header-dropdown-item-hint">不含邮箱池、AT、密码、2FA</span>
+          </button>
+          <button id="btn-export-sensitive-settings" class="header-dropdown-item" type="button" role="menuitem"
+            title="完整恢复邮箱池、账号、AT、密码和 2FA；导出文件包含敏感数据。">
+            <span class="header-dropdown-item-label">导出完整备份</span>
+            <span class="header-dropdown-item-hint">含邮箱池、AT、密码、2FA</span>
+          </button>
           <button id="btn-export-failure-diagnostics" class="header-dropdown-item" type="button" role="menuitem">导出最近一次失败诊断</button>
           <button id="btn-import-settings" class="header-dropdown-item" type="button" role="menuitem">导入配置</button>
         </div>
@@ -110,7 +118,7 @@
           <button id="btn-open-release" class="btn btn-primary btn-sm" type="button">前往更新</button>
         </div>
       </div>
-      <p class="update-card-reminder">一定请先导出配置，再执行更新</p>
+      <p class="update-card-reminder">更新前请导出“完整备份”；安全导出不包含邮箱池、AT、密码和 2FA</p>
       <div id="update-release-list" class="update-release-list"></div>
     </div>
   </section>

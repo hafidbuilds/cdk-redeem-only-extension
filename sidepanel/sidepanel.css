@@ -434,7 +434,7 @@ header {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  min-width: 120px;
+  width: min(250px, calc(100vw - 24px));
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -463,6 +463,23 @@ header {
   text-align: left;
   cursor: pointer;
   transition: background var(--transition), color var(--transition);
+}
+
+.header-dropdown-item-label,
+.header-dropdown-item-hint {
+  display: block;
+  line-height: 1.35;
+}
+
+.header-dropdown-item-hint {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.header-dropdown-item:hover:not(:disabled) .header-dropdown-item-hint {
+  color: var(--text-secondary);
 }
 
 .header-dropdown-item:hover:not(:disabled) {
