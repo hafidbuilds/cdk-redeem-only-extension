@@ -211,7 +211,10 @@
         const migrated = migration.buildAccountRecordsV2FromLegacy({
           ...sources,
           accountRecordsV2: current,
-        }, { now: context.now || now() });
+        }, {
+          now: context.now || now(),
+          preferLegacyMembershipResults: context.preferLegacyMembershipResults === true,
+        });
         if (JSON.stringify(migrated) === JSON.stringify(current)) {
           return { changed: false, root: current, accountCount: Object.keys(current.items).length };
         }

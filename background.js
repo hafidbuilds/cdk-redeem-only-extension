@@ -2870,6 +2870,8 @@ async function synchronizeAccountReadModel(reason = 'startup') {
   const result = await accountRepository.migrateLegacySources({
     ...legacyState,
     upiAccountCredentialBackups: stored?.[UPI_ACCOUNT_CREDENTIAL_BACKUPS_STORAGE_KEY] || {},
+  }, {
+    preferLegacyMembershipResults: reason === 'settings-import',
   });
   if (result.changed) {
     chrome.runtime.sendMessage({

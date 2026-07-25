@@ -80,3 +80,58 @@ test('migration retains deletion tombstones and is idempotent', () => {
   assert.deepEqual(first.items['deleted-upi@example.com'].metadata.deleted.channels, ['upi']);
   assert.deepEqual(first.items['deleted-pix@example.com'].metadata.deleted.channels, ['pix']);
 });
+
+test('settings import restores explicit membership rows without erasing unrelated canonical data', () => {
+  const schema = globalThis.MultiPageAccountRecordSchema;
+  const restored = schema.createEmptyAccountRecord('restored@example.com', { now: NOW });
+  restored.credentials.password = 'keep-existing-password';
+  restored.credentials.accessToken = 'old-token';
+  restored.credentials.accessTokenStatus = 'valid';
+  restored.metadata.deleted = { free: true, marked: true };
+  const untouched = schema.createEmptyAccountRecord('untouched@example.com', { now: NOW });
+  untouched.metadata.deleted = { free: true };
+  const invalidToken = schema.createEmptyAccountRecord('invalid-token@example.com', { now: NOW });
+  invalidToken.credentials.accessToken = 'confirmed-invalid-token';
+  invalidToken.credentials.accessTokenStatus = 'invalid';
+  const sources = {
+    accountRecordsV2: {
+      items: { [restored.id]: restored, [untouched.id]: untouched, [invalidToken.id]: invalidToken },
+    },
+    customEmailPoolEntries: [{
+      email: restored.id,
+      accessToken: 'restored-token',
+      accessTokenStatus: 'valid',
+      no2faFreeRoute: true,
+    }, {
+      email: invalidToken.id,
+      accessToken: '',
+      accessTokenStatus: 'invalid',
+    }],
+    upiCredentialMembershipCheckResults: {
+      items: [
+        { email: restored.id, status: 'free', trialEligibilityStatus: 'eligible' },
+        { email: invalidToken.id, status: 'free' },
+      ],
+      redeemAutoDeletedEmails: [],
+    },
+  };
+
+  const normal = migration.buildAccountRecordsV2FromLegacy(sources, { now: NOW });
+  assert.equal(normal.items[restored.id].metadata.deleted.free, true);
+  assert.equal(normal.items[restored.id].credentials.accessToken, 'old-token');
+
+  const imported = migration.buildAccountRecordsV2FromLegacy(sources, {
+    now: NOW,
+    preferLegacyMembershipResults: true,
+  });
+  assert.equal(imported.items[restored.id].lifecycle.membershipStatus, 'free');
+  assert.equal(imported.items[restored.id].lifecycle.eligibilityStatus, 'eligible');
+  assert.equal(imported.items[restored.id].metadata.deleted.free, undefined);
+  assert.equal(imported.items[restored.id].metadata.deleted.marked, true);
+  assert.equal(imported.items[restored.id].credentials.accessToken, 'restored-token');
+  assert.equal(imported.items[restored.id].credentials.password, 'keep-existing-password');
+  assert.equal(imported.items[restored.id].credentials.no2faFreeRoute, true);
+  assert.equal(imported.items[invalidToken.id].credentials.accessToken, '');
+  assert.equal(imported.items[invalidToken.id].credentials.accessTokenStatus, 'invalid');
+  assert.equal(imported.items[untouched.id].metadata.deleted.free, true);
+});

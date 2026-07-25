@@ -149,6 +149,41 @@
     return patch;
   }
 
+  function buildExplicitCredentialPatch(item = {}) {
+    const source = asObject(item);
+    const fullPatch = buildCredentialPatch(source);
+    const patch = {};
+    const hasAny = (...keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
+    if (hasAny('password', 'gptPassword')) patch.password = fullPatch.password;
+    if (hasAny('totpSecret', 'totpMfaSecret')) patch.totpSecret = fullPatch.totpSecret;
+    const hasAccessTokenMaterial = hasAny(
+      'accessToken', 'access_token', 'token', 'upiRedeemAccessToken', 'accessTokenStatus'
+    );
+    if (hasAccessTokenMaterial) {
+      patch.accessToken = fullPatch.accessToken;
+      patch.accessTokenStatus = fullPatch.accessTokenStatus;
+    }
+    if (hasAny('accessTokenUpdatedAt') || (hasAccessTokenMaterial && hasAny('checkedAt', 'updatedAt'))) {
+      patch.accessTokenUpdatedAt = fullPatch.accessTokenUpdatedAt;
+    }
+    if (hasAny('verificationUrl', 'emailVerificationUrl', 'url')) {
+      patch.verificationUrl = fullPatch.verificationUrl || '';
+    }
+    if (hasAny('no2faFreeRoute', 'no2faFreeRecordedAt')) {
+      patch.no2faFreeRoute = fullPatch.no2faFreeRoute;
+      if (fullPatch.no2faFreeRoute) patch.twoFactorEnabled = false;
+    }
+    [
+      'passkeyEnabled', 'passkeyEnabledAt', 'passkeyCredentialId', 'passkeyFactorId',
+      'passkeyRpId', 'passkeyUserHandle', 'passkeyPrivateJwk', 'passkeyPublicKeyCose',
+      'passkeySignCount', 'passkeyAlg', 'passkeyApiPersisted', 'twoFactorEnabled',
+      'gptPasswordSet', 'totpMfaEnabled',
+    ].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) patch[key] = fullPatch[key];
+    });
+    return patch;
+  }
+
   function mergeNonEmpty(current = {}, patch = {}) {
     const next = { ...current };
     Object.entries(patch).forEach(([key, value]) => {
@@ -164,6 +199,16 @@
     const now = schema.normalizeIsoTimestamp(options.now) || new Date().toISOString();
     const existing = schema.normalizeAccountRecordsRoot(sources.accountRecordsV2);
     const items = {};
+    const explicitCredentialPatches = {};
+    const importedMembershipById = {};
+
+    function captureExplicitCredentials(rawEmail, source = {}) {
+      const id = schema.normalizeAccountId(rawEmail);
+      if (!id) return;
+      const patch = buildExplicitCredentialPatch(source);
+      if (!Object.keys(patch).length) return;
+      explicitCredentialPatches[id] = { ...(explicitCredentialPatches[id] || {}), ...patch };
+    }
 
     function getFallbackTimestamp(id) {
       return existing.items[id]?.updatedAt || existing.items[id]?.createdAt || existing.updatedAt || now;
@@ -202,6 +247,7 @@
     asArray(sources.customEmailPoolEntries).forEach((entry) => {
       const source = typeof entry === 'string' ? { email: entry } : asObject(entry);
       const email = readEmail(source) || String(entry || '').split('----')[0];
+      captureExplicitCredentials(email, source);
       patchAccount(email, {
         identity: {
           source: firstText(source.source, 'custom-pool'),
@@ -217,6 +263,7 @@
 
     asArray(sources.accountRunHistory).forEach((record) => {
       const email = readEmail(record);
+      captureExplicitCredentials(email, record);
       const finalStatus = firstText(record.displayStatus, record.finalStatus, record.status).toLowerCase();
       patchAccount(email, {
         identity: { source: firstText(record.source, 'account-run-history') },
@@ -245,6 +292,17 @@
         item.redeemChannel || item.channel || item.paymentChannel
       );
       const membershipStatus = inferMembershipStatus(item);
+      const id = schema.normalizeAccountId(email);
+      captureExplicitCredentials(email, item);
+      if (id) {
+        importedMembershipById[id] = {
+          membershipStatus,
+          channels: Array.from(new Set([
+            ...asArray(importedMembershipById[id]?.channels),
+            channel,
+          ].filter(Boolean))),
+        };
+      }
       const redemptionPatch = channel ? {
         [channel]: {
           status: inferRedemptionStatus(item),
@@ -290,6 +348,7 @@
     Object.entries(backups).forEach(([key, backup]) => {
       const record = asObject(backup);
       const email = readEmail(record) || key;
+      captureExplicitCredentials(email, record);
       const current = ensureAccount(email);
       patchAccount(email, {
         identity: { source: firstText(record.source, current?.identity?.source, 'credential-backup') },
@@ -359,13 +418,46 @@
     applyUsage('ideal', sources.idealRedeemCdkeyUsage);
     applyUsage('pix', sources.pixChannelRedeemCdkeyUsage);
 
-    // Canonical records always win over reconstructed legacy fields.
+    const deletedFreeIds = new Set(deletion.free.map(schema.normalizeAccountId).filter(Boolean));
+    const deletedChannelIds = Object.fromEntries(schema.REDEEM_CHANNELS.map((channel) => [
+      channel,
+      new Set(asArray(deletion.channels[channel]).map(schema.normalizeAccountId).filter(Boolean)),
+    ]));
+
+    // Canonical records normally win. An explicit settings import may restore only the
+    // membership and credential fields present in the imported bundle.
     Object.entries(existing.items).forEach(([id, record]) => {
       const current = items[id] || schema.createEmptyAccountRecord(id, { now: record.createdAt || now });
-      items[id] = schema.mergeAccountRecord(current, record, {
+      let merged = schema.mergeAccountRecord(current, record, {
         now: record.updatedAt || current.updatedAt,
         preserveUpdatedAt: true,
       });
+      if (options.preferLegacyMembershipResults === true && importedMembershipById[id]) {
+        const imported = importedMembershipById[id];
+        const deleted = { ...asObject(merged.metadata?.deleted) };
+        if (imported.membershipStatus === 'free' && !deletedFreeIds.has(id)) delete deleted.free;
+        if (imported.membershipStatus === 'plus') {
+          deleted.channels = asArray(deleted.channels).filter((channel) => (
+            !imported.channels.includes(channel) || deletedChannelIds[channel]?.has(id)
+          ));
+        }
+        merged = schema.mergeAccountRecord(merged, {
+          lifecycle: current.lifecycle,
+          metadata: {
+            ...merged.metadata,
+            legacyStatus: current.metadata?.legacyStatus || merged.metadata?.legacyStatus,
+            legacyPlanType: current.metadata?.legacyPlanType || merged.metadata?.legacyPlanType,
+            paidChannels: current.metadata?.paidChannels || merged.metadata?.paidChannels,
+            deleted,
+          },
+        }, { now: current.updatedAt || merged.updatedAt, preserveUpdatedAt: true });
+      }
+      if (options.preferLegacyMembershipResults === true && explicitCredentialPatches[id]) {
+        merged = schema.mergeAccountRecord(merged, {
+          credentials: explicitCredentialPatches[id],
+        }, { now: current.updatedAt || merged.updatedAt, preserveUpdatedAt: true });
+      }
+      items[id] = merged;
     });
 
     const normalizedItems = schema.normalizeAccountRecordsRoot({ items }).items;
