@@ -16,9 +16,9 @@
 
 ## 当前版本建议
 
-- 当前待发布版本：`v2.0.0`
-- 当前扩展版本号：`2.0.0`
-- Release 文案来源：`Release.md` 中的 `CDK Redeem Only V2.0.0` 小节
+- 当前待发布版本：`v2.1.0`
+- 当前扩展版本号：`2.1.0`
+- Release 文案来源：`Release.md` 中的 `CDK Redeem Only V2.1.0` 小节
 - GitHub Release 正文可直接复制该小节内容
 
 ## 首次发布
@@ -49,13 +49,13 @@ npm run check
 npm run package
 git status
 git add manifest.json sidepanel/sidepanel.html Release.md RELEASING.md
-git commit -m "Prepare v2.0.0 release"
-git tag -a v2.0.0 -m "CDK Redeem Only V2.0.0"
+git commit -m "Prepare v2.1.0 release"
+git tag -a v2.1.0 -m "CDK Redeem Only V2.1.0"
 git push origin main
-git push origin v2.0.0
+git push origin v2.1.0
 ```
 
-默认发布包路径：`release-artifacts/cdk-redeem-only-extension-v2.0.0.zip`。该目录不进入 Git。
+默认发布包路径：`release-artifacts/cdk-redeem-only-extension-v2.1.0.zip`。该目录不进入 Git。
 
 ## Release 说明建议
 
