@@ -55,6 +55,10 @@
           };
         }
         syncLatestState(message.payload);
+        if (message.payload.existingTotpLoginDisplayStatus !== undefined) {
+          renderStepStatuses(latestState);
+          updateStatusDisplay(latestState);
+        }
         if (
           message.payload.upiCredentialMembershipCheckResults !== undefined
           || message.payload.cdkPoolText !== undefined

@@ -75,3 +75,58 @@ test('workflow list does not duplicate the 2FA display row when a definition alr
   view.renderStepsList();
   assert.equal((dom.stepsList.innerHTML.match(/已有账号 2FA 登录/g) || []).length, 1);
 });
+
+test('conditional 2FA row renders live states without changing the seven-node progress model', () => {
+  const statusEl = { textContent: '', dataset: { pendingText: '按需' } };
+  const row = { className: 'step-row pending display-only', dataset: { displayOnly: 'true' } };
+  globalThis.document.querySelector = (selector) => {
+    if (!selector.includes('existing-totp-login')) return null;
+    return selector.startsWith('.step-status') ? statusEl : row;
+  };
+  const dom = {
+    stepsList: { innerHTML: '' },
+    stepsProgress: { textContent: '' },
+  };
+  let currentState = {
+    existingTotpLoginDisplayStatus: 'running',
+    nodeStatuses: { 'fill-password': 'completed', 'fetch-signup-code': 'pending' },
+  };
+  const view = workflowStateView.create({
+    dom,
+    constants: {
+      workflowNodes: [
+        { nodeId: 'fill-password', title: '填写密码并继续', displayOrder: 30 },
+        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 40 },
+      ],
+      nodeIds: ['fill-password', 'fetch-signup-code'],
+      statusIcons: { running: '', completed: '完成', failed: '失败' },
+    },
+    helpers: {
+      getStepIdByNodeIdForCurrentMode: () => null,
+      getNodeStatuses: (state) => state?.nodeStatuses || currentState.nodeStatuses,
+      isDoneStatus: (status) => status === 'completed',
+    },
+    state: { getLatestState: () => currentState },
+  });
+
+  view.renderStepStatuses(currentState);
+  assert.equal(row.className, 'step-row running display-only');
+  assert.equal(statusEl.textContent, '');
+  assert.equal(dom.stepsProgress.textContent, '1 / 2');
+
+  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'completed' };
+  view.renderStepStatuses(currentState);
+  assert.equal(row.className, 'step-row completed display-only');
+  assert.equal(statusEl.textContent, '完成');
+  assert.equal(dom.stepsProgress.textContent, '1 / 2');
+
+  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'failed' };
+  view.renderStepStatuses(currentState);
+  assert.equal(row.className, 'step-row failed display-only');
+  assert.equal(statusEl.textContent, '失败');
+
+  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'pending' };
+  view.renderStepStatuses(currentState);
+  assert.equal(row.className, 'step-row pending display-only');
+  assert.equal(statusEl.textContent, '按需');
+});

@@ -230,6 +230,7 @@
         autoRunLabel: workflow.getAutoRunLabel?.() || '',
         autoRunPhase: autoRun.phase,
         countdown: workflow.getActiveAutoRunCountdown?.(),
+        existingTotpLoginDisplayStatus: currentState?.existingTotpLoginDisplayStatus || 'pending',
         nodeIds: getNodeIds(),
         nodeStatuses: getNodeStatuses(currentState),
         now: Date.now(),

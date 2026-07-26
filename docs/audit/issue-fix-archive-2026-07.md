@@ -26,6 +26,7 @@
 - [侧边栏缺少步骤 3.5 展示行](#2026-07-26-step3-5-sidepanel-display)
 - [步骤 3.5 成功前旧失败广播排除邮箱](#2026-07-26-step3-5-node-error-race)
 - [步骤 3.5 成功后仍重复执行步骤 6](#2026-07-26-step3-5-skip-redundant-password)
+- [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 
 ---
 
@@ -1542,6 +1543,79 @@ Session ended / invalid_state
 - Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；路由节点协议保持 `700/700` 行，消息分发器保持 `991/1000` 行，没有提高阈值。
 - Manifest 引用检查通过且 `manifest.json` 未修改；差异中没有真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
 - 仅保留既有非阻断警告：`background.js` 超过 8000 行。
+- 修复、测试和档案由同一独立本地提交交付；未打包、未修改 Manifest 版本、未创建标签或 GitHub Release。
+
+---
+
+<a id="2026-07-26-step3-5-ui-status-sync"></a>
+
+## 步骤 3.5 日志与侧边栏运行状态不一致
+
+日期：2026-07-26
+
+关联记录：[步骤 3.5 侧边栏展示](#2026-07-26-step3-5-sidepanel-display)、[步骤 3.5 成功后跳过重复密码](#2026-07-26-step3-5-skip-redundant-password)
+
+### 故障现象与证据
+
+用户截图中，日志已经连续记录“步骤 3.5：已有账号 2FA 登录”并正在提交动态码；同一时刻流程列表仍把步骤 3 `fill-password` 标为运行，步骤 3.5 保持灰色“按需”，顶部状态仍显示 `节点 fill-password 运行中...`。截图中的邮箱、密码、TOTP、验证码、AT、Cookie 和其它敏感信息未写入档案。
+
+### 根因
+
+- 步骤 3.5 最初只作为 `displayOnly` 静态行插入侧边栏，不属于真实工作流节点集合。
+- 状态渲染只遍历 7 个真实 `nodeId`；步骤 3.5 没有独立状态字段，因此永远保留初始“按需”样式。
+- 步骤 3.5 的业务日志按实际归属继续使用步骤 3 / `fill-password`，顶部状态只读取真实运行节点，因而显示底层步骤 3，而不是当前正在处理的条件分支。
+
+### 修复
+
+- 在现有后台状态中增加仅用于展示的 `existingTotpLoginDisplayStatus`，允许 `pending`、`running`、`completed` 和 `failed`，不加入 `nodeStatuses`。
+- 每次步骤 3 收尾先复位为 `pending`；确认真实 TOTP 登录页后切换为 `running`；只有确认进入 ChatGPT 已登录态后才切换为 `completed`；缺少本地密钥、动态码被拒、提交失败或结果未知时切换为 `failed`。
+- 状态通过现有 `setState` 和 `DATA_UPDATED` 广播链同步到 Sidepanel；展示状态写入失败会被隔离，不会中断认证业务。
+- 侧边栏流程行保留 `display-only` 属性和待机文案“按需”，运行、完成、失败时使用现有状态样式；自动运行重置后也会恢复待机状态。
+- 顶部状态在非倒计时、非暂停状态下优先显示“步骤 3.5：已有账号 2FA 登录运行中...”，条件分支结束后继续使用原有真实节点状态。
+
+### 安全与兼容边界
+
+- 步骤 3.5 仍不是可执行、可手动点击或可跳过节点，不参与工作流锁、自动运行排序或完成通知。
+- 进度分母和完成计数仍只包含原有 7 个真实节点，不会显示为 8 步，也不会改变步骤 3.5 成功后直达步骤 7 的现有逻辑。
+- 日志的步骤归属仍保留为步骤 3，避免修改错误归类、重试策略和历史兼容；本次仅增加与真实分支生命周期同步的展示状态。
+- 未修改账号模型、Provider、验证码新邮件基线、资格判定、Free/Plus 分组、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、Manifest 权限或存储导出格式。
+- 展示状态不包含邮箱、密码、TOTP 密钥、六位动态码、完整 AT、Cookie、CDK 或敏感 URL 参数。
+
+### 修改文件
+
+- `background.js`
+- `background/bootstrap/signup-executor-registry.js`
+- `background/signup-flow-helpers.js`
+- `sidepanel/workflow-state-view.js`
+- `sidepanel/workflow-status-display.js`
+- `sidepanel/workflow-controller.js`
+- `sidepanel/runtime-message-data-handler.js`
+- `sidepanel/runtime-message-handlers.js`
+- `scripts/test-signup-existing-totp-login.cjs`
+- `scripts/test-sidepanel-workflow-state-view.cjs`
+- `scripts/test-sidepanel-workflow-status-display.cjs`
+- `scripts/test-custom-email-pool-runtime-sync.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 步骤 3 收尾的展示生命周期为 `pending -> running -> completed`。
+- 缺少本地 TOTP 密钥和连续动态码拒绝会显示 `failed`；普通邮箱验证码路径保持 `pending`。
+- Sidepanel 收到运行时状态广播后同时刷新步骤 3.5 行和顶部状态。
+- 步骤 3.5 在运行、完成、失败和待机之间切换时始终保留 `display-only`，待机仍显示“按需”。
+- 步骤 3.5 运行时覆盖顶部的底层 `fill-password` 文案；自动暂停仍保持更高优先级。
+- 进度统计排除步骤 3.5，既有成功后跳过步骤 4/5/6、免 2FA 路线不跳过资格保存节点的测试继续通过。
+
+### 验证与提交影响
+
+- 定向语法检查和相关回归测试：`27/27` 通过。
+- 完整单元测试：`500/500` 通过。
+- 语法检查：`396` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E 通过：`Chrome/150.0.7871.24`、Puppeteer 下载的固定浏览器、临时 Profile、pipe 传输；没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有非阻断警告：`background.js` 超过 8000 行，未提高任何审计阈值。
+- Manifest 运行时引用审计通过且 `manifest.json` 未修改；差异只包含虚构 `.test` 邮箱和固定测试 TOTP，不包含真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
 - 修复、测试和档案由同一独立本地提交交付；未打包、未修改 Manifest 版本、未创建标签或 GitHub Release。
 
 ---

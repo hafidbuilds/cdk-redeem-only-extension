@@ -86,7 +86,7 @@
           <div class="${rowClass}" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}">
             <div class="step-indicator" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"><span class="step-num">${escapeHtml(stepLabel)}</span></div>
             <button class="step-btn" type="button" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}"${displayOnly ? ' disabled aria-disabled="true"' : ''}>${escapeHtml(node.title || executeKey || `步骤 ${stepLabel}`)}</button>
-            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}">${statusText}</span>
+            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"${displayOnly ? ` data-pending-text="${escapeHtml(node.ui?.statusText || '按需')}"` : ''}>${statusText}</span>
           </div>
         `;
       }).join('');
@@ -106,10 +106,13 @@
       const statusEl = document.querySelector(`.step-status[data-node-id="${selectorNodeId}"]`);
       const row = document.querySelector(`.step-row[data-node-id="${selectorNodeId}"]`);
       if (statusEl) {
-        statusEl.textContent = constants.statusIcons?.[normalizedStatus] || '';
+        statusEl.textContent = normalizedStatus === 'pending' && statusEl.dataset?.pendingText
+          ? statusEl.dataset.pendingText
+          : (constants.statusIcons?.[normalizedStatus] || '');
       }
       if (row) {
-        row.className = `step-row ${normalizedStatus}`;
+        const displayOnlyClass = row.dataset?.displayOnly === 'true' ? ' display-only' : '';
+        row.className = `step-row ${normalizedStatus}${displayOnlyClass}`;
       }
     }
 
@@ -135,6 +138,10 @@
       getNodeIds().forEach((nodeId) => {
         renderSingleNodeStatus(nodeId, statuses[nodeId]);
       });
+      renderSingleNodeStatus(
+        'existing-totp-login',
+        currentState?.existingTotpLoginDisplayStatus || 'pending'
+      );
       updateProgressCounter();
     }
 

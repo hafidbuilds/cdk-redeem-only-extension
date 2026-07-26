@@ -44,6 +44,23 @@ function createScopedHandler(scopeValues) {
   });
 }
 
+test('runtime display-status updates rerender the conditional 2FA row and top status', () => {
+  const calls = [];
+  const handler = createScopedHandler({
+    renderStepStatuses: (state) => calls.push(['steps', state.existingTotpLoginDisplayStatus]),
+    updateStatusDisplay: (state) => calls.push(['status', state.existingTotpLoginDisplayStatus]),
+    updateAccountRunHistorySettingsUI: () => {},
+    renderContributionMode: () => {},
+    syncPlusManualConfirmationDialog: () => Promise.resolve(),
+  });
+
+  handler.handleDataUpdated({
+    payload: { existingTotpLoginDisplayStatus: 'running' },
+  });
+
+  assert.deepEqual(calls, [['steps', 'running'], ['status', 'running']]);
+});
+
 test('runtime membership result updates also refresh custom email pool', () => {
   const calls = [];
   const membershipResults = {

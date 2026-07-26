@@ -763,6 +763,7 @@ const DEFAULT_STATE = {
   activeRunId: '',
   currentNodeId: '',
   nodeStatuses: { ...DEFAULT_NODE_STATUSES },
+  existingTotpLoginDisplayStatus: 'pending',
   runtimeState: runtimeStateHelpers?.buildDefaultRuntimeState?.() || null,
   ...CONTRIBUTION_RUNTIME_DEFAULTS,
   oauthUrl: null, // 运行时抓取到的 OAuth 地址，不要手动预填。
@@ -12685,6 +12686,11 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   sendToContentScriptResilient,
   sendToMailContentScriptResilient,
   setEmailState,
+  setExistingTotpLoginDisplayStatus: async (status) => {
+    const updates = { existingTotpLoginDisplayStatus: status };
+    await setState(updates);
+    broadcastDataUpdate(updates);
+  },
   setNodeStatus,
   setPasswordState,
   setPersistentSettings,

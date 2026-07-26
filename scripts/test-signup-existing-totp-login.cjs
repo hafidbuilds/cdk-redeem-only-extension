@@ -22,6 +22,7 @@ const TOTP_STATE = Object.freeze({
 function createHelper(overrides = {}) {
   const messages = [];
   const logs = [];
+  const displayStatuses = [];
   const helper = createSignupFlowHelpers({
     addLog: async (...args) => logs.push(args),
     chrome: {
@@ -49,15 +50,16 @@ function createHelper(overrides = {}) {
       if (message.type === 'GET_LOGIN_AUTH_STATE') return TOTP_STATE;
       throw new Error(`unexpected message: ${message.type}`);
     },
+    setExistingTotpLoginDisplayStatus: async (status) => displayStatuses.push(status),
     sleepWithStop: async () => {},
     throwIfStopped: () => {},
     ...overrides,
   });
-  return { helper, logs, messages };
+  return { displayStatuses, helper, logs, messages };
 }
 
 test('step 3 finalizer logs into an existing TOTP account and skips registration verification', async () => {
-  const { helper, messages } = createHelper();
+  const { displayStatuses, helper, messages } = createHelper();
 
   const result = await helper.finalizeSignupPasswordSubmitInTab(41, 'fixture-password', 3);
 
@@ -79,10 +81,11 @@ test('step 3 finalizer logs into an existing TOTP account and skips registration
   const stateProbe = messages.find((message) => message.type === 'GET_LOGIN_AUTH_STATE');
   assert.equal(prepare.payload.backgroundOwnsWorkflowOutcome, true);
   assert.equal(stateProbe.payload.backgroundOwnsWorkflowOutcome, true);
+  assert.deepEqual(displayStatuses, ['pending', 'running', 'completed']);
 });
 
 test('existing TOTP login without a saved secret keeps the original registered-account failure', async () => {
-  const { helper, messages, logs } = createHelper({
+  const { displayStatuses, helper, messages, logs } = createHelper({
     resolveExistingTotpCredential: async () => null,
   });
 
@@ -92,11 +95,12 @@ test('existing TOTP login without a saved secret keeps the original registered-a
   );
   assert.equal(messages.some((message) => message.type === 'FILL_CODE'), false);
   assert.equal(logs.some(([message]) => /没有当前邮箱的 TOTP 密钥/.test(message)), true);
+  assert.deepEqual(displayStatuses, ['pending', 'running', 'failed']);
 });
 
 test('existing TOTP login retries one fresh code then preserves the session on rejection', async () => {
   let fillCount = 0;
-  const { helper } = createHelper({
+  const { displayStatuses, helper } = createHelper({
     sendToContentScriptResilient: async (_source, message) => {
       if (message.type === 'FILL_CODE') {
         fillCount += 1;
@@ -120,10 +124,11 @@ test('existing TOTP login retries one fresh code then preserves the session on r
     }
   );
   assert.equal(fillCount, 2);
+  assert.deepEqual(displayStatuses, ['running', 'failed']);
 });
 
 test('TOTP submit transport interruption is reconciled from the current logged-in tab', async () => {
-  const { helper } = createHelper({
+  const { displayStatuses, helper } = createHelper({
     isRetryableContentScriptTransportError: () => true,
     sendToContentScriptResilient: async (_source, message) => {
       if (message.type === 'FILL_CODE') {
@@ -139,6 +144,36 @@ test('TOTP submit transport interruption is reconciled from the current logged-i
     state: { email: 'existing.account@example.test' },
     authState: TOTP_STATE,
   });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.existingTotpLogin, true);
+  assert.deepEqual(displayStatuses, ['running', 'completed']);
+});
+
+test('ordinary step 3 finalization leaves the conditional 2FA display pending', async () => {
+  const { displayStatuses, helper } = createHelper({
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'PREPARE_SIGNUP_VERIFICATION') {
+        return { ready: true, state: 'verification_page', verificationKind: 'email' };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    },
+  });
+
+  const result = await helper.finalizeSignupPasswordSubmitInTab(41, 'fixture-password', 3);
+
+  assert.equal(result.ready, true);
+  assert.deepEqual(displayStatuses, ['pending']);
+});
+
+test('display-state synchronization failure never interrupts a successful TOTP login', async () => {
+  const { helper } = createHelper({
+    setExistingTotpLoginDisplayStatus: async () => {
+      throw new Error('display channel unavailable');
+    },
+  });
+
+  const result = await helper.finalizeSignupPasswordSubmitInTab(41, 'fixture-password', 3);
 
   assert.equal(result.handled, true);
   assert.equal(result.existingTotpLogin, true);

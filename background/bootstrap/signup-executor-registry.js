@@ -58,6 +58,7 @@
       reuseOrCreateTab: deps.reuseOrCreateTab,
       sendToContentScriptResilient: deps.sendToContentScriptResilient,
       setEmailState: deps.setEmailState,
+      setExistingTotpLoginDisplayStatus: deps.setExistingTotpLoginDisplayStatus,
       setState: deps.setState,
       sleepWithStop: deps.sleepWithStop,
       SIGNUP_AUTH_ENTRY_URL: deps.SIGNUP_AUTH_ENTRY_URL,

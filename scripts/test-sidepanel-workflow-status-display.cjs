@@ -70,6 +70,37 @@ test('paused and locked auto-run states use auto labels and running node hints',
   });
 });
 
+test('active conditional 2FA login overrides the underlying fill-password running label', () => {
+  const manager = createManager();
+
+  assert.deepEqual(manager.getStatusDisplayState({
+    autoLocked: true,
+    existingTotpLoginDisplayStatus: 'running',
+    runningNodes: ['fill-password'],
+  }), {
+    text: '步骤 3.5：已有账号 2FA 登录运行中...',
+    tone: 'running',
+  });
+
+  assert.deepEqual(manager.getStatusDisplayState({
+    autoPaused: true,
+    autoRunLabel: ' (1/2)',
+    existingTotpLoginDisplayStatus: 'running',
+  }), {
+    text: '自动已暂停 (1/2)，等待继续',
+    tone: 'paused',
+  });
+
+  assert.deepEqual(manager.getStatusDisplayState({
+    autoLocked: true,
+    existingTotpLoginDisplayStatus: 'completed',
+    runningNodes: ['fill-password'],
+  }), {
+    text: '节点 fill-password 运行中...',
+    tone: 'running',
+  });
+});
+
 test('running failed and stopped node statuses map to expected display states', () => {
   const manager = createManager();
 

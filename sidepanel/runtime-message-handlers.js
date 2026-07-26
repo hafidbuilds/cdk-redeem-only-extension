@@ -115,6 +115,7 @@
               removedPaymentWorkerCurrentAttempt: 0,
               removedPaymentWorkerPauseRequested: false,
               removedPaymentWorkerLastLogIndex: 0,
+              existingTotpLoginDisplayStatus: 'pending',
               nodeStatuses: NODE_DEFAULT_STATUSES,
               logs: [],
               scheduledAutoRunAt: null,
@@ -154,6 +155,8 @@
             renderHotmailAccounts();
             renderMail2925Accounts();
             updateRemovedPaymentWorkerUi(latestState);
+            renderStepStatuses(latestState);
+            updateStatusDisplay(latestState);
             if (isLuckmailProvider()) {
               queueLuckmailPurchaseRefresh();
             }

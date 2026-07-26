@@ -27,6 +27,7 @@
       reuseOrCreateTab,
       sendToContentScriptResilient,
       setEmailState,
+      setExistingTotpLoginDisplayStatus = null,
       setState,
       sleepWithStop = null,
       SIGNUP_AUTH_ENTRY_URL = 'https://chatgpt.com/auth/login',
@@ -38,6 +39,19 @@
     } = deps;
 
     const SIGNUP_EXISTING_TOTP_LOGIN_ERROR_PREFIX = 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED::';
+    const EXISTING_TOTP_LOGIN_DISPLAY_STATUSES = new Set(['pending', 'running', 'completed', 'failed']);
+
+    async function updateExistingTotpLoginDisplayStatus(status) {
+      if (!EXISTING_TOTP_LOGIN_DISPLAY_STATUSES.has(status)
+        || typeof setExistingTotpLoginDisplayStatus !== 'function') {
+        return;
+      }
+      try {
+        await setExistingTotpLoginDisplayStatus(status);
+      } catch (_) {
+        // Display-state synchronization must never interrupt the authentication flow.
+      }
+    }
 
     function normalizeEmail(value = '') {
       return String(value || '').trim().toLowerCase();
@@ -168,111 +182,120 @@
         return { handled: false, reason: 'not_totp_login' };
       }
 
-      const state = input?.state || (typeof getState === 'function' ? await getState() : {});
-      const email = normalizeEmail(
-        state?.email
-        || state?.registrationEmailState?.current
-        || state?.accountIdentifier
-        || authState?.displayedEmail
-      );
-      const credential = typeof resolveExistingTotpCredential === 'function'
-        ? await resolveExistingTotpCredential(email, state)
-        : null;
-      const secret = normalizeTotpSecret(
-        credential?.totpMfaSecret
-        || credential?.totpSecret
-        || credential?.credentials?.totpSecret
-      );
-      if (!email || !secret) {
-        await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，但本地没有当前邮箱的 TOTP 密钥，将保留原有“已注册并排除”处理。', 'warn', {
-          step: 3,
-          stepKey: 'fill-password',
-        });
-        return { handled: false, reason: 'missing_totp_secret' };
-      }
+      await updateExistingTotpLoginDisplayStatus('running');
 
-      await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，正在使用本地保存的 TOTP 密钥完成登录。', 'info', {
-        step: 3,
-        stepKey: 'fill-password',
-      });
-
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
-        checkTotpLoginStop();
-        const code = await getFreshTotpCode(secret);
-        let submitResult = null;
-        try {
-          submitResult = await sendToContentScriptResilient('signup-page', {
-            type: 'FILL_CODE',
-            step: 8,
-            source: 'background',
-            payload: {
-              code,
-              visibleStep: 3,
-              purpose: 'login',
-              verificationKind: 'totp',
-              signupExistingTotpLogin: true,
-              suppressVerificationCodeLog: true,
-              backgroundOwnsWorkflowOutcome: true,
-            },
-          }, {
-            timeoutMs: 50000,
-            responseTimeoutMs: 47000,
-            retryDelayMs: 500,
-            logMessage: `步骤 3.5：正在提交 2FA 动态码（${attempt}/2）...`,
-          });
-        } catch (error) {
-          if (!isRetryableContentScriptTransportError(error)) {
-            throw createExistingTotpLoginError('2FA 动态码提交失败，已保留当前认证页和账号。');
-          }
-          await addLog?.('步骤 3.5：提交后认证页发生跳转并中断通信，正在从当前标签页确认登录结果。', 'warn', {
+      try {
+        const state = input?.state || (typeof getState === 'function' ? await getState() : {});
+        const email = normalizeEmail(
+          state?.email
+          || state?.registrationEmailState?.current
+          || state?.accountIdentifier
+          || authState?.displayedEmail
+        );
+        const credential = typeof resolveExistingTotpCredential === 'function'
+          ? await resolveExistingTotpCredential(email, state)
+          : null;
+        const secret = normalizeTotpSecret(
+          credential?.totpMfaSecret
+          || credential?.totpSecret
+          || credential?.credentials?.totpSecret
+        );
+        if (!email || !secret) {
+          await updateExistingTotpLoginDisplayStatus('failed');
+          await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，但本地没有当前邮箱的 TOTP 密钥，将保留原有“已注册并排除”处理。', 'warn', {
             step: 3,
             stepKey: 'fill-password',
           });
+          return { handled: false, reason: 'missing_totp_secret' };
         }
-        checkTotpLoginStop();
 
-        const outcome = submitResult?.invalidCode
-          ? {
+        await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，正在使用本地保存的 TOTP 密钥完成登录。', 'info', {
+          step: 3,
+          stepKey: 'fill-password',
+        });
+
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          checkTotpLoginStop();
+          const code = await getFreshTotpCode(secret);
+          let submitResult = null;
+          try {
+            submitResult = await sendToContentScriptResilient('signup-page', {
+              type: 'FILL_CODE',
+              step: 8,
+              source: 'background',
+              payload: {
+                code,
+                visibleStep: 3,
+                purpose: 'login',
+                verificationKind: 'totp',
+                signupExistingTotpLogin: true,
+                suppressVerificationCodeLog: true,
+                backgroundOwnsWorkflowOutcome: true,
+              },
+            }, {
+              timeoutMs: 50000,
+              responseTimeoutMs: 47000,
+              retryDelayMs: 500,
+              logMessage: `步骤 3.5：正在提交 2FA 动态码（${attempt}/2）...`,
+            });
+          } catch (error) {
+            if (!isRetryableContentScriptTransportError(error)) {
+              throw createExistingTotpLoginError('2FA 动态码提交失败，已保留当前认证页和账号。');
+            }
+            await addLog?.('步骤 3.5：提交后认证页发生跳转并中断通信，正在从当前标签页确认登录结果。', 'warn', {
+              step: 3,
+              stepKey: 'fill-password',
+            });
+          }
+          checkTotpLoginStop();
+
+          const outcome = submitResult?.invalidCode
+            ? {
               success: false,
               invalidCode: true,
               errorText: String(submitResult.errorText || '').trim(),
             }
-          : await waitForExistingTotpLoginOutcome(tabId);
-        if (outcome.success) {
-          await addLog?.('步骤 3.5：2FA 登录成功，已有账号密码已确认；注册验证码、资料和重复设置密码均无需执行。', 'ok', {
-            step: 3,
-            stepKey: 'fill-password',
-          });
-          return {
-            handled: true,
-            ready: true,
-            alreadyVerified: true,
-            skipProfileStep: true,
-            skipProfileStepReason: 'existing_totp_login',
-            skipSetPasswordStep: true,
-            skipSetPasswordStepReason: 'existing_totp_login',
-            existingTotpLogin: true,
-            url: outcome.url || '',
-          };
+            : await waitForExistingTotpLoginOutcome(tabId);
+          if (outcome.success) {
+            await updateExistingTotpLoginDisplayStatus('completed');
+            await addLog?.('步骤 3.5：2FA 登录成功，已有账号密码已确认；注册验证码、资料和重复设置密码均无需执行。', 'ok', {
+              step: 3,
+              stepKey: 'fill-password',
+            });
+            return {
+              handled: true,
+              ready: true,
+              alreadyVerified: true,
+              skipProfileStep: true,
+              skipProfileStepReason: 'existing_totp_login',
+              skipSetPasswordStep: true,
+              skipSetPasswordStepReason: 'existing_totp_login',
+              existingTotpLogin: true,
+              url: outcome.url || '',
+            };
+          }
+
+          if (outcome.invalidCode && attempt < 2) {
+            const secondsRemaining = 30 - (Math.floor(Date.now() / 1000) % 30 || 0);
+            await addLog?.('步骤 3.5：本轮 2FA 动态码未通过，等待下一周期后仅重试一次。', 'warn', {
+              step: 3,
+              stepKey: 'fill-password',
+            });
+            await sleepForTotpLogin((secondsRemaining + 1) * 1000);
+            continue;
+          }
+
+          const reason = outcome.invalidCode
+            ? '连续两次 2FA 动态码均被页面拒绝，已保留当前认证页和账号。'
+            : '提交 2FA 动态码后未确认进入 ChatGPT 已登录状态，已保留当前认证页和账号。';
+          throw createExistingTotpLoginError(reason);
         }
 
-        if (outcome.invalidCode && attempt < 2) {
-          const secondsRemaining = 30 - (Math.floor(Date.now() / 1000) % 30 || 0);
-          await addLog?.('步骤 3.5：本轮 2FA 动态码未通过，等待下一周期后仅重试一次。', 'warn', {
-            step: 3,
-            stepKey: 'fill-password',
-          });
-          await sleepForTotpLogin((secondsRemaining + 1) * 1000);
-          continue;
-        }
-
-        const reason = outcome.invalidCode
-          ? '连续两次 2FA 动态码均被页面拒绝，已保留当前认证页和账号。'
-          : '提交 2FA 动态码后未确认进入 ChatGPT 已登录状态，已保留当前认证页和账号。';
-        throw createExistingTotpLoginError(reason);
+        throw createExistingTotpLoginError('2FA 登录恢复未完成。');
+      } catch (error) {
+        await updateExistingTotpLoginDisplayStatus('failed');
+        throw error;
       }
-
-      throw createExistingTotpLoginError('2FA 登录恢复未完成。');
     }
 
     async function waitForSignupEntryTabToSettle(tabId, step = 1) {
@@ -516,6 +539,8 @@
       if (!Number.isInteger(tabId)) {
         throw new Error(`认证页面标签页已关闭，无法完成步骤 ${step} 的提交后确认。`);
       }
+
+      await updateExistingTotpLoginDisplayStatus('pending');
 
       const maxFinalizeAttempts = 3;
       let lastRetryableError = null;
