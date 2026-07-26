@@ -61,6 +61,7 @@
         }
         if (
           message.payload.upiCredentialMembershipCheckResults !== undefined
+          || message.payload.accountRecordsV2 !== undefined
           || message.payload.cdkPoolText !== undefined
           || message.payload.cdkUsage !== undefined
           || message.payload.upiRedeemCdkPoolText !== undefined
@@ -74,7 +75,10 @@
           || message.payload.upiAccountCredentialBackups !== undefined
         ) {
           renderAccountRecords(latestState);
-          if (message.payload.upiCredentialMembershipCheckResults !== undefined) {
+          if (
+            message.payload.upiCredentialMembershipCheckResults !== undefined
+            || message.payload.accountRecordsV2 !== undefined
+          ) {
             syncCustomEmailPoolEntriesFromMembershipResults?.(latestState?.upiCredentialMembershipCheckResults);
             renderCustomEmailPoolEntries();
             queueCustomEmailPoolRefresh();

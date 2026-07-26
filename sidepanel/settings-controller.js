@@ -231,6 +231,9 @@
         if (extraPayload.allowEmptyCustomEmailPool === true) {
           payload.allowEmptyCustomEmailPool = true;
         }
+        if (extraPayload.allowCustomEmailPoolStatusReset === true) {
+          payload.allowCustomEmailPoolStatusReset = true;
+        }
         return payload;
       }
       

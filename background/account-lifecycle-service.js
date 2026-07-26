@@ -91,6 +91,26 @@
     return { allowed: true, reasonCode: '' };
   }
 
+  function buildTrialEligibilityPatch(evidence = {}, options = {}) {
+    const status = normalizeText(
+      evidence.status || evidence.trialEligibilityStatus || evidence.eligibilityStatus
+    ).toLowerCase();
+    if (!['eligible', 'ineligible', 'failed'].includes(status)) {
+      throw new Error('试用资格证据缺少明确状态。');
+    }
+    const checkedAt = normalizeText(options.checkedAt || evidence.checkedAt) || new Date().toISOString();
+    return {
+      eligibilityStatus: status,
+      reasonCode: normalizeText(
+        evidence.reasonCode || evidence.trialEligibilityReasonCode
+      ) || (status === 'ineligible' ? 'UPI_TRIAL_INELIGIBLE' : status === 'eligible' ? 'UPI_TRIAL_ELIGIBLE' : 'UPI_TRIAL_CHECK_FAILED'),
+      reason: normalizeText(
+        evidence.reason || evidence.trialEligibilityReason
+      ) || (status === 'ineligible' ? '账号无试用资格。' : status === 'eligible' ? '账号有试用资格。' : '资格检查失败，可稍后重试。'),
+      checkedAt,
+    };
+  }
+
   function createAccountLifecycleService(deps = {}) {
     const repository = deps.repository;
     if (!repository?.updateCredentials || !repository?.updateLifecycle) {
@@ -106,11 +126,30 @@
       return { record, retryable: patch.retryable };
     }
 
-    return { applyAccessTokenEvidence };
+    async function applyTrialEligibilityEvidence(accountId, evidence = {}, options = {}) {
+      const patch = buildTrialEligibilityPatch(evidence, options);
+      return repository.updateLifecycle(accountId, patch, options);
+    }
+
+    async function clearTrialEligibilityEvidence(accountId, options = {}) {
+      return repository.updateLifecycle(accountId, {
+        eligibilityStatus: 'unknown',
+        reasonCode: '',
+        reason: '',
+        checkedAt: normalizeText(options.checkedAt) || new Date().toISOString(),
+      }, options);
+    }
+
+    return {
+      applyAccessTokenEvidence,
+      applyTrialEligibilityEvidence,
+      clearTrialEligibilityEvidence,
+    };
   }
 
   return {
     buildAccessTokenPatch,
+    buildTrialEligibilityPatch,
     canRedeemAccount,
     classifyAccessTokenEvidence,
     createAccountLifecycleService,

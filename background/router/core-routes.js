@@ -434,6 +434,7 @@
         setContributionMode,
         setPersistentSettings,
         setState,
+        syncCustomEmailPoolTrialEligibilityTransitions: (currentEntries, nextEntries, options) => rootScope.MultiPageRuntimeCustomEmailPoolState?.syncCustomEmailPoolTrialEligibilityTransitions?.(currentEntries, nextEntries, { ...options, accountLifecycleService: rootScope.MultiPageRuntimeAccountLifecycleService }),
         validateModeSwitch,
       }) || {}),
       ...(rootScope.MultiPageAccountRecordRoutes?.createAccountRecordRoutes?.({

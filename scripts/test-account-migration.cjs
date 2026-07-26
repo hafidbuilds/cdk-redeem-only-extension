@@ -10,6 +10,13 @@ function buildSources() {
   return {
     customEmailPoolEntries: [
       { email: ' DUP@example.com ', password: 'pool-password' },
+      {
+        email: 'ineligible@example.com',
+        trialEligibilityStatus: 'ineligible',
+        trialEligibilityReason: 'not-eligible',
+        trialEligibilityReasonCode: 'UPI_TRIAL_INELIGIBLE',
+        trialEligibilityCheckedAt: '2026-07-25T01:10:00Z',
+      },
       { email: 'invalid-row' },
     ],
     accountRunHistory: [
@@ -57,6 +64,9 @@ test('migration merges duplicates, filters invalid rows, and preserves separate 
   assert.equal(root.items['no2fa@example.com'].credentials.no2faFreeRoute, true);
   assert.equal(root.items['no2fa@example.com'].credentials.twoFactorEnabled, false);
   assert.equal(root.items['deactivated@example.com'].lifecycle.validityStatus, 'deactivated');
+  assert.equal(root.items['ineligible@example.com'].lifecycle.eligibilityStatus, 'ineligible');
+  assert.equal(root.items['ineligible@example.com'].lifecycle.reason, 'not-eligible');
+  assert.equal(root.items['ineligible@example.com'].lifecycle.reasonCode, 'UPI_TRIAL_INELIGIBLE');
 });
 
 test('migration keeps UPI, IDEAL, and PIX state isolated and maps old pixRedeem alias to UPI only', () => {

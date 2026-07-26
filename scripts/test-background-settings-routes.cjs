@@ -2,9 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createSettingsRoutes } = require('../background/routes/settings-routes.js');
+const { createCustomEmailPoolState } = require('../background/custom-email-pool-state.js');
 
 function createRouteHarness() {
   const writes = [];
+  const lifecycleTransitions = [];
+  const customEmailPoolState = createCustomEmailPoolState();
   let state = {
     customEmailPoolEntries: [
       { email: 'one@example.com', enabled: true, used: false },
@@ -18,7 +21,7 @@ function createRouteHarness() {
     broadcastDataUpdate: () => {},
     buildLuckmailSessionSettingsPayload: () => ({}),
     buildPersistentSettingsPayload: (payload = {}) => {
-      const { allowEmptyCustomEmailPool, ...settings } = payload;
+      const { allowEmptyCustomEmailPool, allowCustomEmailPoolStatusReset, ...settings } = payload;
       return settings;
     },
     mergeCustomEmailPoolEntriesForSettings: (currentEntries, incomingEntries) => incomingEntries.map((entry) => {
@@ -36,9 +39,18 @@ function createRouteHarness() {
     setState: async (updates) => {
       state = { ...state, ...updates };
     },
+    syncCustomEmailPoolTrialEligibilityTransitions: (currentEntries, nextEntries, options) => (
+      customEmailPoolState.syncCustomEmailPoolTrialEligibilityTransitions(currentEntries, nextEntries, {
+        ...options,
+        accountLifecycleService: {
+          applyTrialEligibilityEvidence: async (email, evidence) => lifecycleTransitions.push({ email, status: evidence.status }),
+          clearTrialEligibilityEvidence: async (email) => lifecycleTransitions.push({ email, status: 'unknown' }),
+        },
+      })
+    ),
     validateModeSwitch: () => ({ normalizedUpdates: {} }),
   });
-  return { routes, writes, getState: () => state };
+  return { routes, writes, lifecycleTransitions, getState: () => state };
 }
 
 test('ordinary settings save cannot replace a populated custom email pool with empty arrays', async () => {
@@ -124,4 +136,34 @@ test('explicit custom email pool status reset permits manual mark-unused', async
   const saved = harness.writes.at(-1);
   assert.equal(saved.customEmailPoolEntries[0].used, false);
   assert.deepEqual(saved.customEmailPool, ['one@example.com', 'two@example.com']);
+});
+
+test('explicit trial status changes synchronize the canonical account lifecycle', async () => {
+  const harness = createRouteHarness();
+
+  await harness.routes.SAVE_SETTING({
+    customEmailPoolEntries: [
+      {
+        email: 'one@example.com',
+        enabled: true,
+        used: false,
+        trialEligibilityStatus: 'ineligible',
+        trialEligibilityReason: 'manual confirmation',
+      },
+      { email: 'two@example.com', enabled: true, used: false },
+    ],
+    customEmailPool: ['two@example.com'],
+    allowCustomEmailPoolStatusReset: true,
+  });
+  assert.deepEqual(harness.lifecycleTransitions, [{ email: 'one@example.com', status: 'ineligible' }]);
+
+  await harness.routes.SAVE_SETTING({
+    customEmailPoolEntries: [
+      { email: 'one@example.com', enabled: true, used: false, trialEligibilityStatus: '' },
+      { email: 'two@example.com', enabled: true, used: false },
+    ],
+    customEmailPool: ['one@example.com', 'two@example.com'],
+    allowCustomEmailPoolStatusReset: true,
+  });
+  assert.deepEqual(harness.lifecycleTransitions.at(-1), { email: 'one@example.com', status: 'unknown' });
 });

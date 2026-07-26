@@ -1312,7 +1312,21 @@ function getCustomEmailPoolCredentialForEmail(state = {}, email = '') {
 }
 
 async function markCustomEmailPoolEntryTrialEligibility(state = {}, options = {}) {
-  return customEmailPoolStateRegistry.markCustomEmailPoolEntryTrialEligibility(state, options);
+  const result = await customEmailPoolStateRegistry.markCustomEmailPoolEntryTrialEligibility(state, options);
+  const email = String(options.email || state?.email || '').trim().toLowerCase();
+  const status = String(options.status || options.trialEligibilityStatus || '').trim().toLowerCase();
+  if (email && ['eligible', 'ineligible', 'failed'].includes(status)) {
+    await accountLifecycleService.applyTrialEligibilityEvidence(email, {
+      status,
+      reason: options.reason || options.trialEligibilityReason,
+      reasonCode: options.reasonCode || options.trialEligibilityReasonCode,
+      checkedAt: options.checkedAt || options.trialEligibilityCheckedAt,
+    }, {
+      checkedAt: options.checkedAt || options.trialEligibilityCheckedAt,
+      source: 'custom-email-pool-trial-check',
+    });
+  }
+  return result;
 }
 
 async function markCurrentCustomEmailPoolEntryUsed(state = {}, options = {}) {
@@ -1341,6 +1355,7 @@ const customEmailPoolStateRegistry = self.MultiPageCustomEmailPoolState?.createC
   setPersistentSettings,
   setState,
 }) || {};
+self.MultiPageRuntimeCustomEmailPoolState = customEmailPoolStateRegistry;
 
 async function restoreCustomEmailPoolForAutoRunIfNeeded(state = {}) {
   const currentState = state && typeof state === 'object' ? state : {};
@@ -1518,9 +1533,11 @@ async function markCurrentRegistrationAccountTrialIneligible(state = {}, options
   const reason = String(options.reason || '账号无试用资格').trim();
   const checkedAt = String(options.checkedAt || new Date().toISOString()).trim();
 
-  const result = await customEmailPoolStateRegistry.markCurrentCustomEmailPoolEntryTrialIneligible(latestState, {
+  const result = await markCustomEmailPoolEntryTrialEligibility(latestState, {
     email,
+    status: 'ineligible',
     reason,
+    reasonCode: String(options.reasonCode || 'UPI_TRIAL_INELIGIBLE').trim(),
     checkedAt,
     accessToken: String(options.accessToken || latestState.accessToken || latestState.upiRedeemAccessToken || '').trim(),
     accessTokenUpdatedAt: String(options.accessTokenUpdatedAt || checkedAt || '').trim(),
@@ -12656,7 +12673,7 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   isVerificationMailPollingError,
   markCurrentRegistrationAccountTrialIneligible: registrationAccountStateRegistry.markCurrentRegistrationAccountTrialIneligible,
   markCurrentRegistrationAccountUsed: registrationAccountStateRegistry.markCurrentRegistrationAccountUsed,
-  markCustomEmailPoolEntryTrialEligibility: customEmailPoolStateRegistry.markCustomEmailPoolEntryTrialEligibility,
+  markCustomEmailPoolEntryTrialEligibility,
   normalizeCodex2ApiUrl,
   normalizeHotmailLocalBaseUrl,
   normalizeSub2ApiUrl,
@@ -12880,7 +12897,7 @@ upiCredentialMembershipChecker = self.MultiPageBackgroundUpiCredentialMembership
   fetchVerificationCodeOnly: (...args) => verificationFlowHelpers.fetchVerificationCodeOnly(...args),
   getState,
   isTabAlive,
-  markCustomEmailPoolEntryTrialEligibility: customEmailPoolStateRegistry.markCustomEmailPoolEntryTrialEligibility,
+  markCustomEmailPoolEntryTrialEligibility,
   markRegistrationEmailTrialIneligible: registrationAccountStateRegistry.markCurrentRegistrationAccountTrialIneligible,
   registerTab,
   redeemUpiCredentialWithAccessToken: (...args) => upiRedeemExecutor.redeemUpiCredentialWithAccessToken(...args),

@@ -229,3 +229,26 @@ test('custom email pool settings payload falls back to the local backup when run
   assert.deepEqual(payload.customEmailPoolEntries, backupEntries);
   assert.deepEqual(payload.customEmailPool, ['backup@example.com']);
 });
+
+test('custom email pool settings payload forwards explicit status reset intent', () => {
+  const appState = appStateModule.createSidepanelAppState({
+    latestState: {},
+  });
+  const controller = settingsControllerModule.createSettingsController({
+    appState,
+    scopeValues: {
+      btnSaveSettings: createButton(),
+      getNormalizedCustomEmailPoolEntriesState: () => [{ email: 'sample@example.com' }],
+      getActiveCustomEmailPoolEmails: (entries) => entries.map((entry) => entry.email),
+      updateConfigMenuControls: () => {},
+      showToast: () => {},
+      currentAutoRun: { autoRunning: false },
+      chrome: { runtime: { sendMessage: async () => ({}) } },
+    },
+  });
+
+  const payload = controller.buildCustomEmailPoolSettingsPayload({
+    allowCustomEmailPoolStatusReset: true,
+  });
+  assert.equal(payload.allowCustomEmailPoolStatusReset, true);
+});

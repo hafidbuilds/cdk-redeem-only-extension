@@ -40,6 +40,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 日志执行步骤 3.5 时界面仍显示步骤 3 运行中 | 增加独立展示状态并同步流程行和顶部状态，不改变 7 节点模型 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step3-5-ui-status-sync) |
 | 2026-07-27 | 第 7 步已通过但邮箱池卡片回显示“未用” | 普通侧栏回写合并并保护已用、AT、资格和选中状态，人工重置显式放行 | [记录](issue-fix-archive-2026-07.md#2026-07-27-custom-email-pool-status-rollback) |
 | 2026-07-27 | 无试用资格邮箱显示“未用”，疑似会被循环选择 | 无 AT 时显示“已排除”，并验证自动运行选中下一条可用邮箱 | [记录](issue-fix-archive-2026-07.md#2026-07-27-ineligible-email-exclusion-display) |
+| 2026-07-27 | 明确无试用资格状态被旧快照覆盖后长期显示未用 | 资格结论写入统一账号记录并自动回填，旧损坏条目支持人工标记 | [记录](issue-fix-archive-2026-07.md#2026-07-27-ineligible-email-canonical-recovery) |
 
 ## 新记录规则
 

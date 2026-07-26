@@ -27,6 +27,76 @@
 - [步骤 3.5 成功前旧失败广播排除邮箱](#2026-07-26-step3-5-node-error-race)
 - [步骤 3.5 成功后仍重复执行步骤 6](#2026-07-26-step3-5-skip-redundant-password)
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
+- [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
+
+---
+
+<a id="2026-07-27-ineligible-email-canonical-recovery"></a>
+
+## 无试用资格状态被覆盖后长期显示未用
+
+日期：2026-07-27
+
+关联记录：[邮箱池完成状态回退](#2026-07-27-custom-email-pool-status-rollback)、[无资格邮箱排除展示](#2026-07-27-ineligible-email-exclusion-display)
+
+### 故障现象与证据
+
+脱敏诊断明确记录同一轮第 7 步先完成 2FA 并把当前邮箱标记为已用，随后资格接口明确返回 `not-eligible`，后台记录“已在邮箱池标记无试用资格”，下一轮也已经选择另一邮箱。用户侧截图中的原邮箱后来却只显示“未用”，没有无资格徽标。真实邮箱、AT、密码、TOTP、验证码、Cookie 和敏感 URL 参数未写入档案。
+
+### 根因
+
+- 前一修复已经阻止新的普通 `SAVE_SETTING` 快照覆盖邮箱池完成状态，但被旧版本覆盖过的历史条目本身已经丢失 `trialEligibilityStatus`。
+- 无资格账号不会进入 Free 结果表，这是正确业务规则；统一账号迁移原先又没有从邮箱池资格字段吸收生命周期结论。
+- 因此邮箱池字段一旦丢失，就没有第二份结构化证据可自动回填；日志文本虽然能说明该次故障，但不能作为运行时状态恢复来源。
+- 侧栏的显式状态重置意图此前没有进入实际保存载荷，人工清除与后台保护也无法完整同步到统一账号记录。
+
+### 修复
+
+- 明确的 `eligible`、`ineligible` 或 `failed` 资格结果通过现有账号仓库写入统一账号生命周期；网络错误不会被升级为无资格。
+- 统一账号迁移吸收邮箱池已有的资格状态、原因、原因码和检查时间，为现有正确条目建立持久恢复证据。
+- 侧栏加载和运行时收到 `accountRecordsV2` 更新时，按邮箱把明确 `ineligible` 回填到邮箱池并立即重绘；缺 AT 时仍保持 `used=false`，但显示“已排除”。
+- 邮箱卡片新增“标记无资格”，用于修复已经丢失结构化证据的旧条目；“清除无资格”会同步清除统一账号生命周期，避免随后又被自动回填。
+- 显式状态重置标记现在真实传入后台保存路由；普通自动保存仍不能清除工作流写入的资格状态。
+
+### 安全与兼容边界
+
+- 只有结构化明确状态或用户主动确认才能写入无资格；超时、网络失败、5xx、HTML 响应和字段缺失保持失败/未知，不会被排除。
+- 无资格且缺 AT 的邮箱不会伪装为已用账号，也不会进入 Free；可用性判断仍独立排除该邮箱。
+- 不从脱敏日志反推完整邮箱，不自动篡改已经丢失全部结构化证据的历史条目。
+- 不修改 Manifest 权限、Provider、CDK 幂等规则、外部副作用账本或 UPI/IDEAL/PIX 独立状态。
+
+### 修改文件
+
+- `background.js`
+- `background/account-lifecycle-service.js`
+- `background/account-record-migration.js`
+- `background/custom-email-pool-state.js`
+- `background/router/core-routes.js`
+- `background/routes/settings-routes.js`
+- `sidepanel/custom-email-pool-manager.js`
+- `sidepanel/custom-email-pool-membership-sync.js`
+- `sidepanel/runtime-message-data-handler.js`
+- `sidepanel/settings-controller.js`
+- `sidepanel/sidepanel-app-controller.js`
+- 对应测试、`CHANGELOG.md`、`docs/USER_GUIDE.md` 和故障索引
+
+### 回归覆盖
+
+- 明确无资格进入统一账号生命周期，未知/网络错误不能生成无资格结论。
+- 迁移从邮箱池保留资格状态、原因、原因码和时间。
+- 统一账号的无资格证据可恢复邮箱池状态，但缺 AT 时不设置 `used=true`。
+- `accountRecordsV2` 单独广播也会刷新邮箱池。
+- 人工标记和清除资格同步统一账号生命周期，显式重置标记不会在侧栏载荷中丢失。
+
+### 验证与提交影响
+
+- 定向测试：`29/29` 通过。
+- 完整单元测试：`508/508` 通过。
+- 语法检查：`396` 个 Git 跟踪的 JavaScript 文件通过。
+- Smoke 审计通过，仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高文件阈值。
+- 隔离 Chrome for Testing E2E：`1/1` 通过，实际浏览器为 `Chrome/150.0.7871.24`、临时 Profile、pipe 传输。
+- Manifest 引用随 Smoke 审计通过且 `manifest.json` 未修改；差异敏感数据扫描未发现真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
+- 未打包、未修改 Manifest 版本、未创建标签或 GitHub Release。
 
 ---
 

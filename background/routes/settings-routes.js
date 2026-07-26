@@ -9,7 +9,6 @@
     }
     return handler;
   }
-
   function hasOwn(source = {}, key = '') {
     return Object.prototype.hasOwnProperty.call(source, key);
   }
@@ -56,6 +55,7 @@
       normalizeHotmailAccounts,
       resolveSignupMethod,
       setContributionMode,
+      syncCustomEmailPoolTrialEligibilityTransitions,
       setPersistentSettings,
       setState,
       validateModeSwitch,
@@ -63,8 +63,7 @@
     async function saveSetting(payload = {}) {
       const currentState = await requireHandler(getState, 'getState')();
       const updates = requireHandler(buildPersistentSettingsPayload, 'buildPersistentSettingsPayload')(payload || {});
-      const allowEmptyCustomEmailPool = payload?.allowEmptyCustomEmailPool === true;
-      const allowCustomEmailPoolStatusReset = payload?.allowCustomEmailPoolStatusReset === true;
+      const allowEmptyCustomEmailPool = payload?.allowEmptyCustomEmailPool === true, allowCustomEmailPoolStatusReset = payload?.allowCustomEmailPoolStatusReset === true;
       if (
         !allowCustomEmailPoolStatusReset
         && hasOwn(updates, 'customEmailPoolEntries')
@@ -172,6 +171,7 @@
         stateUpdates.currentNodeId = '';
       }
       await requireHandler(setState, 'setState')(stateUpdates);
+      await syncCustomEmailPoolTrialEligibilityTransitions?.(currentState?.customEmailPoolEntries, updates.customEmailPoolEntries, { enabled: allowCustomEmailPoolStatusReset });
       if (Boolean(currentState?.contributionMode) && typeof setContributionMode === 'function') {
         await setContributionMode(true);
       }

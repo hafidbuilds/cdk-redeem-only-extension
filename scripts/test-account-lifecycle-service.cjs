@@ -40,3 +40,17 @@ test('unverified replacement cannot overwrite the old token and deactivated acco
   assert.equal(deactivated.lifecycle.validityStatus, 'deactivated');
   assert.equal(lifecycle.canRedeemAccount({ lifecycle: deactivated.lifecycle, credentials: deactivated.credentials }).allowed, false);
 });
+
+test('trial eligibility lifecycle requires explicit evidence', () => {
+  const ineligible = lifecycle.buildTrialEligibilityPatch({
+    status: 'ineligible',
+    reason: 'not-eligible',
+  }, { checkedAt: '2026-07-27T01:00:00Z' });
+  assert.equal(ineligible.eligibilityStatus, 'ineligible');
+  assert.equal(ineligible.reasonCode, 'UPI_TRIAL_INELIGIBLE');
+  assert.equal(ineligible.reason, 'not-eligible');
+  assert.throws(
+    () => lifecycle.buildTrialEligibilityPatch({ status: 'unknown', reason: 'network error' }),
+    /明确状态/
+  );
+});

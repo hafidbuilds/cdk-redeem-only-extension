@@ -103,6 +103,39 @@ test('runtime membership result updates also refresh custom email pool', () => {
   ]);
 });
 
+test('runtime canonical account updates also refresh custom email pool', () => {
+  const calls = [];
+  const handler = createScopedHandler({
+    accountRecordsManager: null,
+    renderAccountRecords: () => calls.push('renderAccountRecords'),
+    syncCustomEmailPoolEntriesFromMembershipResults: () => calls.push('syncCustomEmailPoolEntriesFromMembershipResults'),
+    renderCustomEmailPoolEntries: () => calls.push('renderCustomEmailPoolEntries'),
+    queueCustomEmailPoolRefresh: () => calls.push('queueCustomEmailPoolRefresh'),
+    updateAccountRunHistorySettingsUI: () => {},
+    renderContributionMode: () => {},
+    syncPlusManualConfirmationDialog: () => Promise.resolve(),
+  });
+
+  handler.handleDataUpdated({
+    payload: {
+      accountRecordsV2: {
+        items: {
+          'sample@example.com': {
+            lifecycle: { eligibilityStatus: 'ineligible' },
+          },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(calls.slice(0, 4), [
+    'renderAccountRecords',
+    'syncCustomEmailPoolEntriesFromMembershipResults',
+    'renderCustomEmailPoolEntries',
+    'queueCustomEmailPoolRefresh',
+  ]);
+});
+
 test('runtime customEmailPool-only updates do not replace structured entries', () => {
   const calls = [];
   const handler = createScopedHandler({
@@ -277,4 +310,33 @@ test('custom email pool membership sync refuses used state without AT', () => {
   assert.equal(result.changed, false);
   assert.equal(result.entries[0].used, false);
   assert.equal(result.entries[0].accessToken, '');
+});
+
+test('custom email pool sync restores explicit ineligible evidence from canonical account records', () => {
+  const syncer = createCustomEmailPoolMembershipSync();
+  const result = syncer.mergeEntriesWithMembershipResults([{
+    id: 'entry-1',
+    email: 'sample@example.com',
+    enabled: true,
+    used: false,
+    trialEligibilityStatus: '',
+  }], { items: [] }, {
+    items: {
+      'sample@example.com': {
+        id: 'sample@example.com',
+        lifecycle: {
+          eligibilityStatus: 'ineligible',
+          reasonCode: 'UPI_TRIAL_INELIGIBLE',
+          reason: 'not-eligible',
+          checkedAt: '2026-07-27T01:00:00.000Z',
+        },
+      },
+    },
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.entries[0].used, false);
+  assert.equal(result.entries[0].trialEligibilityStatus, 'ineligible');
+  assert.equal(result.entries[0].trialEligibilityReason, 'not-eligible');
+  assert.equal(result.entries[0].note, '无试用资格');
 });

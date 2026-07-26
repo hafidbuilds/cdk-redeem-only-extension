@@ -709,6 +709,32 @@
       return entries[numericRun - 1] || '';
     }
 
+    async function syncCustomEmailPoolTrialEligibilityTransitions(currentEntries = [], nextEntries = [], options = {}) {
+      if (options.enabled !== true || !Array.isArray(currentEntries) || !Array.isArray(nextEntries)) return [];
+      const lifecycleService = options.accountLifecycleService;
+      const currentByEmail = new Map(normalizeCustomEmailPoolEntryObjects(currentEntries).map((entry) => [entry.email, entry]));
+      const transitions = [];
+      for (const entry of normalizeCustomEmailPoolEntryObjects(nextEntries)) {
+        const previousStatus = normalizeCustomEmailPoolTrialEligibilityStatus(currentByEmail.get(entry.email)?.trialEligibilityStatus);
+        const nextStatus = normalizeCustomEmailPoolTrialEligibilityStatus(entry.trialEligibilityStatus);
+        if (nextStatus === 'ineligible' && previousStatus !== 'ineligible') {
+          await lifecycleService?.applyTrialEligibilityEvidence?.(entry.email, {
+            status: 'ineligible',
+            reason: entry.trialEligibilityReason || '人工确认账号无试用资格。',
+            reasonCode: entry.trialEligibilityReasonCode || 'MANUAL_TRIAL_INELIGIBLE',
+            checkedAt: entry.trialEligibilityCheckedAt,
+          }, { source: 'custom-email-pool-manual-status' });
+          transitions.push({ email: entry.email, status: 'ineligible' });
+        } else if (previousStatus === 'ineligible' && nextStatus !== 'ineligible') {
+          await lifecycleService?.clearTrialEligibilityEvidence?.(entry.email, {
+            source: 'custom-email-pool-manual-status-reset',
+          });
+          transitions.push({ email: entry.email, status: 'unknown' });
+        }
+      }
+      return transitions;
+    }
+
     return {
       buildCustomEmailPoolRecoveryPatch,
       getCustomEmailPool,
@@ -734,6 +760,7 @@
       normalizeCustomMailProviderPoolEntries,
       parseCustomEmailPoolEntryForState,
       splitCustomEmailPoolEntrySource,
+      syncCustomEmailPoolTrialEligibilityTransitions,
     };
   }
 

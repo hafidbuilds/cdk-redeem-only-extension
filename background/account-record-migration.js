@@ -247,6 +247,7 @@
     asArray(sources.customEmailPoolEntries).forEach((entry) => {
       const source = typeof entry === 'string' ? { email: entry } : asObject(entry);
       const email = readEmail(source) || String(entry || '').split('----')[0];
+      const eligibilityStatus = inferEligibilityStatus(source);
       captureExplicitCredentials(email, source);
       patchAccount(email, {
         identity: {
@@ -254,6 +255,12 @@
           providerId: firstText(source.providerId, source.mailProvider),
         },
         credentials: buildCredentialPatch(source),
+        lifecycle: {
+          eligibilityStatus,
+          reasonCode: firstText(source.trialEligibilityReasonCode, source.eligibilityReasonCode),
+          reason: firstText(source.trialEligibilityReason, source.eligibilityReason),
+          checkedAt: firstText(source.trialEligibilityCheckedAt, source.eligibilityCheckedAt),
+        },
         metadata: {
           customPoolUsed: source.used === true,
           customPoolDisabled: source.disabled === true,

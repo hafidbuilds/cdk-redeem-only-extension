@@ -2772,7 +2772,7 @@ with (appState.createScope()) {
       legacyOverrideSource: nextState || {},
     });
     syncLocalChatgptSessionReaderDraftFromState(latestState);
-    if (nextState?.upiCredentialMembershipCheckResults !== undefined) syncCustomEmailPoolEntriesFromMembershipResults(latestState.upiCredentialMembershipCheckResults);
+    if (nextState?.upiCredentialMembershipCheckResults !== undefined || nextState?.accountRecordsV2 !== undefined) syncCustomEmailPoolEntriesFromMembershipResults(latestState.upiCredentialMembershipCheckResults);
   
     renderAccountRecords(latestState);
   }
@@ -4416,7 +4416,7 @@ with (appState.createScope()) {
       normalizeEntries: normalizeCustomEmailPoolEntryObjects,
       normalizeTrialEligibilityStatus: normalizeCustomEmailPoolTrialEligibilityStatus,
     });
-    const mergeResult = syncer?.mergeEntriesWithMembershipResults?.(getNormalizedCustomEmailPoolEntriesState(), results);
+    const mergeResult = syncer?.mergeEntriesWithMembershipResults?.(getNormalizedCustomEmailPoolEntriesState(), results, latestState?.accountRecordsV2);
     if (!mergeResult?.changed) return false;
     const nextEntries = normalizeCustomEmailPoolEntryObjects(mergeResult.entries);
     const selectedEmail = String(latestState?.selectedCustomEmailPoolEmail || '').trim().toLowerCase();

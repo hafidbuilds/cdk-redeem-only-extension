@@ -66,10 +66,13 @@
       return '';
     }
 
-    function mergeEntriesWithMembershipResults(entries = [], results = {}) {
+    function mergeEntriesWithMembershipResults(entries = [], results = {}, accountRecords = {}) {
       const normalizedEntries = normalizeEntries(entries);
       const resultItems = Array.isArray(results?.items) ? results.items : [];
-      if (!normalizedEntries.length || !resultItems.length) {
+      const accountItems = accountRecords?.items && typeof accountRecords.items === 'object'
+        ? Object.values(accountRecords.items)
+        : [];
+      if (!normalizedEntries.length || (!resultItems.length && !accountItems.length)) {
         return { entries: normalizedEntries, changed: false };
       }
 
@@ -80,10 +83,44 @@
         credentialsByEmail.set(email, item);
       }
 
+      const ineligibleAccountsByEmail = new Map();
+      for (const account of accountItems) {
+        const email = normalizeEmail(account?.id || account?.identity?.email);
+        if (!email || normalizeTrialStatus(account?.lifecycle?.eligibilityStatus) !== 'ineligible') continue;
+        ineligibleAccountsByEmail.set(email, account.lifecycle);
+      }
+
       let changed = false;
       const nextEntries = normalizedEntries.map((entry) => {
         const credential = credentialsByEmail.get(entry.email);
-        if (!credential || getCredentialTrialStatus(credential) !== 'eligible') {
+        const credentialStatus = getCredentialTrialStatus(credential);
+        const ineligibleEvidence = credentialStatus === 'ineligible'
+          ? credential
+          : credentialStatus !== 'eligible'
+            ? ineligibleAccountsByEmail.get(entry.email)
+            : null;
+        if (ineligibleEvidence) {
+          const nextEntry = {
+            ...entry,
+            trialEligibilityStatus: 'ineligible',
+            trialEligibilityReason: String(
+              ineligibleEvidence.trialEligibilityReason || ineligibleEvidence.eligibilityReason || ineligibleEvidence.reason || '账号无试用资格。'
+            ).trim(),
+            trialEligibilityReasonCode: String(
+              ineligibleEvidence.trialEligibilityReasonCode || ineligibleEvidence.eligibilityReasonCode || ineligibleEvidence.reasonCode || 'UPI_TRIAL_INELIGIBLE'
+            ).trim(),
+            trialEligibilityCheckedAt: String(
+              ineligibleEvidence.trialEligibilityCheckedAt || ineligibleEvidence.eligibilityCheckedAt || ineligibleEvidence.checkedAt || ''
+            ).trim(),
+            trialEligibilityRetryable: false,
+            trialEligibilityTransientFailure: false,
+            trialEligibilityLastError: '',
+            note: entry.note || '无试用资格',
+          };
+          changed = changed || JSON.stringify(entry) !== JSON.stringify(nextEntry);
+          return nextEntry;
+        }
+        if (!credential || credentialStatus !== 'eligible') {
           return entry;
         }
 

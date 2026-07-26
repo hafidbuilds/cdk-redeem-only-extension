@@ -471,6 +471,7 @@
             <button class="btn btn-outline btn-xs" type="button" data-action="use" ${isTrialIneligibleEntry(entry) ? 'disabled title="该邮箱无试用资格，不会被主流程选中"' : ''}>使用此邮箱</button>
             <button class="btn btn-outline btn-xs" type="button" data-action="toggle-used">${helpers.escapeHtml(entry.used ? '标记未用' : '标记已用')}</button>
             <button class="btn btn-outline btn-xs" type="button" data-action="toggle-enabled">${helpers.escapeHtml(entry.enabled ? '停用' : '启用')}</button>
+            ${!isTrialIneligibleEntry(entry) ? '<button class="btn btn-outline btn-xs" type="button" data-action="mark-trial-ineligible">标记无资格</button>' : ''}
             ${isTrialIneligibleEntry(entry) ? '<button class="btn btn-outline btn-xs" type="button" data-action="clear-trial-status">清除无资格</button>' : ''}
             <button class="btn btn-outline btn-xs" type="button" data-action="delete">删除</button>
           </div>
@@ -569,6 +570,31 @@
           )));
         });
 
+        item.querySelector('[data-action="mark-trial-ineligible"]')?.addEventListener('click', async () => {
+          const confirmed = await helpers.openConfirmModal({
+            title: '标记无试用资格',
+            message: `确认将 ${entry.email} 标记为无试用资格并从自动注册邮箱中排除吗？`,
+            confirmLabel: '确认标记',
+          });
+          if (!confirmed) return;
+          const checkedAt = new Date().toISOString();
+          await patchEntries((entriesList) => entriesList.map((candidate) => (
+            String(candidate.id) === entryId
+              ? {
+                  ...candidate,
+                  trialEligibilityStatus: 'ineligible',
+                  trialEligibilityReason: '人工确认账号无试用资格。',
+                  trialEligibilityReasonCode: 'MANUAL_TRIAL_INELIGIBLE',
+                  trialEligibilityCheckedAt: checkedAt,
+                  trialEligibilityRetryable: false,
+                  trialEligibilityTransientFailure: false,
+                  trialEligibilityLastError: '',
+                  note: candidate.note || '无试用资格',
+                }
+              : candidate
+          )), { allowCustomEmailPoolStatusReset: true });
+        });
+
         item.querySelector('[data-action="clear-trial-status"]')?.addEventListener('click', async () => {
           await patchEntries((entriesList) => entriesList.map((candidate) => (
             String(candidate.id) === entryId
@@ -576,7 +602,11 @@
                   ...candidate,
                   trialEligibilityStatus: '',
                   trialEligibilityReason: '',
+                  trialEligibilityReasonCode: '',
                   trialEligibilityCheckedAt: '',
+                  trialEligibilityRetryable: false,
+                  trialEligibilityTransientFailure: false,
+                  trialEligibilityLastError: '',
                   note: candidate.note === '无试用资格' ? '' : candidate.note,
                 }
               : candidate
