@@ -557,7 +557,7 @@
                     : (candidate.note === '手动跳过' ? '' : candidate.note),
                 }
               : candidate
-          )));
+          )), { allowCustomEmailPoolStatusReset: entry.used === true });
         });
 
         item.querySelector('[data-action="toggle-enabled"]').addEventListener('click', async () => {
@@ -579,7 +579,7 @@
                   note: candidate.note === '无试用资格' ? '' : candidate.note,
                 }
               : candidate
-          )));
+          )), { allowCustomEmailPoolStatusReset: true });
         });
 
         item.querySelector('[data-action="delete"]').addEventListener('click', async () => {
@@ -594,7 +594,7 @@
       updateBulkUi(visibleEntries);
     }
 
-    async function patchEntries(mutator) {
+    async function patchEntries(mutator, persistOptions = {}) {
       const previousEntries = normalizeEntries(state.getEntries?.() || []);
       const nextEntries = normalizeEntries(mutator(previousEntries.map((entry) => ({ ...entry }))));
 
@@ -603,7 +603,7 @@
       renderCustomEmailPoolEntries(nextEntries);
 
       try {
-        await actions.persistEntries?.({ allowEmptyCustomEmailPool: nextEntries.length === 0 });
+        await actions.persistEntries?.({ allowEmptyCustomEmailPool: nextEntries.length === 0, ...persistOptions });
         state.setEntries?.(nextEntries, { clearBackup: nextEntries.length === 0 });
       } catch (error) {
         state.setEntries?.(previousEntries);
@@ -812,7 +812,7 @@
                 lastUsedAt: entry.lastUsedAt || Date.now(),
               }
             : entry
-        )));
+        )), { allowCustomEmailPoolStatusReset: true });
       });
 
       dom.btnCustomEmailPoolBulkUnused?.addEventListener('click', async () => {
@@ -821,7 +821,7 @@
           targetIds.has(String(entry.id))
             ? { ...entry, used: false, manualSkipped: false, note: entry.note === '手动跳过' ? '' : entry.note }
             : entry
-        )));
+        )), { allowCustomEmailPoolStatusReset: true });
       });
 
       dom.btnCustomEmailPoolBulkEnable?.addEventListener('click', async () => {

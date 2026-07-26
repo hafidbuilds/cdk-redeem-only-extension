@@ -12945,6 +12945,7 @@ messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   buildLocalhostCleanupPrefix,
   buildLuckmailSessionSettingsPayload,
   buildPersistentSettingsPayload,
+  mergeCustomEmailPoolEntriesForSettings: customEmailPoolStateRegistry.mergeCustomEmailPoolEntriesForSettings,
   broadcastDataUpdate,
   cancelScheduledAutoRun,
   checkIcloudSession,

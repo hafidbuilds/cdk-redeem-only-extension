@@ -13,7 +13,6 @@
   function hasOwn(source = {}, key = '') {
     return Object.prototype.hasOwnProperty.call(source, key);
   }
-
   function normalizeString(value = '') {
     return String(value || '').trim();
   }
@@ -31,7 +30,6 @@
     }
     return 'legacyWallet';
   }
-
   function getPlusPaymentMethodLabel(value = '') {
     const method = normalizePlusPaymentMethodForDisplay(value);
     if (method === 'cardHelper-helper') {
@@ -42,13 +40,13 @@
     }
     return method === 'legacyPay' ? 'LegacyPay' : 'LegacyWallet';
   }
-
   function createSettingsRoutes(deps = {}) {
     const {
       addLog,
       broadcastDataUpdate,
       buildLuckmailSessionSettingsPayload,
       buildPersistentSettingsPayload,
+      mergeCustomEmailPoolEntriesForSettings,
       exportSettingsBundle,
       getNodeIdsForState,
       getState,
@@ -62,11 +60,34 @@
       setState,
       validateModeSwitch,
     } = deps;
-
     async function saveSetting(payload = {}) {
       const currentState = await requireHandler(getState, 'getState')();
       const updates = requireHandler(buildPersistentSettingsPayload, 'buildPersistentSettingsPayload')(payload || {});
       const allowEmptyCustomEmailPool = payload?.allowEmptyCustomEmailPool === true;
+      const allowCustomEmailPoolStatusReset = payload?.allowCustomEmailPoolStatusReset === true;
+      if (
+        !allowCustomEmailPoolStatusReset
+        && hasOwn(updates, 'customEmailPoolEntries')
+        && Array.isArray(updates.customEmailPoolEntries)
+        && Array.isArray(currentState?.customEmailPoolEntries)
+        && currentState.customEmailPoolEntries.length > 0
+      ) {
+        updates.customEmailPoolEntries = requireHandler(mergeCustomEmailPoolEntriesForSettings, 'mergeCustomEmailPoolEntriesForSettings')(
+          currentState.customEmailPoolEntries,
+          updates.customEmailPoolEntries,
+        );
+        if (hasOwn(updates, 'customEmailPool')) {
+          updates.customEmailPool = updates.customEmailPoolEntries
+            .filter((entry) => entry && entry.enabled !== false && entry.used !== true && entry.registrationBlocked !== true && String(entry.trialEligibilityStatus || '').trim().toLowerCase() !== 'ineligible')
+            .map((entry) => String(entry?.email || entry?.credential || '').split('----')[0].trim().toLowerCase()).filter(Boolean);
+        }
+        const incomingSelectedEmail = normalizeString(updates.selectedCustomEmailPoolEmail).toLowerCase();
+        const currentSelectedEmail = normalizeString(currentState.selectedCustomEmailPoolEmail).toLowerCase();
+        const selectedEntry = updates.customEmailPoolEntries.find((entry) => String(entry?.email || entry?.credential || '').split('----')[0].trim().toLowerCase() === incomingSelectedEmail);
+        if (currentSelectedEmail && (!incomingSelectedEmail || selectedEntry?.used === true)) {
+          updates.selectedCustomEmailPoolEmail = currentSelectedEmail;
+        }
+      }
       if (
         !allowEmptyCustomEmailPool
         && hasOwn(updates, 'customEmailPoolEntries')
@@ -179,16 +200,13 @@
         state: await requireHandler(getState, 'getState')(),
       };
     }
-
     async function exportSettings(payload = {}) {
       return { ok: true, ...(await requireHandler(exportSettingsBundle, 'exportSettingsBundle')(payload || {})) };
     }
-
     async function importSettings(payload = {}) {
       const state = await requireHandler(importSettingsBundle, 'importSettingsBundle')(payload?.config || null);
       return { ok: true, state };
     }
-
     return {
       SAVE_SETTING: saveSetting,
       EXPORT_SETTINGS: exportSettings,

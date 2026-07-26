@@ -268,6 +268,22 @@
       return normalizeCustomEmailPoolEntryObjects(state?.customEmailPool);
     }
 
+    function mergeCustomEmailPoolEntriesForSettings(currentEntries = [], incomingEntries = [], options = {}) {
+      if (!Array.isArray(incomingEntries) || !Array.isArray(currentEntries) || options.allowStatusReset === true) return Array.isArray(incomingEntries) ? incomingEntries : currentEntries;
+      const currentByEmail = new Map(currentEntries.map((entry) => [String(entry?.email || '').trim().toLowerCase(), entry]));
+      return incomingEntries.map((incomingEntry) => {
+        const currentEntry = currentByEmail.get(String(incomingEntry?.email || '').trim().toLowerCase());
+        if (!currentEntry || typeof incomingEntry !== 'object' || typeof currentEntry !== 'object') return incomingEntry;
+        const merged = { ...incomingEntry };
+        if (currentEntry.used === true && incomingEntry.used !== true) merged.used = true;
+        if (Number(currentEntry.lastUsedAt) > Number(incomingEntry.lastUsedAt)) merged.lastUsedAt = currentEntry.lastUsedAt;
+        for (const key of ['manualSkipped', 'accessToken', 'accessTokenMasked', 'accessTokenUpdatedAt', 'trialEligibilityStatus', 'trialEligibilityReason', 'trialEligibilityReasonCode', 'trialEligibilityCheckedAt', 'trialEligibilityRetryable', 'trialEligibilityTransientFailure', 'trialEligibilityLastError']) {
+          if ((merged[key] === undefined || merged[key] === '' || merged[key] === false) && currentEntry[key] !== undefined && currentEntry[key] !== '') merged[key] = currentEntry[key];
+        }
+        return merged;
+      });
+    }
+
     function getCustomEmailPoolCredentialForEmail(state = {}, email = '') {
       const normalizedEmail = String(email || '').trim().toLowerCase();
       if (!normalizedEmail) return '';
@@ -699,6 +715,7 @@
       getCustomEmailPoolCredentialForEmail,
       getCustomEmailPoolEmailForRun,
       getCustomEmailPoolEntries,
+      mergeCustomEmailPoolEntriesForSettings,
       getCustomMailProviderPool,
       getCustomMailProviderPoolEmailForRun,
       isCustomEmailPoolEntryAvailable,

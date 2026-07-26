@@ -30,6 +30,60 @@
 
 ---
 
+<a id="2026-07-27-custom-email-pool-status-rollback"></a>
+
+## 第 7 步已通过但邮箱池卡片回显示“未用”
+
+日期：2026-07-27
+
+### 故障现象与证据
+
+用户截图显示自定义邮箱池当前邮箱仍显示“未用”，但卡片已经有资格检查时间；脱敏诊断同时记录过第 7 步 2FA 成功、邮箱池已标记为已用。日志和截图中的邮箱、AT、密码、验证码、TOTP、Cookie 及敏感 URL 参数均未写入档案。
+
+### 根因
+
+第 7 步和资格检查通过现有后台状态模块写入完整邮箱条目。侧栏仍可能持有流程开始前的旧条目，并在延迟自动保存或运行时同步时发送 `SAVE_SETTING`；后台保存路由原先按整组替换，旧的 `used: false`、空 AT 和空资格字段可以覆盖刚写入的结果。选中邮箱也可能因此回退到已经完成的邮箱。
+
+### 修复
+
+- `SAVE_SETTING` 普通回写按邮箱合并当前状态，保护工作流已经写入的 `used`、`lastUsedAt`、AT 和资格字段，并按合并后的可用条目重建旧式邮箱数组。
+- 当旧快照试图重新选中已用邮箱时保留后台当前选中邮箱。
+- 侧栏“标记未用”和“清除资格”发送显式状态重置标记；普通导入、自动保存、运行时同步不具备该标记，仍受保护。
+
+### 安全与兼容边界
+
+该修复不改变“没有 AT 时不自动标记已用”的安全规则，也不把网络错误或资格未知解释为成功。人工删除、启停、导入和手动状态按钮仍通过现有邮箱池流程处理；未新增权限、服务或存储格式。
+
+### 修改文件
+
+- `background/routes/settings-routes.js`
+- `background/custom-email-pool-state.js`
+- `background.js`
+- `background/message-router.js`
+- `background/router/core-routes.js`
+- `sidepanel/custom-email-pool-manager.js`
+- `scripts/test-background-settings-routes.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 普通旧侧栏快照不能回退已用、AT、资格状态或选中邮箱。
+- 明确的人工“标记未用”可以重置状态。
+- 既有空邮箱池保护和显式删除行为保持不变。
+
+### 验证与提交影响
+
+- 定向测试：`4/4` 通过。
+- 完整单元测试：`502/502` 通过。
+- 语法检查：`396` 个 Git 跟踪的 JavaScript 文件通过。
+- `npm run check`、Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；保留既有 `background.js` 超过 8000 行的非阻断警告。
+- Manifest 引用检查随 Smoke 审计通过；敏感数据扫描未发现新增真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
+- 隔离 Chrome for Testing MV3 E2E：`1/1` 通过，使用固定 Chrome、临时 Profile 和 pipe 传输。
+- 未打包、未修改 Manifest 版本、未创建 GitHub Release。
+
+
 <a id="2026-07-26-existing-account-totp-login"></a>
 
 ## 步骤 3.5 已有账号 TOTP 登录

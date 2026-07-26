@@ -21,6 +21,12 @@ function createRouteHarness() {
       const { allowEmptyCustomEmailPool, ...settings } = payload;
       return settings;
     },
+    mergeCustomEmailPoolEntriesForSettings: (currentEntries, incomingEntries) => incomingEntries.map((entry) => {
+      const current = currentEntries.find((candidate) => candidate.email === entry.email);
+      return current?.used
+        ? { ...entry, used: true, accessToken: entry.accessToken || current.accessToken, trialEligibilityStatus: entry.trialEligibilityStatus || current.trialEligibilityStatus, lastUsedAt: Math.max(entry.lastUsedAt || 0, current.lastUsedAt || 0) }
+        : entry;
+    }),
     exportSettingsBundle: async () => ({}),
     getState: async () => state,
     importSettingsBundle: async () => ({}),
@@ -64,4 +70,58 @@ test('explicit custom email pool deletion may persist empty arrays', async () =>
   assert.deepEqual(harness.writes[0].customEmailPoolEntries, []);
   assert.deepEqual(harness.writes[0].customEmailPool, []);
   assert.equal(harness.getState().customEmailPoolEntries.length, 0);
+});
+
+test('stale custom email pool settings cannot roll back workflow status or selection', async () => {
+  const harness = createRouteHarness();
+  harness.getState().customEmailPoolEntries[0] = {
+    email: 'one@example.com',
+    enabled: true,
+    used: true,
+    lastUsedAt: 123,
+    accessToken: 'at-current',
+    accessTokenMasked: 'at-cu****rent',
+    trialEligibilityStatus: 'eligible',
+    trialEligibilityCheckedAt: '2026-07-26T10:00:00.000Z',
+  };
+  harness.getState().selectedCustomEmailPoolEmail = 'two@example.com';
+
+  await harness.routes.SAVE_SETTING({
+    customEmailPoolEntries: [
+      { email: 'one@example.com', enabled: true, used: false, lastUsedAt: 0 },
+      { email: 'two@example.com', enabled: true, used: false },
+    ],
+    customEmailPool: ['one@example.com', 'two@example.com'],
+    selectedCustomEmailPoolEmail: 'one@example.com',
+  });
+
+  const saved = harness.writes.at(-1);
+  assert.equal(saved.customEmailPoolEntries[0].used, true);
+  assert.equal(saved.customEmailPoolEntries[0].accessToken, 'at-current');
+  assert.equal(saved.customEmailPoolEntries[0].trialEligibilityStatus, 'eligible');
+  assert.deepEqual(saved.customEmailPool, ['two@example.com']);
+  assert.equal(saved.selectedCustomEmailPoolEmail, 'two@example.com');
+});
+
+test('explicit custom email pool status reset permits manual mark-unused', async () => {
+  const harness = createRouteHarness();
+  harness.getState().customEmailPoolEntries[0] = {
+    email: 'one@example.com',
+    enabled: true,
+    used: true,
+    accessToken: 'at-current',
+  };
+
+  await harness.routes.SAVE_SETTING({
+    customEmailPoolEntries: [
+      { email: 'one@example.com', enabled: true, used: false },
+      { email: 'two@example.com', enabled: true, used: false },
+    ],
+    customEmailPool: ['one@example.com', 'two@example.com'],
+    allowCustomEmailPoolStatusReset: true,
+  });
+
+  const saved = harness.writes.at(-1);
+  assert.equal(saved.customEmailPoolEntries[0].used, false);
+  assert.deepEqual(saved.customEmailPool, ['one@example.com', 'two@example.com']);
 });
