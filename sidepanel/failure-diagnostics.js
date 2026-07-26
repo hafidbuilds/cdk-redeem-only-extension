@@ -57,12 +57,19 @@
     return FAILURE_MESSAGE_PATTERN.test(message) || TIMEOUT_OUTCOME_PATTERN.test(message);
   }
 
+  function isArchivedSnapshot(entry = {}) {
+    return /^\s*(?:快照|snapshot)(?:\s|[:：])/i.test(String(entry?.message || ''));
+  }
+
   function findLatestFailureIndex(source = []) {
     for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (isFailureLevel(source[index])) return index;
+      if (!isArchivedSnapshot(source[index]) && isFailureLevel(source[index])) return index;
     }
     for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (isExplicitFailureMessage(source[index])) return index;
+      if (!isArchivedSnapshot(source[index]) && isExplicitFailureMessage(source[index])) return index;
+    }
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      if (isFailureLevel(source[index]) || isExplicitFailureMessage(source[index])) return index;
     }
     return -1;
   }

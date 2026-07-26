@@ -46,6 +46,32 @@ test('failure diagnostics accepts explicit timeout outcomes but ignores timeout 
   assert.equal(selected.failureIndex, 0);
 });
 
+test('failure diagnostics prefers the current direct error over a later archived snapshot error', () => {
+  const logs = [
+    { timestamp: 1, level: 'error', message: 'SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE：未找到可用密码入口。' },
+    { timestamp: 2, level: 'error', message: '第 4/51 轮账号创建已完成，但当前认证现场无法安全继续。' },
+    { timestamp: 3, level: 'info', message: '失败轮次：第 4 轮。' },
+    { timestamp: 4, level: 'error', message: '快照 17:07:44 错误 第 3/51 轮第 1 次尝试失败：步骤 2 未找到继续按钮。' },
+  ];
+
+  const selected = diagnostics.selectFailureLogWindow(logs);
+
+  assert.equal(selected.failureIndex, 1);
+  assert.equal(selected.failure.message, logs[1].message);
+});
+
+test('failure diagnostics falls back to an archived snapshot when no direct failure exists', () => {
+  const logs = [
+    { timestamp: 1, level: 'info', message: '流程启动。' },
+    { timestamp: 2, level: 'error', message: '快照 17:07:44 错误 第 3/51 轮失败。' },
+  ];
+
+  const selected = diagnostics.selectFailureLogWindow(logs);
+
+  assert.equal(selected.failureIndex, 1);
+  assert.equal(selected.failure.message, logs[1].message);
+});
+
 test('failure diagnostics redacts credentials, verification codes, emails, and URL parameters', () => {
   const sanitized = diagnostics.sanitizeDiagnosticText(
     '姓名已填写：Mary Sanchez，邮箱 user@example.com 验证码：123456 password=hunter2 access_token=abcdef '

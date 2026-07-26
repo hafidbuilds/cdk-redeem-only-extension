@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const puppeteer = require('puppeteer');
 
@@ -123,6 +124,42 @@ test('isolated Chrome for Testing loads MV3 extension and sidepanel', { timeout:
   assert.ok(Array.isArray(diagnosticPayload.logWindow.entries));
   assert.equal(typeof diagnosticPayload.verificationInput.detected, 'boolean');
   assert.deepEqual(errors, []);
+
+  const settingsPage = await browser.newPage();
+  await settingsPage.setContent(`
+    <section id="security-panel">
+      <div id="password-row"><span>Password</span><span>Add</span><svg aria-label="Open password settings"></svg></div>
+      <div id="passkey-row"><span>Security keys &amp; passkeys</span><span>Add</span></div>
+    </section>
+  `);
+  await settingsPage.addScriptTag({
+    content: fs.readFileSync(path.join(extensionRoot, 'content', 'signup-session-page.js'), 'utf8'),
+  });
+  const passwordAction = await settingsPage.evaluate(() => {
+    const passwordRow = document.querySelector('#password-row');
+    const passkeyRow = document.querySelector('#passkey-row');
+    let bubbledClicks = 0;
+    passwordRow.addEventListener('click', () => { bubbledClicks += 1; });
+    const helper = self.MultiPageSignupSessionPage.createSignupSessionPage({
+      documentRef: document,
+      locationRef: location,
+      getActionText: (element) => element.textContent || '',
+      isVisibleElement: () => true,
+      isActionEnabled: () => true,
+    });
+    const action = helper.findChatGptSettingsPasswordAction();
+    action?.click();
+    return {
+      foundInsidePasswordRow: Boolean(action && passwordRow.contains(action)),
+      foundInsidePasskeyRow: Boolean(action && passkeyRow.contains(action)),
+      bubbledClicks,
+    };
+  });
+  assert.deepEqual(passwordAction, {
+    foundInsidePasswordRow: true,
+    foundInsidePasskeyRow: false,
+    bubbledClicks: 1,
+  });
 
   console.log(JSON.stringify({
     browser: await browser.version(),

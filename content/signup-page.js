@@ -4166,55 +4166,23 @@ function isChatGptHostForSettings() {
     || /^chat\.openai\.com$/i.test(location.hostname || '');
 }
 
-const CHATGPT_SETTINGS_PASSWORD_ACTION_PATTERN = /密码|パスワード|पासवर्ड|(?:^|[\s_-])pass(?:word|wd)(?:[\s_-]|$)|change\s+password|set\s+(?:a\s+)?password|add\s+(?:a\s+)?password|manage\s+password/i;
-const CHATGPT_SETTINGS_PASSWORD_REJECT_PATTERN = /安全密钥|通行密钥|セキュリティキー|パスキー|passkey|security\s+key|authenticator|authentication\s+app|mfa|2fa|two[-\s]*factor|one[-\s]*time\s+(?:password|passcode|code)|otp|text\s+message|sms|session|会话|高级|advanced|सुरक्षा\s+कुंजी|पासकी|प्रमाणक|ऑथेंटिकेटर|सत्र|उन्नत|एक\s+बार\s+(?:का\s+)?(?:पासवर्ड|कोड)/i;
 const CHATGPT_SETTINGS_SECURITY_NAV_PATTERN = /账户安全与登录|账号安全与登录|account\s+security|security\s+and\s+login|login\s+and\s+security|セキュリティ|アカウントのセキュリティ|セキュリティとログイン|ログインとセキュリティ|सुरक्षा|खाता\s+सुरक्षा|(?:लॉग\s*इन|लॉगिन)\s+और\s+सुरक्षा|सुरक्षा\s+और\s+(?:लॉग\s*इन|लॉगिन)/i;
 
 function getChatGptSettingsActionText(element) {
-  return normalizeInlineText([
-    getActionText(element),
-    element?.textContent || '',
-    element?.getAttribute?.('aria-label') || '',
-    element?.getAttribute?.('title') || '',
-    element?.getAttribute?.('data-testid') || '',
-    element?.id || '',
-  ].filter(Boolean).join(' '));
+  return getSignupSessionPageHelpers().getChatGptSettingsActionText?.(element) || '';
 }
 
 function isChatGptSettingsPasswordActionText(text = '') {
-  const normalized = normalizeInlineText(text);
-  if (!normalized || !CHATGPT_SETTINGS_PASSWORD_ACTION_PATTERN.test(normalized)) {
-    return false;
-  }
-  return !CHATGPT_SETTINGS_PASSWORD_REJECT_PATTERN.test(normalized);
+  return Boolean(getSignupSessionPageHelpers().isChatGptSettingsPasswordActionText?.(text));
 }
 
 function resolveChatGptSettingsPasswordClickable(element) {
-  if (!element) return null;
-  const actionableSelector = 'button, a, [role="button"], [role="link"], [tabindex]';
-  const candidates = [];
-  if (element.matches?.(actionableSelector)) {
-    candidates.push(element);
-  }
-  element.querySelectorAll?.(actionableSelector).forEach((candidate) => candidates.push(candidate));
-  const usable = [...new Set(candidates)].filter((candidate) => (
-    isVisibleElement(candidate) && isActionEnabled(candidate)
-  ));
-  const score = (candidate) => {
-    const text = getChatGptSettingsActionText(candidate);
-    return (
-      (/^(?:add|change|set|manage|添加|新增|更改|设置|追加|変更|設定|जोड़ें|बदलें|सेट)$/i.test(text) ? 8 : 0)
-      + (/(?:add|change|set|manage|添加|新增|更改|设置|追加|変更|設定|जोड़ें|बदलें|सेट)/i.test(text) ? 4 : 0)
-      + (candidate.matches?.('button, a, [role="button"], [role="link"]') ? 2 : 0)
-    );
-  };
-  usable.sort((left, right) => score(right) - score(left));
-  return usable[0] || (isVisibleElement(element) && isActionEnabled(element) ? element : null);
+  return getSignupSessionPageHelpers().resolveChatGptSettingsPasswordClickable?.(element) || null;
 }
 
 function getChatGptSettingsPasswordDiagnostics() {
   const actionCandidates = Array.from(document.querySelectorAll(
-    'button, a, [role="button"], [role="link"], [tabindex], div, li'
+    'button, a, [role="button"], [role="link"], [tabindex], div, li, span, p, section'
   ));
   const visibleActions = actionCandidates
     .filter((element) => isVisibleElement(element))
@@ -4249,32 +4217,7 @@ function getChatGptSettingsPasswordAction() {
   if (!isChatGptHostForSettings()) {
     return null;
   }
-  const candidates = Array.from(document.querySelectorAll(
-    'button, a, [role="button"], [role="link"], [tabindex], div, li'
-  ));
-  const scored = [];
-
-  for (const element of candidates) {
-    if (!isVisibleElement(element)) continue;
-    const text = getChatGptSettingsActionText(element);
-    if (!text || text.length > 320) continue;
-    if (!isChatGptSettingsPasswordActionText(text)) continue;
-    const clickable = resolveChatGptSettingsPasswordClickable(element);
-    if (!clickable || !isVisibleElement(clickable) || !isActionEnabled(clickable)) continue;
-    const nestedAction = clickable !== element && Boolean(element.contains?.(clickable));
-    const score = (
-      (/[*•]{2,}|••|›|>|chevron|arrow/i.test(text) ? 4 : 0)
-      + (/^(?:密码|password|パスワード|पासवर्ड)/i.test(text) ? 3 : 0)
-      + (/(?:change|set|add|manage)\s+(?:a\s+)?password|पासवर्ड\s+(?:बदलें|सेट|जोड़ें)|(?:पासवर्ड\s+)?(?:बदलें|सेट|जोड़ें)/i.test(text) ? 2 : 0)
-      + (nestedAction ? 6 : 0)
-      + (clickable.matches?.('button, a, [role="button"], [role="link"]') ? 2 : 0)
-      - Math.floor(text.length / 40)
-    );
-    scored.push({ element: clickable, score, text });
-  }
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.element || null;
+  return getSignupSessionPageHelpers().findChatGptSettingsPasswordAction?.() || null;
 }
 
 function getChatGptSecuritySettingsNavAction() {

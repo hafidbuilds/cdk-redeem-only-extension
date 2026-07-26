@@ -18,6 +18,78 @@
 - [步骤 6 安全设置页 interactive 误判](#2026-07-26-step6-interactive-settings-readiness)
 - [步骤 6 invalid_state 会话失效原地重启](#2026-07-26-step6-invalid-state-restart)
 - [步骤 6 invalid_state 恢复耗尽后误重开整轮](#2026-07-26-step6-invalid-state-round-restart)
+- [步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)
+
+---
+
+<a id="2026-07-26-step6-visible-password-entry-detection"></a>
+
+## 步骤 6 可见 Password 入口误判与诊断快照抢占
+
+日期：2026-07-26
+
+### 故障现象与脱敏证据
+
+用户停止时的截图显示浏览器位于 `https://chatgpt.com/#settings/Security`，Security and login 弹窗已经打开，`Password / Add / 箭头` 设置行清楚可见。第 6 步却在两次局部恢复后返回 `SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE` 并安全停止。账号、Cookie、页面和步骤 1-5 的完成状态均被保留，没有切换邮箱重新注册。
+
+同次诊断的真实当前错误发生在第 6 步，但停止流程随后追加了一个更早轮次的“快照”错误。旧诊断选择器只按日志数组位置从后查找 `error`，因此把位置更晚的历史快照误当成最近主故障。
+
+### 根因
+
+- Password 定位器只扫描 `button/a/role/tabindex/div/li`，没有扫描新版布局中的 `span/p/section` 文本叶子。
+- 点击解析只检查当前元素及其后代，不会从 Password 叶子向上寻找对应的设置行或可点击祖先。
+- 较大的父容器同时包含下一行 `Security keys & passkeys` 时，会被拒绝词 `passkey` 整体排除，即使其中的 Password 行真实可见。
+- 失败诊断没有区分当前运行直接错误和停止时回放的历史 `快照` 错误。
+
+### 实现
+
+- 在已有 `content/signup-session-page.js` 中集中实现设置项定位，主注册脚本保留薄调用，未新建重复页面系统。
+- 扫描范围扩展到 `span/p/section`；优先读取元素自身文本和可访问属性，精确找到 Password 叶子。
+- 从叶子向上查找原生可点击祖先或紧凑的 Password 设置行；普通 React 行没有按钮角色时允许通过叶子点击向祖先冒泡。
+- 遇到同时包含 passkey 等相邻安全项的大父容器时停止向上扩张，避免选错 Security keys & passkeys 行。
+- 诊断选择器先查找当前直接错误；只有完全没有直接错误时，才回退到以“快照”或 `snapshot` 开头的历史错误。
+
+### 安全与兼容边界
+
+- 修复没有延长等待时间，也没有将 Password 可见、点击发生或 HTTP 成功直接解释为密码设置成功。
+- 点击后仍必须通过 URL、验证码页或页面状态变化确认；结果未知时沿用有限次数的第 6 步恢复并保留认证现场。
+- 历史快照仍保留在错误前后 100 条日志窗口中，只是不再覆盖当前主故障；没有直接错误时仍可作为诊断锚点。
+- 未改动邮箱 Provider、验证码新邮件基线、2FA、UPI/IDEAL/PIX 状态、Free/Plus 分类、AT 失效规则或 CDK 幂等账本。
+- 档案和日志不包含真实邮箱、密码、验证码、AT、Cookie、CDK、API Key 或敏感 URL 参数。
+
+### 修改文件
+
+- `content/signup-session-page.js`
+- `content/signup-page.js`
+- `sidepanel/failure-diagnostics.js`
+- `scripts/test-signup-session-page.cjs`
+- `scripts/test-sidepanel-failure-diagnostics.cjs`
+- `scripts/test-set-gpt-password-resend.cjs`
+- `scripts/test-extension-e2e.cjs`
+- `docs/USER_GUIDE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- Password 是普通 `span`，父级点击行为由 React 普通容器承载。
+- 隔离 Chrome for Testing 的真实 DOM 点击会冒泡到普通 Password 行。
+- Password 父面板同时包含 Security keys & passkeys 时仍选择正确行。
+- Security keys & passkeys 行永远不作为 Password 操作入口。
+- 当前第 6 步错误之后追加旧快照错误时，诊断仍锚定当前错误。
+- 没有当前直接错误时，历史快照仍可作为诊断兜底。
+- 既有 `invalid_state`、同账号受限重启、无状态新密码页禁止和验证码重发规则继续通过。
+
+### 验证
+
+- 定向测试：19/19 通过。
+- 完整测试：474/474 通过，其中隔离 Chrome for Testing 的 MV3 Service Worker/Sidepanel 加载测试 1/1 通过。
+- 语法检查：391 个 tracked JavaScript 文件通过。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- 受限文件未提高阈值：`content/signup-page.js` 6941/7000 行、`content/signup-session-page.js` 219/220 行、`sidepanel/failure-diagnostics.js` 225/260 行。
+- Manifest 和 Background 注入仍复用既有 `content/signup-session-page.js` 引用，没有新增孤立运行时模块。
+- 隔离 Chrome E2E 证明扩展可真实加载，但未访问用户账号或在线 ChatGPT 安全设置页；新版 DOM 行为由脱敏截图证据和本地 DOM 回归夹具覆盖。
+- 未生成发布 ZIP，未修改 Manifest 版本号。
 
 ---
 

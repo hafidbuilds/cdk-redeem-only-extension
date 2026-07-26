@@ -27,6 +27,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 用户停止自动运行后日志连续刷新 | 主动停止不再回放旧日志，故障快照仍保留 | [记录](issue-fix-archive-2026-07.md#2026-07-26-manual-stop-log-replay) |
 | 2026-07-26 | 步骤 6 页面停在 interactive 时被误判加载失败 | 按密码入口是否可操作判断；缺失时仅限次重启步骤 6 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-interactive-settings-readiness) |
 | 2026-07-26 | E2E 实际使用 Edge，却被记录为 Chrome 验证 | 改用隔离的 Chrome for Testing 和临时 Profile | [记录](issue-fix-archive-2026-07.md#2026-07-26-isolated-chrome-e2e-harness) |
+| 2026-07-26 | 步骤 6 可见 Password 被误判缺失，诊断又被旧快照覆盖 | 精确定位 Password 行；当前直接错误优先于历史快照 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-visible-password-entry-detection) |
 
 ## 新记录规则
 

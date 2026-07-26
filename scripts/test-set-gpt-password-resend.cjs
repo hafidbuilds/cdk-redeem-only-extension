@@ -11,6 +11,10 @@ const contentSource = fs.readFileSync(
   path.join(__dirname, '..', 'content', 'signup-page.js'),
   'utf8'
 );
+const sessionPageSource = fs.readFileSync(
+  path.join(__dirname, '..', 'content', 'signup-session-page.js'),
+  'utf8'
+);
 
 function readNumericConstant(name) {
   const match = source.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)`));
@@ -32,7 +36,10 @@ test('set GPT password supports the new settings fallback and inline success sta
   assert.match(contentSource, /resetEntryMissing:\s*true/);
   assert.match(contentSource, /resetEntryClickFailed:\s*true/);
   assert.match(contentSource, /resolveChatGptSettingsPasswordClickable/);
-  assert.match(contentSource, /element\.querySelectorAll\?\.\(actionableSelector\)/);
+  assert.match(contentSource, /findChatGptSettingsPasswordAction/);
+  assert.match(sessionPageSource, /div, li, span, p, section/);
+  assert.match(sessionPageSource, /ancestor = element\.parentElement/);
+  assert.match(sessionPageSource, /passwordRejectPattern\.test\(text\)/);
   assert.match(contentSource, /state:\s*'password_updated_page'/);
   assert.match(source, /prepareResult\?\.resetEntryMissing\s*\|\|\s*prepareResult\?\.resetEntryClickFailed/);
   assert.match(source, /isPasswordUpdatedPageState\(pageState\)/);
