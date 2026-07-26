@@ -30,6 +30,15 @@
     return text.startsWith(`${label}：`) ? text : `${label}：${text}`;
   }
 
+  function isSignupExistingTotpLoginPayload(payload = {}) {
+    return payload?.signupExistingTotpLogin === true;
+  }
+
+  function formatSignupExistingTotpLoginMessage(message = '') {
+    const text = String(message || '').trim().replace(/步骤\s*-?\d+\s*[：:]\s*/g, '');
+    return text.startsWith('步骤 3.5：') ? text : `步骤 3.5：2FA 登录：${text}`;
+  }
+
   function getOAuthLoginLogOptions(payload = {}, visibleStep = 7) {
     return isMembershipCheckAuthPayload(payload)
       ? { stepKey: 'upi-membership-token' }
@@ -178,6 +187,10 @@
     }
 
     function logVerificationCode(step, payload = {}, message = '', level = 'info') {
+      if (step === 8 && isSignupExistingTotpLoginPayload(payload)) {
+        log(formatSignupExistingTotpLoginMessage(message), level, { step: 3, stepKey: 'fill-password' });
+        return;
+      }
       if (step === 8 && isMembershipCheckAuthPayload(payload)) {
         log(formatMembershipAuthLogMessage(payload, message), level, { stepKey: 'upi-membership-token' });
         return;
@@ -193,6 +206,7 @@
       isMembershipCheckAuthPayload,
       getMembershipAuthLogLabel,
       formatMembershipAuthLogMessage,
+      formatSignupExistingTotpLoginMessage,
       getOAuthLoginLogOptions,
       logOAuthLogin,
       logVerificationCode,
@@ -204,6 +218,7 @@
     resolveCommandNodeId,
     resolveVisibleStep,
     isMembershipCheckAuthPayload,
+    isSignupExistingTotpLoginPayload,
     getMembershipAuthLogLabel,
     formatMembershipAuthLogMessage,
     getOAuthLoginLogOptions,

@@ -11,25 +11,266 @@
       ensureMail2925AccountForFlow,
       ensureLuckmailPurchaseForFlow,
       fetchGeneratedEmail,
+      generateTotpCode = null,
+      getState = null,
       isGeneratedAliasProvider,
       isReusableGeneratedAliasEmail,
       isHotmailProvider,
+      isLikelyLoggedInChatgptHomeUrl = null,
       isRetryableContentScriptTransportError = () => false,
       isLuckmailProvider,
       isSignupEmailVerificationPageUrl,
       isSignupPasswordPageUrl,
       isSignupProfilePageUrl = null,
       persistRegistrationEmailState = null,
+      resolveExistingTotpCredential = null,
       reuseOrCreateTab,
       sendToContentScriptResilient,
       setEmailState,
       setState,
+      sleepWithStop = null,
       SIGNUP_AUTH_ENTRY_URL = 'https://chatgpt.com/auth/login',
       SIGNUP_ENTRY_URL,
       SIGNUP_PAGE_INJECT_FILES,
+      throwIfStopped = null,
       waitForTabStableComplete = null,
       waitForTabUrlMatch,
     } = deps;
+
+    const SIGNUP_EXISTING_TOTP_LOGIN_ERROR_PREFIX = 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED::';
+
+    function normalizeEmail(value = '') {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function normalizeTotpSecret(value = '') {
+      return String(value || '').replace(/\s+/g, '').trim().toUpperCase();
+    }
+
+    function isRegisteredLoginTotpState(snapshot = null) {
+      const stateName = String(snapshot?.state || '').trim().toLowerCase();
+      const verificationKind = String(snapshot?.verificationKind || '').trim().toLowerCase();
+      return verificationKind === 'totp' && (
+        stateName === 'verification_page'
+        || snapshot?.hasVerificationTarget === true
+        || snapshot?.verificationVisible === true
+      );
+    }
+
+    function isRegisteredLoginTotpFailure(error) {
+      const message = String(error?.message || error || '').trim();
+      return /SIGNUP_USER_ALREADY_EXISTS::[\s\S]*登录\s*TOTP\s*二次验证页/i.test(message);
+    }
+
+    function createExistingTotpLoginError(message) {
+      const error = new Error(`${SIGNUP_EXISTING_TOTP_LOGIN_ERROR_PREFIX}${message}`);
+      error.code = 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED';
+      error.preserveSignupSession = true;
+      return error;
+    }
+
+    async function sleepForTotpLogin(milliseconds) {
+      if (typeof sleepWithStop === 'function') {
+        await sleepWithStop(milliseconds);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, milliseconds));
+    }
+
+    function checkTotpLoginStop() {
+      if (typeof throwIfStopped === 'function') {
+        throwIfStopped();
+      }
+    }
+
+    async function getFreshTotpCode(secret) {
+      if (typeof generateTotpCode !== 'function') {
+        throw createExistingTotpLoginError('本地 TOTP 生成器未加载，无法完成步骤 3.5。');
+      }
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const secondsRemaining = 30 - (nowSeconds % 30 || 0);
+      if (secondsRemaining <= 7) {
+        await addLog?.(`步骤 3.5：当前 2FA 动态码即将过期，等待 ${secondsRemaining + 1} 秒后使用下一周期。`, 'info', {
+          step: 3,
+          stepKey: 'fill-password',
+        });
+        await sleepForTotpLogin((secondsRemaining + 1) * 1000);
+        checkTotpLoginStop();
+      }
+      const code = String(await generateTotpCode(secret) || '').replace(/\D/g, '');
+      if (!/^\d{6}$/.test(code)) {
+        throw createExistingTotpLoginError('本地 TOTP 生成器未返回有效的 6 位动态码。');
+      }
+      return code;
+    }
+
+    async function getLoginAuthStateForTotpRecovery(tabId) {
+      try {
+        return await sendToContentScriptResilient('signup-page', {
+          type: 'GET_LOGIN_AUTH_STATE',
+          step: 3,
+          source: 'background',
+          payload: {},
+        }, {
+          timeoutMs: 8000,
+          responseTimeoutMs: 6000,
+          retryDelayMs: 400,
+          logMessage: '步骤 3.5：正在确认 2FA 登录页状态...',
+        });
+      } catch {
+        return null;
+      }
+    }
+
+    async function waitForExistingTotpLoginOutcome(tabId, timeoutMs = 45000) {
+      const startedAt = Date.now();
+      let lastAuthState = null;
+      let lastUrl = '';
+      while (Date.now() - startedAt < timeoutMs) {
+        checkTotpLoginStop();
+        const tab = await chrome?.tabs?.get?.(tabId).catch(() => null);
+        lastUrl = String(tab?.url || lastUrl || '').trim();
+        if (typeof isLikelyLoggedInChatgptHomeUrl === 'function'
+          && isLikelyLoggedInChatgptHomeUrl(lastUrl)) {
+          return { success: true, url: lastUrl };
+        }
+
+        lastAuthState = await getLoginAuthStateForTotpRecovery(tabId);
+        if (lastAuthState?.accountDeactivated === true || lastAuthState?.state === 'account_deactivated_page') {
+          throw createExistingTotpLoginError('账号已删除或停用，无法完成 2FA 登录。');
+        }
+        if (isRegisteredLoginTotpState(lastAuthState) && lastAuthState?.verificationErrorText) {
+          return {
+            success: false,
+            invalidCode: true,
+            errorText: String(lastAuthState.verificationErrorText || '').trim(),
+            url: lastUrl,
+          };
+        }
+        await sleepForTotpLogin(500);
+      }
+      return {
+        success: false,
+        invalidCode: false,
+        authState: lastAuthState,
+        url: lastUrl,
+      };
+    }
+
+    async function recoverRegisteredTotpLogin(input = {}) {
+      const tabId = Number(input?.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { handled: false, reason: 'missing_tab' };
+      }
+      checkTotpLoginStop();
+      const authState = input?.authState || await getLoginAuthStateForTotpRecovery(tabId);
+      if (!isRegisteredLoginTotpState(authState)) {
+        return { handled: false, reason: 'not_totp_login' };
+      }
+
+      const state = input?.state || (typeof getState === 'function' ? await getState() : {});
+      const email = normalizeEmail(
+        state?.email
+        || state?.registrationEmailState?.current
+        || state?.accountIdentifier
+        || authState?.displayedEmail
+      );
+      const credential = typeof resolveExistingTotpCredential === 'function'
+        ? await resolveExistingTotpCredential(email, state)
+        : null;
+      const secret = normalizeTotpSecret(
+        credential?.totpMfaSecret
+        || credential?.totpSecret
+        || credential?.credentials?.totpSecret
+      );
+      if (!email || !secret) {
+        await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，但本地没有当前邮箱的 TOTP 密钥，将保留原有“已注册并排除”处理。', 'warn', {
+          step: 3,
+          stepKey: 'fill-password',
+        });
+        return { handled: false, reason: 'missing_totp_secret' };
+      }
+
+      await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，正在使用本地保存的 TOTP 密钥完成登录。', 'info', {
+        step: 3,
+        stepKey: 'fill-password',
+      });
+
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        checkTotpLoginStop();
+        const code = await getFreshTotpCode(secret);
+        let submitResult = null;
+        try {
+          submitResult = await sendToContentScriptResilient('signup-page', {
+            type: 'FILL_CODE',
+            step: 8,
+            source: 'background',
+            payload: {
+              code,
+              visibleStep: 3,
+              purpose: 'login',
+              verificationKind: 'totp',
+              signupExistingTotpLogin: true,
+              suppressVerificationCodeLog: true,
+            },
+          }, {
+            timeoutMs: 50000,
+            responseTimeoutMs: 47000,
+            retryDelayMs: 500,
+            logMessage: `步骤 3.5：正在提交 2FA 动态码（${attempt}/2）...`,
+          });
+        } catch (error) {
+          if (!isRetryableContentScriptTransportError(error)) {
+            throw createExistingTotpLoginError('2FA 动态码提交失败，已保留当前认证页和账号。');
+          }
+          await addLog?.('步骤 3.5：提交后认证页发生跳转并中断通信，正在从当前标签页确认登录结果。', 'warn', {
+            step: 3,
+            stepKey: 'fill-password',
+          });
+        }
+        checkTotpLoginStop();
+
+        const outcome = submitResult?.invalidCode
+          ? {
+              success: false,
+              invalidCode: true,
+              errorText: String(submitResult.errorText || '').trim(),
+            }
+          : await waitForExistingTotpLoginOutcome(tabId);
+        if (outcome.success) {
+          await addLog?.('步骤 3.5：2FA 登录成功，步骤 4 将按已登录状态完成，不再获取注册验证码。', 'ok', {
+            step: 3,
+            stepKey: 'fill-password',
+          });
+          return {
+            handled: true,
+            ready: true,
+            alreadyVerified: true,
+            skipProfileStep: true,
+            skipProfileStepReason: 'existing_totp_login',
+            existingTotpLogin: true,
+            url: outcome.url || '',
+          };
+        }
+
+        if (outcome.invalidCode && attempt < 2) {
+          const secondsRemaining = 30 - (Math.floor(Date.now() / 1000) % 30 || 0);
+          await addLog?.('步骤 3.5：本轮 2FA 动态码未通过，等待下一周期后仅重试一次。', 'warn', {
+            step: 3,
+            stepKey: 'fill-password',
+          });
+          await sleepForTotpLogin((secondsRemaining + 1) * 1000);
+          continue;
+        }
+
+        const reason = outcome.invalidCode
+          ? '连续两次 2FA 动态码均被页面拒绝，已保留当前认证页和账号。'
+          : '提交 2FA 动态码后未确认进入 ChatGPT 已登录状态，已保留当前认证页和账号。';
+        throw createExistingTotpLoginError(reason);
+      }
+
+      throw createExistingTotpLoginError('2FA 登录恢复未完成。');
+    }
 
     async function waitForSignupEntryTabToSettle(tabId, step = 1) {
       if (step !== 2 || !Number.isInteger(tabId) || typeof waitForTabStableComplete !== 'function') {
@@ -316,6 +557,12 @@
 
           return result || {};
         } catch (error) {
+          if (isRegisteredLoginTotpFailure(error)) {
+            const recovered = await recoverRegisteredTotpLogin({ tabId, step, error });
+            if (recovered?.handled) {
+              return recovered;
+            }
+          }
           if (!isRetryableContentScriptTransportError(error)) {
             throw error;
           }
@@ -429,6 +676,7 @@
       ensureSignupPasswordPageReadyInTab,
       openSignupAuthEntryTab,
       openSignupEntryTab,
+      recoverRegisteredTotpLogin,
       resolveSignupEmailForFlow,
     };
   }

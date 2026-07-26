@@ -33,6 +33,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 第 6 步 Security 页面 Password 行稍晚渲染时连续刷新并停机 | 先在同一标签页额外等待 45 秒，再进入有限重启 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-late-password-entry-render) |
 | 2026-07-26 | 第 4 步验证码输入框超过 75 秒才挂载时工作流停止 | 保留同一会话并由有限倒计时恢复当前节点 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step4-late-input-timer-resume) |
 | 2026-07-26 | 第 5 步 Try again 重建表单后空字段一直无人补填 | 携带本轮资料草稿并在原页补填后受限重提 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step5-retry-rerender-refill) |
+| 2026-07-26 | 步骤 3 后进入已有账号 TOTP 页时被直接排除 | 增加步骤 3.5，复用本地 TOTP 密钥完成登录 | [记录](issue-fix-archive-2026-07.md#2026-07-26-existing-account-totp-login) |
 
 ## 新记录规则
 

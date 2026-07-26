@@ -22,6 +22,89 @@
 - [步骤 6 Password 慢跳转误耗尽恢复并打断工作流](#2026-07-26-step6-slow-reset-navigation-reconcile)
 - [第 4 步验证码输入框延迟渲染时误重开注册](#2026-07-26-step4-late-verification-input-render)
 - [第 6 步 Password 行延迟渲染时连续刷新并停机](#2026-07-26-step6-late-password-entry-render)
+- [步骤 3.5 已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)
+
+---
+
+<a id="2026-07-26-existing-account-totp-login"></a>
+
+## 步骤 3.5 已有账号 TOTP 登录
+
+日期：2026-07-26
+
+### 故障样本
+
+脱敏诊断生成于 `2026-07-26T09:23:10.543Z`。自动流程为当前邮箱提交步骤 3 密码后，页面进入 OpenAI 的 `/log-in-with-totp` 登录二次验证页：
+
+```text
+步骤 3：密码已填写并提交
+步骤 3 收尾：页面仍停留在密码页，继续观察
+步骤 4：注册流程进入登录 TOTP 二次验证页
+当前邮箱标记为已注册并排除
+本轮触发 user_already_exists，直接切换下一邮箱
+```
+
+诊断中的邮箱、密码、动态码、Token 和敏感 URL 均已脱敏。页面明确要求 TOTP，说明步骤 3 使用的密码已进入已有账号登录链路；它不是注册验证码缺失、Token 无效或网络错误。
+
+### 根因
+
+- 注册内容脚本能够精确识别登录 TOTP 页面，但步骤 3 收尾和步骤 4 预检查都把该状态直接转换为 `SIGNUP_USER_ALREADY_EXISTS`。
+- 当前流程没有在密码提交与注册邮箱验证码之间复用已经保存的 TOTP 密钥，因此即使统一账号模型或兼容凭据备份具备完整 2FA 材料，也不会尝试登录。
+- `user_already_exists` 会触发当前邮箱排除和本轮不可重试终止，导致本可继续的已有账号被切换掉。
+
+### 修复
+
+- 在现有步骤 3 收尾中增加条件式“步骤 3.5：已有账号 2FA 登录”，不改变七步流程编号和现有工作流存储格式。
+- 只在页面明确为 TOTP 登录验证时触发；按当前邮箱优先读取统一账号模型的 `credentials.totpSecret`，并兼容旧凭据备份和会员结果中的 TOTP 字段。
+- 复用项目现有 Base32/HMAC-SHA1 TOTP 生成器，不创建第二套 2FA 算法；动态码不足 8 秒时等待下一周期后再提交。
+- 动态码被明确拒绝时只等待下一周期重试一次。连续拒绝或登录结果未知时抛出结构化 `SIGNUP_EXISTING_TOTP_LOGIN_FAILED`，保留当前认证页和账号。
+- 登录成功后返回 `alreadyVerified + skipProfileStep`；步骤 4 按已登录状态完成，不拉取注册验证码，步骤 5 注册资料页跳过。
+- 步骤 4 如果绕过步骤 3 收尾而直接检测到 TOTP 页面，会调用同一个恢复函数，不保留两套实现。
+- 内容脚本将该过程的日志归入步骤 3.5，并只记录“6 位验证码内容不写入日志”，不输出动态码或 TOTP 密钥。
+
+### 安全与兼容边界
+
+- 当前邮箱没有本地 TOTP 密钥时不猜测、不调用未知外部接口，继续使用既有“已注册并排除”规则。
+- 网络、页面通信或跳转状态未知不会固定返回成功，也不会解释成 Token 无效；失败时不清 Cookie、不换邮箱、不删除账号。
+- 只允许最多两次动态码提交，避免无限刷新或重复验证。
+- 不修改 Provider、验证码新邮件基线、账号删除语义、Free/Plus 判断、UPI/IDEAL/PIX 独立渠道状态或 CDK 外部副作用账本。
+- 不新增 Manifest 权限、独立服务或服务器数据库；不修改 Manifest 版本号，也不生成发布包。
+
+### 修改文件
+
+- `background/signup-flow-helpers.js`
+- `background/bootstrap/signup-executor-registry.js`
+- `background/steps/fetch-signup-code.js`
+- `background.js`
+- `content/signup-page-orchestrator.js`
+- `content/signup-page.js`
+- `scripts/test-signup-existing-totp-login.cjs`
+- `scripts/test-signup-executor-registry.cjs`
+- `scripts/test-signup-page-orchestrator.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 步骤 3 收尾检测到 TOTP 页且存在密钥时提交动态码并跳过注册验证码/资料页。
+- 当前邮箱没有密钥时不提交动态码并保留旧的已注册排除行为。
+- 动态码连续被拒绝时仅提交两次，返回会话保留型结构化错误。
+- 步骤 4 直接检测到 TOTP 页时复用步骤 3.5 恢复函数。
+- 注册执行器将同一恢复函数同时注入步骤 3 收尾和步骤 4。
+- 步骤 3.5 日志不包含六位动态码。
+
+### 验证
+
+- 修改前相关定向测试：20/20 通过。
+- 修改后新增与相关定向测试：14/14 通过。
+- 完整单元测试：487/487 通过。
+- 语法检查：393 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing MV3 E2E：1/1 通过；实际浏览器为 `Chrome/150.0.7871.24`，临时 Profile、pipe 传输，没有连接用户 Chrome 或回退 Edge。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；Manifest 现有 25 个唯一运行时引用保持完整。
+- `content/signup-page.js` 为 6989/7000 行，没有提高文件大小阈值；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- 差异敏感数据扫描没有发现高置信真实凭据；测试只使用 `.test` 虚构邮箱和 RFC 测试用 TOTP Secret。
+- 本记录与修复代码在同一未发布提交中维护；未修改 `v2.2.0` 标签或 GitHub Release。
 
 ---
 

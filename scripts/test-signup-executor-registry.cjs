@@ -4,14 +4,16 @@ const moduleApi = require('../background/bootstrap/signup-executor-registry.js')
 
 test('creates core signup helpers and step executors with shared inject list', () => {
   const calls = [];
+  const recoverRegisteredTotpLogin = () => {};
   const root = {
     MultiPageBackgroundPanelBridge: { createPanelBridge: (deps) => { calls.push({ name: 'PanelBridge', deps }); return { name: 'PanelBridge' }; } },
-    MultiPageSignupFlowHelpers: { createSignupFlowHelpers: (deps) => { calls.push({ name: 'SignupFlowHelpers', deps }); return { ensureSignupPostIdentityPageReadyInTab: () => {} }; } },
+    MultiPageSignupFlowHelpers: { createSignupFlowHelpers: (deps) => { calls.push({ name: 'SignupFlowHelpers', deps }); return { ensureSignupPostIdentityPageReadyInTab: () => {}, recoverRegisteredTotpLogin }; } },
     MultiPageOpenAiMailRules: { createOpenAiMailRules: (deps) => { calls.push({ name: 'OpenAiMailRules', deps }); return { name: 'OpenAiMailRules' }; } },
     MultiPageBackgroundMailRuleRegistry: { createMailRuleRegistry: (deps) => { calls.push({ name: 'MailRuleRegistry', deps }); return { buildVerificationPollPayload: () => ({}) }; } },
     MultiPageBackgroundVerificationFlow: { createVerificationFlowHelpers: (deps) => { calls.push({ name: 'VerificationFlowHelpers', deps }); return { confirmCustomVerificationStepBypass: () => {}, resolveCustomEmailVerificationStep: () => {}, resolveVerificationStep: () => {} }; } },
     MultiPageBackgroundStep1: { createStep1Executor: (deps) => { calls.push({ name: 'Step1', deps }); return { nodeId: 'open-chatgpt' }; } },
     MultiPageBackgroundStep2: { createStep2Executor: (deps) => { calls.push({ name: 'Step2', deps }); return { nodeId: 'submit-signup-email' }; } },
+    MultiPageBackgroundStep4: { createStep4Executor: (deps) => { calls.push({ name: 'Step4', deps }); return { nodeId: 'fetch-signup-code' }; } },
   };
 
   const registry = moduleApi.createSignupExecutorRegistry({
@@ -25,6 +27,7 @@ test('creates core signup helpers and step executors with shared inject list', (
   assert.equal(registry.executors.step1.nodeId, 'open-chatgpt');
   assert.equal(registry.executors.step2.nodeId, 'submit-signup-email');
   assert.deepEqual(calls.find((call) => call.name === 'Step2').deps.SIGNUP_PAGE_INJECT_FILES, ['content/utils.js', 'content/signup-page.js']);
+  assert.equal(calls.find((call) => call.name === 'Step4').deps.recoverRegisteredTotpLogin, recoverRegisteredTotpLogin);
 });
 
 test('keeps trial-ineligible marker out of UPI redeem executor deps', () => {

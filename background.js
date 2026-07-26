@@ -8085,6 +8085,44 @@ async function readCurrentChatGptSessionForExport() {
   return reader.readCurrentSession();
 }
 
+async function resolveSignupExistingTotpCredential(email, state = {}) {
+  const normalizedEmail = normalizeCredentialBackupEmail(email);
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [canonicalRecord, backups] = await Promise.all([
+    accountRepository?.getAccount?.(normalizedEmail).catch(() => null),
+    getUpiAccountCredentialBackups().catch(() => ({})),
+  ]);
+  const membershipItems = Array.isArray(state?.upiCredentialMembershipCheckResults?.items)
+    ? state.upiCredentialMembershipCheckResults.items
+    : [];
+  const runtimeAccounts = Array.isArray(state?.accounts) ? state.accounts : [];
+  const candidates = [
+    canonicalRecord,
+    backups?.[normalizedEmail],
+    ...membershipItems.filter((item) => normalizeCredentialBackupEmail(item?.email) === normalizedEmail),
+    ...runtimeAccounts.filter((item) => normalizeCredentialBackupEmail(item?.email) === normalizedEmail),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const secret = normalizeCredentialBackupText(
+      candidate?.credentials?.totpSecret
+      || candidate?.totpMfaSecret
+      || candidate?.totpSecret
+      || candidate?.twoFactorSecret
+    ).replace(/\s+/g, '').toUpperCase();
+    if (secret) {
+      return {
+        email: normalizedEmail,
+        totpMfaSecret: secret,
+      };
+    }
+  }
+  return null;
+}
+
 function getCpaSessionExportApi() {
   throw new Error('CPA/Sub2API 会话导出已移除。');
 }
@@ -12581,6 +12619,7 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   fetchGeneratedEmail,
   fetchImpl: typeof fetch === 'function' ? fetch.bind(globalThis) : null,
   generatePassword,
+  generateTotpCode: (...args) => self.MultiPageBackgroundUpiCredentialMembershipChecker.generateTotpCode(...args),
   generateRandomBirthday,
   generateRandomName,
   getCustomEmailPoolEntries: customEmailPoolStateRegistry.getCustomEmailPoolEntries,
@@ -12598,6 +12637,7 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   handleMail2925LimitReachedError,
   isGeneratedAliasProvider,
   isHotmailProvider,
+  isLikelyLoggedInChatgptHomeUrl,
   isLuckmailProvider,
   isMail2925LimitReachedError,
   isRetryableContentScriptTransportError,
@@ -12638,6 +12678,7 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   rememberSourceLastUrl,
   rerunStep7ForStep8Recovery: (...args) => rerunStep7ForStep8Recovery(...args),
   resolveSignupEmailForFlow,
+  resolveExistingTotpCredential: resolveSignupExistingTotpCredential,
   reuseOrCreateTab,
   sendTabMessageUntilStopped,
   sendToContentScript,

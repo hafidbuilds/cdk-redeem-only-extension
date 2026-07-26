@@ -31,6 +31,7 @@
       OUTLOOK_EMAIL_PLUS_PROVIDER = 'outlook-email-plus',
       resolveCustomEmailVerificationStep = null,
       resolveVerificationStep,
+      recoverRegisteredTotpLogin = null,
       reuseOrCreateTab,
       sendToContentScript,
       sendToContentScriptResilient,
@@ -437,6 +438,22 @@
         }
       }
       if (isRegisteredLoginTotpVerificationState(loginAuthState)) {
+        if (typeof recoverRegisteredTotpLogin === 'function') {
+          const recovered = await recoverRegisteredTotpLogin({
+            tabId: signupTabId,
+            state: stateWithPassword,
+            authState: loginAuthState,
+          });
+          if (recovered?.handled) {
+            await setState?.({ step4VerificationRenderResumeCount: 0 });
+            await completeNodeFromBackground('fetch-signup-code', {
+              skipProfileStep: true,
+              skipProfileStepReason: 'existing_totp_login',
+              existingTotpLogin: true,
+            });
+            return;
+          }
+        }
         await addLog('步骤 4：检测到当前页是登录 TOTP 二次验证页，判定当前邮箱已注册，将标记为已用并切换下一个。', 'warn');
         throw buildRegisteredLoginVerificationError(loginAuthState);
       }

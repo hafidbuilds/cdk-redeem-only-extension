@@ -4800,7 +4800,13 @@ async function fillVerificationCode(step, payload) {
     }
   }
 
-  logVerificationCode(step, payload, `步骤 ${step}：正在填写验证码：${code}`);
+  logVerificationCode(
+    step,
+    payload,
+    payload?.suppressVerificationCodeLog === true
+      ? `步骤 ${step}：正在填写 6 位验证码（内容不写入日志）`
+      : `步骤 ${step}：正在填写验证码：${code}`
+  );
 
   if (step === 8) {
     await waitForLoginVerificationPageReady(10000, step, {

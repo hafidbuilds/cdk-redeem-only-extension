@@ -57,3 +57,20 @@ test('signup page orchestrator forwards resend timeout payload', async () => {
   assert.equal(calls[0].timeout, 8000);
   assert.equal(calls[0].payload.resendTimeoutMs, 8000);
 });
+
+test('existing-account TOTP login logs under step 3.5 without exposing the code', () => {
+  const entries = [];
+  const orchestrator = globalThis.MultiPageSignupPageOrchestrator.createSignupPageOrchestrator({
+    log: (...args) => entries.push(args),
+  });
+
+  orchestrator.logVerificationCode(8, {
+    signupExistingTotpLogin: true,
+    suppressVerificationCodeLog: true,
+  }, '步骤 8：正在填写 6 位验证码（内容不写入日志）');
+
+  assert.equal(entries.length, 1);
+  assert.match(entries[0][0], /^步骤 3\.5：2FA 登录：/);
+  assert.doesNotMatch(entries[0][0], /123456/);
+  assert.deepEqual(entries[0][2], { step: 3, stepKey: 'fill-password' });
+});
