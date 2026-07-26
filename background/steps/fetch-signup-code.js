@@ -34,6 +34,7 @@
       reuseOrCreateTab,
       sendToContentScript,
       sendToContentScriptResilient,
+      setState,
       setPasswordState,
       isRetryableContentScriptTransportError = () => false,
       shouldUseCustomRegistrationEmail,
@@ -490,11 +491,14 @@
         throw prepareError;
       }
       if (prepareResult?.alreadyVerified) {
+        await setState?.({ step4VerificationRenderResumeCount: 0 });
         await completeNodeFromBackground('fetch-signup-code', prepareResult?.skipProfileStep ? { skipProfileStep: true } : {});
         return;
       }
 
-      return executeSignupEmailVerificationStep(stateWithPassword, stepStartedAt, verificationSessionKey, signupTabId);
+      const result = await executeSignupEmailVerificationStep(stateWithPassword, stepStartedAt, verificationSessionKey, signupTabId);
+      await setState?.({ step4VerificationRenderResumeCount: 0 });
+      return result;
     }
 
     return { executeStep4 };

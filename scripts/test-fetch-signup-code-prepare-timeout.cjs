@@ -20,6 +20,7 @@ function createDeps(overrides = {}) {
       throw new Error(`unexpected direct message: ${message.type}`);
     },
     sendToContentScriptResilient: async () => ({ alreadyVerified: true }),
+    setState: async () => {},
     throwIfStopped: () => {},
     ...overrides,
   };
@@ -28,8 +29,10 @@ function createDeps(overrides = {}) {
 test('step 4 gives verification preparation enough time and uses resilient messaging', async () => {
   const calls = [];
   const completed = [];
+  const statePatches = [];
   const executor = createStep4Executor(createDeps({
     completeNodeFromBackground: async (...args) => completed.push(args),
+    setState: async (patch) => statePatches.push(patch),
     sendToContentScriptResilient: async (source, message, options) => {
       calls.push({ source, message, options });
       return { alreadyVerified: true };
@@ -45,6 +48,7 @@ test('step 4 gives verification preparation enough time and uses resilient messa
   assert.equal(calls[0].options.timeoutMs, 105000);
   assert.equal(calls[0].options.responseTimeoutMs, 95000);
   assert.deepEqual(completed, [['fetch-signup-code', {}]]);
+  assert.deepEqual(statePatches, [{ step4VerificationRenderResumeCount: 0 }]);
 });
 
 test('step 4 transport exhaustion stops with a session-preserving uncertain result', async () => {
@@ -70,4 +74,6 @@ test('step 4 transport exhaustion stops with a session-preserving uncertain resu
 test('step 4 keeps observing a verified route when its input is still rendering', () => {
   assert.match(signupPageSource, /isVerificationTargetWaitRetryable\?\.\(error, snapshot\.state\)/);
   assert.match(signupPageSource, /验证码页已打开，但输入框仍在渲染/);
+  assert.match(signupPageSource, /SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE/);
+  assert.match(signupPageSource, /renderPendingError\.preserveSignupSession = true/);
 });

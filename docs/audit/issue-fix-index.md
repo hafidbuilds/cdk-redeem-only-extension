@@ -31,6 +31,8 @@ git log --oneline -- docs/audit
 | 2026-07-26 | Password 已点击但 OpenAI 慢跳转耗尽恢复并打断工作流 | 同一标签页继续复核，确认超时后才消耗受限恢复 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-slow-reset-navigation-reconcile) |
 | 2026-07-26 | 第 4 步已进入验证码页但输入框延迟渲染时重开注册 | 复用 75 秒总预算继续等待；耗尽后保留现场停止 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step4-late-verification-input-render) |
 | 2026-07-26 | 第 6 步 Security 页面 Password 行稍晚渲染时连续刷新并停机 | 先在同一标签页额外等待 45 秒，再进入有限重启 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-late-password-entry-render) |
+| 2026-07-26 | 第 4 步验证码输入框超过 75 秒才挂载时工作流停止 | 保留同一会话并由有限倒计时恢复当前节点 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step4-late-input-timer-resume) |
+| 2026-07-26 | 第 5 步 Try again 重建表单后空字段一直无人补填 | 携带本轮资料草稿并在原页补填后受限重提 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step5-retry-rerender-refill) |
 
 ## 新记录规则
 

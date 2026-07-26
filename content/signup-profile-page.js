@@ -337,13 +337,18 @@
     }
 
     async function submitProfilePage(payload = {}) {
-      const state = getStep5SubmitState();
+      let state = getStep5SubmitState();
       if (!state.profileVisible) {
         return {
           ...state,
           clicked: false,
           reason: state.successState ? 'already_left_profile' : 'profile_not_visible',
         };
+      }
+
+      if (!state.profileFieldsComplete && (payload.fullName || payload.age != null)) {
+        await refillProfileTextFields(payload);
+        state = getStep5SubmitState();
       }
 
       if (!state.profileFieldsComplete) {

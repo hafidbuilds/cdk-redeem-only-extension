@@ -171,6 +171,94 @@
 
 ---
 
+<a id="2026-07-26-step4-late-input-timer-resume"></a>
+
+## 步骤 4 验证码输入框晚挂载后终止
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-26T05:37:48.647Z`。自动运行的 `fetch-signup-code` 节点已进入 `https://auth.openai.com/email-verification`，先记录“验证码页已打开，但输入框仍在渲染”，随后 75 秒预算耗尽并抛出 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，最终状态为 `failed/stopped`。
+
+诊断导出时页面仍停在邮箱验证码路由，页面可见、没有验证码错误，而且验证码输入框已经检测到。这说明账号和注册页没有明确失败，输入框只是在旧等待窗口结束后才挂载。
+
+### 根因与调用链
+
+`content/signup-page.js` 的 `prepareSignupVerificationFlow()` 已能在单次 30 秒输入框等待结束后复用 75 秒总预算，但总预算耗尽时无条件生成终止型未知状态。该错误经 `background/steps/fetch-signup-code.js` 传回 `background.js` 后，会在内部恢复之前直接向上抛出；自动运行会话因此按不可重试故障停止。
+
+旧逻辑无法区分“仍是明确邮箱验证码页，仅缺少输入框”和“路由、页面或远端注册状态未知”，也没有使用已有 MV3 Alarm 继续当前节点。
+
+### 修复实现
+
+- 只有最终路由仍为 `/email-verification`、页面状态仍为 `verification`，且先前输入框等待被现有分类器判为可恢复时，才抛出结构化 `SIGNUP_VERIFICATION_INPUT_RENDER_PENDING`。
+- Background 在任何步骤 4 重开计数、下游失效或 `open-chatgpt` 重置之前识别该错误。
+- 复用现有 `parkFetchSignupCodeRestart()` 和 MV3 Alarm，等待 15 秒后以 `mode: continue` 恢复同一轮、同一次尝试的首个未完成节点 `fetch-signup-code`。
+- 倒计时日志改为“继续步骤 4”，明确保留当前页面、邮箱和注册会话，不再误写“重开注册”。
+- 增加会话态计数，最多续等 3 次；步骤 4 真正完成后清零。达到上限仍无输入框时转为不可重试的未知状态并保留现场停止，避免无限等待。
+
+### 安全与兼容边界
+
+- 不重置 `open-chatgpt`，不清 Cookie，不关闭认证页，不换邮箱，不重新提交邮箱或密码。
+- 其他 URL、验证码错误、认证错误页、通信耗尽或真实未知状态继续使用原有失败关闭策略。
+- 不固定返回成功；必须真实找到验证码输入框并完成后续取码/填码，节点才会完成。
+- 不修改 Provider、验证码新邮件基线、2FA、Free/Plus、UPI/IDEAL/PIX 或 CDK 逻辑。
+- 不修改 Manifest、权限和版本号，不生成发布包。
+
+### 回归与验证
+
+- 定向测试：`24/24` 通过，覆盖精确路由分类、同节点倒计时、当前尝试保留、三次上限、未知状态停止及会话恢复。
+- 完整单元测试：`481/481` 通过。
+- 语法检查：`393` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 MV3 E2E：`1/1` 通过；Chrome for Testing `150.0.7871.24`、临时 Profile、pipe 传输，无系统 Chrome/Edge 回退。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留既有 `background.js` 文件体积非阻断警告。
+- `content/signup-page.js` 为 `6983/7000` 行，没有提高阈值；Manifest 版本保持 `2.1.0`。
+
+### 提交与发布影响
+
+本修复随当前故障修复创建独立本地 Git 提交；不打包、不推送、不发布新版本。
+
+---
+
+<a id="2026-07-26-step5-retry-rerender-refill"></a>
+
+## 步骤 5 Try again 重建表单后未补填
+
+### 故障现象与证据
+
+同一份脱敏诊断还记录了步骤 5 的独立恢复缺口：资料首次提交后出现认证重试页，内容脚本点击 “Try again” 并因导航开始上报完成信号。新页面重新挂载后，后台明确检测到 `name、age` 均为空并禁止空表单提交，但随后只等待 60 秒，最终以 `profile_visible；已重提 0/3 次` 失败。通用重试又回到步骤 1 清理 Cookie。
+
+### 根因与调用链
+
+原页面中的 `waitForStep5SubmitOutcome()` 持有 `refillProfileFields` 闭包，可以处理同一 Document 内的 React 重渲染；但点击 “Try again” 触发 `pagehide` 后，完成信号会先交给 Background，旧 Document 和闭包随导航销毁。
+
+`validateStep5PostCompletion()` 能识别新页面字段为空，却没有本轮生成的姓名和年龄，只能禁止提交并等待一个已经不存在的页面填写任务，因此恢复永远不会发生。
+
+### 修复实现
+
+- 步骤 5 完成信号携带当前轮临时 `profileDraft`，仅包含生成的姓名和年龄，供同一节点的后台复核使用。
+- `validateStep5PostCompletion()` 在新页面发现资料字段为空时，把该草稿传给现有 `TRIGGER_STEP5_PROFILE_SUBMIT` 通道。
+- `content/signup-profile-page.js` 的现有提交函数先调用 `refillProfileTextFields()`，重新查询并填写新 DOM；只有 `profileFieldsComplete=true` 才点击提交。
+- 补填和重提共用既有最多 3 次上限；耗尽后保留真实失败，不进入无限点击。
+
+### 安全与兼容边界
+
+- 没有草稿、字段仍不完整或字段校验失败时继续禁止提交，不以固定成功绕过页面状态。
+- 草稿只在当前完成信号和后台复核调用链中传递，不写入普通设置导出、日志或账号凭证。
+- 不清 Cookie、不换邮箱、不重复步骤 1-4，也不改变姓名/年龄生成规则。
+- 不影响生日模式、Provider、验证码、密码、2FA、会员资格或兑换状态。
+
+### 回归与验证
+
+- 新增动态单测确认空白资料表单收到草稿后先填入姓名和年龄，再且仅再提交一次。
+- 静态集成检查确认完成信号携带草稿，后台空字段分支调用原有补填/提交通道。
+- 定向测试纳入同批 `24/24`；完整单元测试 `481/481`、语法检查 `393` 个文件及隔离 MV3 E2E `1/1` 均通过。
+- 全部审计通过，仅保留既有 `background.js` 文件体积非阻断警告；Manifest 版本保持 `2.1.0`，未生成 ZIP/CRX。
+
+### 提交与发布影响
+
+本修复与对应步骤 4 恢复修复同批创建本地行为提交，并保留独立故障索引；不打包、不推送、不发布新版本。
+
+---
+
 <a id="2026-07-26-step6-late-password-entry-render"></a>
 
 ## 第 6 步 Password 行延迟渲染时连续刷新并停机

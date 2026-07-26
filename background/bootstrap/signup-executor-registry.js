@@ -185,6 +185,7 @@
         reuseOrCreateTab: deps.reuseOrCreateTab,
         sendToContentScript: deps.sendToContentScript,
         sendToContentScriptResilient: deps.sendToContentScriptResilient,
+        setState: deps.setState,
         setPasswordState: deps.setPasswordState,
         isRetryableContentScriptTransportError: deps.isRetryableContentScriptTransportError,
         shouldUseCustomRegistrationEmail: deps.shouldUseCustomRegistrationEmail,

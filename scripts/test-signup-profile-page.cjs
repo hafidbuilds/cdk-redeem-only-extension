@@ -88,6 +88,20 @@ test('step 5 recovery may submit after name and age are populated', async () => 
   assert.equal(submitButton.clickCount, 1);
 });
 
+test('step 5 background recovery refills a rerendered form before submitting', async () => {
+  const { ageInput, nameInput, page, submitButton } = createProfileFixture();
+  const result = await page.submitProfilePage({
+    attempt: 1,
+    fullName: 'Alex Chen',
+    age: 24,
+  });
+
+  assert.equal(nameInput.value, 'Alex Chen');
+  assert.equal(ageInput.value, '24');
+  assert.equal(result.profileFieldsComplete, true);
+  assert.equal(submitButton.clickCount, 1);
+});
+
 test('step 5 refills name and age after a profile rerender clears them', async () => {
   const { ageInput, nameInput, page } = createProfileFixture();
   const result = await page.refillProfileTextFields({
@@ -104,6 +118,8 @@ test('real step 5 flow refills cleared fields and background refuses blank-form 
   assert.match(signupPageSource, /await refillProfileFields\(\);/);
   assert.match(signupPageSource, /waitForStep5SubmitOutcome\(\{ refillProfileFields \}\)/);
   assert.match(signupPageSource, /refillResult\?\.refilled/);
-  assert.match(backgroundSource, /pageState\?\.profileFieldsComplete !== false/);
+  assert.match(signupPageSource, /profileDraft: \{ fullName, age: birthdayMode \? null : resolvedAge \}/);
+  assert.match(backgroundSource, /资料页重建后字段被清空/);
+  assert.match(backgroundSource, /fullName: profileDraft\.fullName/);
   assert.match(backgroundSource, /检测到资料字段为空/);
 });

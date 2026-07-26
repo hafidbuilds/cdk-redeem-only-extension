@@ -834,6 +834,7 @@ const DEFAULT_STATE = {
   autoRunRoundSummaries: [], // 自动运行轮次摘要。
   scheduledAutoRunAt: null, // 自动运行计划启动时间戳。
   autoRunTimerPlan: null, // 自动运行可恢复计时计划快照。
+  step4VerificationRenderResumeCount: 0,
   autoRunCountdownAt: null,
   autoRunCountdownTitle: '',
   autoRunCountdownNote: '',
@@ -8818,6 +8819,12 @@ function isSignupVerificationInputMissingFailure(error) {
     && /\/email-verification(?:[/?#]|$)/i.test(message);
 }
 
+function isSignupVerificationInputRenderPendingFailure(error) {
+  const message = String(error?.message || error || '');
+  return error?.code === 'SIGNUP_VERIFICATION_INPUT_RENDER_PENDING'
+    || /SIGNUP_VERIFICATION_INPUT_RENDER_PENDING::/i.test(message);
+}
+
 function isSignupTransitionUncertainFailure(error) {
   const message = String(error?.message || error || '');
   return error?.code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN' || /SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::/i.test(message);
@@ -8835,8 +8842,21 @@ async function parkFetchSignupCodeRestart(error, options = {}) {
   const state = await getState();
   const reasonLabel = String(options.reasonLabel || '步骤 4 暂未恢复可提交状态').trim();
   const countdownTitle = String(options.countdownTitle || '等待步骤 4 恢复').trim();
+  const resumeLabel = String(options.resumeLabel || '沿用当前邮箱重开').trim();
+  const safetyLabel = String(options.safetyLabel || '避免过快重复注册').trim();
+  const resumeCounterKey = String(options.resumeCounterKey || '').trim();
+  const maxResumeCount = Math.max(0, Math.floor(Number(options.maxResumeCount) || 0));
+  const resumeCount = resumeCounterKey ? Math.max(0, Math.floor(Number(state[resumeCounterKey]) || 0)) : 0;
+  if (resumeCounterKey && maxResumeCount > 0 && resumeCount >= maxResumeCount) {
+    const terminalError = new Error(`SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::${reasonLabel}，同节点续等已达到 ${maxResumeCount} 次上限；已保留当前认证页面和邮箱，请人工检查。`);
+    terminalError.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+    terminalError.retryable = false;
+    terminalError.preserveSignupSession = true;
+    throw terminalError;
+  }
+  const nextResumeCount = resumeCounterKey ? resumeCount + 1 : 0;
   await addLog(
-    `节点 fetch-signup-code：${reasonLabel}，等待 ${seconds} 秒后再沿用当前邮箱重开，避免过快重复注册。原因：${getErrorMessage(error)}`,
+    `节点 fetch-signup-code：${reasonLabel}，等待 ${seconds} 秒后${resumeLabel}，${safetyLabel}。原因：${getErrorMessage(error)}`,
     'warn',
     { nodeId: 'fetch-signup-code' }
   );
@@ -8856,11 +8876,12 @@ async function parkFetchSignupCodeRestart(error, options = {}) {
     mode: 'continue',
     roundSummaries: state.autoRunRoundSummaries,
     countdownTitle,
-    countdownNote: `第 ${targetRun}/${totalRuns} 轮将沿用当前邮箱重开`,
+    countdownNote: `第 ${targetRun}/${totalRuns} 轮将${resumeLabel}`,
   }, {
     autoRunRoundSummaries: state.autoRunRoundSummaries,
+    ...(resumeCounterKey ? { [resumeCounterKey]: nextResumeCount } : {}),
   });
-  throw createAutoRunParkedByTimerError(`${reasonLabel}，已安排倒计时后沿用当前邮箱重开。`);
+  throw createAutoRunParkedByTimerError(`${reasonLabel}，已安排倒计时后${resumeLabel}。`);
 }
 
 async function parkAssurivoNoValidCodeRestart(error, options = {}) {
@@ -12270,6 +12291,20 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
       const step = getDisplayStepForNode(nodeId, latestState);
       if (nodeId === 'fetch-signup-code') {
+        if (isSignupVerificationInputRenderPendingFailure(err)) {
+          await parkFetchSignupCodeRestart(err, {
+            targetRun,
+            totalRuns,
+            attemptRun: attemptRuns,
+            cooldownMs: 15000,
+            reasonLabel: '验证码页输入框仍在渲染',
+            countdownTitle: '稍后继续步骤 4',
+            resumeLabel: '继续步骤 4',
+            safetyLabel: '保留当前页面、邮箱和注册会话',
+            resumeCounterKey: 'step4VerificationRenderResumeCount',
+            maxResumeCount: 3,
+          });
+        }
         if (isSignupTransitionUncertainFailure(err)) {
           throw err;
         }
@@ -13715,6 +13750,8 @@ async function triggerStep5ProfileSubmitOnTab(options = {}) {
       source: 'background',
       payload: {
         attempt: options.attempt || 1,
+        fullName: String(options.fullName || '').trim(),
+        age: options.age ?? null,
       },
     },
     {
@@ -14069,6 +14106,9 @@ async function validateStep5PostCompletion(tabId, completionPayload = {}) {
   let incompleteProfileFieldsLogged = false;
   let lastPageState = null;
   let lastUrl = '';
+  const profileDraft = completionPayload?.profileDraft && typeof completionPayload.profileDraft === 'object'
+    ? completionPayload.profileDraft
+    : null;
 
   while (Date.now() - startedAt < reviewTimeoutMs) {
     throwIfStopped();
@@ -14158,12 +14198,30 @@ async function validateStep5PostCompletion(tabId, completionPayload = {}) {
 
     if (pageState.profileVisible) {
       if (pageState.profileFieldsComplete === false) {
+        if (profileDraft?.fullName && profileSubmitRecoveryCount < maxProfileSubmitRecoveries) {
+          profileSubmitRecoveryCount += 1;
+          await addLog(`步骤 5：资料页重建后字段被清空，正在原页重新填写并提交（${profileSubmitRecoveryCount}/${maxProfileSubmitRecoveries}）...`, 'warn', {
+            step: 5,
+            stepKey: 'fill-profile',
+          });
+          const submitResult = await triggerStep5ProfileSubmitOnTab({
+            attempt: profileSubmitRecoveryCount,
+            fullName: profileDraft.fullName,
+            age: profileDraft.age,
+            timeoutMs: 10000,
+            responseTimeoutMs: 10000,
+            retryDelayMs: 500,
+          });
+          if (isStep5SubmitRecoverySuccessState(submitResult)) return submitResult;
+          await sleepWithStop(pollIntervalMs);
+          continue;
+        }
         if (!incompleteProfileFieldsLogged) {
           incompleteProfileFieldsLogged = true;
           const fieldNames = Array.isArray(pageState.incompleteProfileFields)
             ? pageState.incompleteProfileFields.join('、')
             : 'name/age';
-          await addLog(`步骤 5：检测到资料字段为空（${fieldNames}），已禁止提交空表单，等待页面填写任务自动补填。`, 'warn', {
+          await addLog(`步骤 5：检测到资料字段为空（${fieldNames}），已禁止提交空表单，等待页面恢复。`, 'warn', {
             step: 5,
             stepKey: 'fill-profile',
           });

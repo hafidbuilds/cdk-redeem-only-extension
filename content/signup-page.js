@@ -227,6 +227,7 @@ const ADD_EMAIL_PAGE_PATTERN = SIGNUP_PAGE_DETECTOR_CONSTANTS.ADD_EMAIL_PAGE_PAT
 const STEP6_PASSWORD_SUBMIT_TRANSITION_TIMEOUT_MS = 30000;
 const STEP4_VERIFICATION_INPUT_WAIT_MS = 30000;
 const SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+const SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE = 'SIGNUP_VERIFICATION_INPUT_RENDER_PENDING';
 
 function serializeContentScriptError(error) {
   const result = { error: String(error?.message || error || '未知错误') };
@@ -3549,6 +3550,18 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
     await sleep(Math.min(200, remainingMs));
   }
 
+  const finalSnapshot = inspectSignupVerificationState();
+  const renderPendingError = new Error(
+    `${SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE}::验证码页仍保持打开，但输入框尚未完成渲染；稍后应沿用当前页面和邮箱继续步骤 4。URL: ${location.href}`
+  );
+  if (verificationTargetWaitRetryLogged && getSignupVerificationPageHelpers()
+    .isVerificationTargetWaitRetryable?.(new Error('未找到验证码输入框。'), finalSnapshot.state) === true) {
+    renderPendingError.code = SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE;
+    renderPendingError.retryable = true;
+    renderPendingError.preserveSignupSession = true;
+    throw renderPendingError;
+  }
+
   const uncertainError = new Error(
     `${SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE}::密码提交后等待 ${Math.round(effectiveTimeout / 1000)} 秒仍无法确认是否进入验证码页；远端账号创建状态未知，请保持当前认证页面打开并从密码/验证码步骤人工继续。URL: ${location.href}`
   );
@@ -5955,7 +5968,7 @@ function getSerializableRect(el) {
 // Step 5: Fill Name & Birthday / Age
 // ============================================================
 
-function getStep5DirectCompletionPayload({ isAgeMode = false, navigationStarted = false, outcome = null } = {}) {
+function getStep5DirectCompletionPayload({ isAgeMode = false, navigationStarted = false, outcome = null, profileDraft = null } = {}) {
   const payload = {
     profileSubmitted: true,
     postSubmitChecked: true,
@@ -5971,6 +5984,9 @@ function getStep5DirectCompletionPayload({ isAgeMode = false, navigationStarted 
   }
   if (outcome?.url) {
     payload.url = outcome.url;
+  }
+  if (profileDraft?.fullName) {
+    payload.profileDraft = { fullName: String(profileDraft.fullName), age: profileDraft.age ?? null };
   }
   return payload;
 }
@@ -6938,6 +6954,7 @@ async function fillStep5NameBirthdayLocally(payload) {
       isAgeMode,
       navigationStarted: Boolean(extra.navigationStarted),
       outcome: extra.outcome || null,
+      profileDraft: { fullName, age: birthdayMode ? null : resolvedAge },
     });
     reportedCompletionPayload = completionPayload;
     reportComplete(5, completionPayload);
