@@ -1,9 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 require('../background/steps/fetch-signup-code.js');
 
 const { createStep4Executor } = globalThis.MultiPageBackgroundStep4;
+const signupPageSource = fs.readFileSync(path.join(__dirname, '..', 'content', 'signup-page.js'), 'utf8');
 
 function createDeps(overrides = {}) {
   return {
@@ -62,4 +65,9 @@ test('step 4 transport exhaustion stops with a session-preserving uncertain resu
       return true;
     }
   );
+});
+
+test('step 4 keeps observing a verified route when its input is still rendering', () => {
+  assert.match(signupPageSource, /isVerificationTargetWaitRetryable\?\.\(error, snapshot\.state\)/);
+  assert.match(signupPageSource, /验证码页已打开，但输入框仍在渲染/);
 });

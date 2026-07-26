@@ -118,6 +118,13 @@
       return /\/email-verification(?:[/?#]|$)/i.test(locationRef.pathname || '');
     }
 
+    function isVerificationTargetWaitRetryable(error, pageState = '') {
+      const message = String(error?.message || error || '').trim();
+      return pageState === 'verification'
+        && isEmailVerificationPage()
+        && /未找到验证码输入框/.test(message);
+    }
+
     function getVerificationErrorText() {
       const messages = [];
       const selectors = [
@@ -158,6 +165,7 @@
       getVerificationCodeTarget,
       findResendVerificationCodeTrigger,
       isEmailVerificationPage,
+      isVerificationTargetWaitRetryable,
       getVerificationErrorText,
     };
   }

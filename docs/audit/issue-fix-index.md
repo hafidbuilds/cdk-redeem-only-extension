@@ -29,6 +29,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | E2E 实际使用 Edge，却被记录为 Chrome 验证 | 改用隔离的 Chrome for Testing 和临时 Profile | [记录](issue-fix-archive-2026-07.md#2026-07-26-isolated-chrome-e2e-harness) |
 | 2026-07-26 | 步骤 6 可见 Password 被误判缺失，诊断又被旧快照覆盖 | 精确定位 Password 行；当前直接错误优先于历史快照 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-visible-password-entry-detection) |
 | 2026-07-26 | Password 已点击但 OpenAI 慢跳转耗尽恢复并打断工作流 | 同一标签页继续复核，确认超时后才消耗受限恢复 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step6-slow-reset-navigation-reconcile) |
+| 2026-07-26 | 第 4 步已进入验证码页但输入框延迟渲染时重开注册 | 复用 75 秒总预算继续等待；耗尽后保留现场停止 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step4-late-verification-input-render) |
 
 ## 新记录规则
 

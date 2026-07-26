@@ -3407,6 +3407,7 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
   let passwordRecoverySubmitCount = 0;
   let authRetryRecoveryCount = 0;
   let passwordPageDiagnosticsLogged = false;
+  let verificationTargetWaitRetryLogged = false;
 
   log(`${prepareLogLabel}：密码提交后先观察页面状态，至少等待 ${Math.round(initialPasswordObservationMs / 1000)} 秒再决定是否补交。`, 'info');
 
@@ -3445,7 +3446,27 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
 
     if (snapshot.state === 'verification') {
       await waitForDocumentLoadComplete(15000, `${prepareLogLabel}：注册验证码页面`);
-      await waitForVerificationCodeTarget(STEP4_VERIFICATION_INPUT_WAIT_MS);
+      const targetWaitRemainingMs = Math.max(1, effectiveTimeout - (Date.now() - start));
+      try {
+        await waitForVerificationCodeTarget(
+          Math.min(STEP4_VERIFICATION_INPUT_WAIT_MS, targetWaitRemainingMs)
+        );
+      } catch (error) {
+        const retryable = getSignupVerificationPageHelpers()
+          .isVerificationTargetWaitRetryable?.(error, snapshot.state) === true;
+        if (!retryable) {
+          throw error;
+        }
+        if (!verificationTargetWaitRetryLogged) {
+          verificationTargetWaitRetryLogged = true;
+          log(`${prepareLogLabel}：验证码页已打开，但输入框仍在渲染，继续使用本步骤剩余等待时间。`, 'warn');
+        }
+        const renderWaitRemainingMs = Math.max(0, effectiveTimeout - (Date.now() - start));
+        if (renderWaitRemainingMs > 0) {
+          await sleep(Math.min(500, renderWaitRemainingMs));
+        }
+        continue;
+      }
       log(`${prepareLogLabel}：验证码页面已完成加载并就绪${passwordRecoverySubmitCount ? `（期间补交密码 ${passwordRecoverySubmitCount} 次）` : ''}。`, 'ok');
       return { ready: true, retried: passwordRecoverySubmitCount, prepareSource };
     }

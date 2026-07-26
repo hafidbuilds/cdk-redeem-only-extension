@@ -20,6 +20,7 @@
 - [步骤 6 invalid_state 恢复耗尽后误重开整轮](#2026-07-26-step6-invalid-state-round-restart)
 - [步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)
 - [步骤 6 Password 慢跳转误耗尽恢复并打断工作流](#2026-07-26-step6-slow-reset-navigation-reconcile)
+- [第 4 步验证码输入框延迟渲染时误重开注册](#2026-07-26-step4-late-verification-input-render)
 
 ---
 
@@ -90,6 +91,82 @@
 - Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
 - Manifest 和运行时注入清单未变化；修复复用现有 Background 执行器和内容脚本消息。
 - 未生成发布 ZIP，未修改 Manifest 版本号。
+
+---
+
+<a id="2026-07-26-step4-late-verification-input-render"></a>
+
+## 第 4 步验证码输入框延迟渲染时误重开注册
+
+日期：2026-07-26
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-26T03:49:04.770Z`。同一注册目标连续出现三次相同时间线：
+
+```text
+步骤 2 提交邮箱后直接进入 email-verification，步骤 3 被正确跳过
+步骤 4 开始确认验证码页面
+约 33 秒后报告“未找到验证码输入框”
+自动运行等待 60 秒，然后回到步骤 1 清理 Cookie 并重新提交同一邮箱
+```
+
+诊断导出时页面仍停留在脱敏后的 `email-verification` 路由，页面可见、提交按钮存在，并且验证码输入框探测已经返回 `detected: true`，没有验证码内容错误。这说明远端注册结果并非明确失败，输入框只是在步骤 4 的第一次等待窗口内尚未挂载。
+
+### 根因
+
+- `prepareSignupVerificationFlow()` 已正确识别 `snapshot.state === 'verification'`，外层为步骤 4 保留了 75 秒总观察预算。
+- 进入该分支后，`waitForVerificationCodeTarget()` 使用独立的 30 秒窗口；窗口结束即抛出普通“未找到验证码输入框”错误，没有继续使用外层剩余预算。
+- 后台收到普通错误后进入通用自动重开策略，等待 60 秒后回到步骤 1，清理 Cookie 并重复注册。
+- 因而真实问题是验证码页 DOM 延迟挂载被过早升级为终止错误，不是邮箱、Token、验证码内容或 Provider 故障。
+
+### 修复
+
+- 在现有 `content/signup-verification-page.js` 增加严格的渲染等待判定：必须同时满足工作流状态为 `verification`、当前路径为 `email-verification`，并且错误明确为“未找到验证码输入框”。
+- `content/signup-page.js` 捕获该精确情形后继续循环，并复用步骤 4 原有 75 秒总预算；每次输入框等待最长仍为 30 秒，不新增无界等待。
+- 输入框出现后在当前页面继续取码，不返回步骤 1、不清 Cookie、不切换邮箱、不重复提交注册。
+- 渲染等待提示每次步骤执行只记录一次，避免同一问题导致日志连续刷新。
+- 75 秒总预算耗尽后沿用 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`：保留当前认证页面并停止，不能固定返回成功。
+
+### 安全与兼容边界
+
+- 其他页面路径、其他工作流状态、HTTP 错误、验证码内容错误及任意非“未找到验证码输入框”错误不会进入该等待分支。
+- 修复不延长步骤 4 的 75 秒总预算，也不提高文件尺寸审计阈值。
+- 本次不修改邮箱 Provider、验证码新邮件基线、账号模型、2FA、UPI/IDEAL/PIX、会员资格、AT 或 CDK 副作用账本。
+- 日志、测试和档案不包含真实邮箱、密码、验证码、完整 AT、Cookie、API Key、CDK、代理或敏感 URL 参数。
+
+### 修改文件
+
+- `content/signup-verification-page.js`
+- `content/signup-page.js`
+- `scripts/test-signup-verification-page.cjs`
+- `scripts/test-fetch-signup-code-prepare-timeout.cjs`
+- `docs/USER_GUIDE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 验证码路由和 `verification` 状态下暂未出现输入框时判为渲染中。
+- 相同错误位于密码状态或其他路径时不重试。
+- HTTP 等无关错误不会被吞掉。
+- 主流程真实调用严格判定器，并保留明确的单次等待日志。
+- 既有输入框恢复、定时停放和不重载有效验证码页行为继续通过。
+
+### 验证
+
+- 定向测试：`9/9` 通过。
+- 完整单元测试：`478/478` 通过。
+- 语法检查：`393` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 MV3 E2E：`1/1` 通过，使用 Puppeteer Chrome for Testing `150.0.7871.24`、临时 Profile 和 pipe transport；未连接用户本地 Chrome。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- 受限文件保持原阈值：`content/signup-page.js` 为 `6962/7000` 行，`content/signup-verification-page.js` 为 `174/300` 行。
+- Manifest 引用和运行时加载检查通过；没有新增运行时模块或孤立实现。
+- `git diff --check` 通过；差异中未发现真实敏感数据。
+
+### 提交与发布影响
+
+本修复使用独立本地 Git 提交，不打包、不修改版本号、不推送远端。
 
 ---
 
