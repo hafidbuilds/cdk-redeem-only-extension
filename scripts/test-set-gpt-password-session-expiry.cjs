@@ -23,6 +23,7 @@ function createSessionExpiryHarness(options = {}) {
   };
   const calls = {
     complete: 0,
+    prepare: 0,
     resetEmails: [],
     tabUrls: [],
     updatedUrls: [],
@@ -59,12 +60,19 @@ function createSessionExpiryHarness(options = {}) {
         if (options.expireDuringPasswordPoll) {
           return { ready: true, alreadyOnNewPasswordPage: true };
         }
-        if (options.resetEntryUnavailable && resetCalls === 1) {
+        if (options.slowResetEntryTransition && resetCalls === 1) {
           return { ready: false, resetEntryClickFailed: true };
+        }
+        if (options.resetEntryMissing && resetCalls === 1) {
+          return { ready: false, resetEntryMissing: true };
         }
         if (options.alwaysExpire || resetCalls === 1) {
           throw new Error('SET_GPT_PASSWORD_SESSION_EXPIRED::redacted session expired');
         }
+        return { ready: true, alreadyOnNewPasswordPage: true };
+      }
+      if (message.type === 'PREPARE_SET_GPT_PASSWORD' && options.slowResetEntryTransition) {
+        calls.prepare += 1;
         return { ready: true, alreadyOnNewPasswordPage: true };
       }
       if (message.type === 'SET_GPT_PASSWORD') {
@@ -134,11 +142,22 @@ test('auth error URL is probed and restarts step 6 instead of being treated as p
 });
 
 test('missing reset entry restarts step 6 without opening the stateless new-password URL', async () => {
-  const { calls, executor, state } = createSessionExpiryHarness({ resetEntryUnavailable: true });
+  const { calls, executor, state } = createSessionExpiryHarness({ resetEntryMissing: true });
   const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
   assert.equal(result.gptPasswordSet, true);
   assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
   assert.equal(calls.updatedUrls.includes('https://auth.openai.com/reset-password/new-password'), false);
+  assert.equal(calls.complete, 1);
+});
+
+test('slow reset-entry navigation is reconciled on the same attempt instead of stopping the workflow', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ slowResetEntryTransition: true });
+
+  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+
+  assert.equal(result.gptPasswordSet, true);
+  assert.deepEqual(calls.resetEmails, ['same-account@example.test']);
+  assert.equal(calls.prepare, 1);
   assert.equal(calls.complete, 1);
 });
 

@@ -41,7 +41,10 @@ test('set GPT password supports the new settings fallback and inline success sta
   assert.match(sessionPageSource, /ancestor = element\.parentElement/);
   assert.match(sessionPageSource, /passwordRejectPattern\.test\(text\)/);
   assert.match(contentSource, /state:\s*'password_updated_page'/);
-  assert.match(source, /prepareResult\?\.resetEntryMissing\s*\|\|\s*prepareResult\?\.resetEntryClickFailed/);
+  assert.match(source, /if \(prepareResult\?\.resetEntryMissing\)/);
+  assert.match(source, /if \(prepareResult\?\.resetEntryClickFailed\)/);
+  assert.match(source, /prepareSetPasswordFlowWithRetry\(authTabId, visibleStep/);
+  assert.match(source, /timeoutMs:\s*SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS/);
   assert.match(source, /isPasswordUpdatedPageState\(pageState\)/);
 });
 

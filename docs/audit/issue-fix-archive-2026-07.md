@@ -19,6 +19,77 @@
 - [步骤 6 invalid_state 会话失效原地重启](#2026-07-26-step6-invalid-state-restart)
 - [步骤 6 invalid_state 恢复耗尽后误重开整轮](#2026-07-26-step6-invalid-state-round-restart)
 - [步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)
+- [步骤 6 Password 慢跳转误耗尽恢复并打断工作流](#2026-07-26-step6-slow-reset-navigation-reconcile)
+
+---
+
+<a id="2026-07-26-step6-slow-reset-navigation-reconcile"></a>
+
+## 步骤 6 Password 慢跳转误耗尽恢复并打断工作流
+
+日期：2026-07-26
+
+关联记录：[步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)
+
+### 故障现象与脱敏证据
+
+诊断生成于 `2026-07-26T00:45:28.858Z`。第 3 轮已经完成账号创建并进入第 6 步，Password 行被成功识别和点击，但每次点击约 20 秒后仍未观察到 URL 或页面状态变化：
+
+```text
+08:31:14 点击 Password 入口
+08:31:35 判定重置状态未建立，消耗第 2/2 次局部恢复
+08:32:41 再次点击 Password 入口
+08:33:01 返回 RESET_ENTRY_UNAVAILABLE
+08:33:02 自动运行停止
+```
+
+导出诊断时，保留的当前页面已经是 `https://auth.openai.com/email-verification`，验证码输入框可见且没有页面错误。相邻成功轮次的快照还显示：Password 在 18:23:47 点击，直到 18:24:50 才确认验证码页就绪，真实导航耗时约 63 秒。这证明入口点击有效，只是 OpenAI 跳转晚于原 20 秒观察窗口。
+
+### 根因
+
+- 内容脚本正确区分了 `resetEntryMissing` 和 `resetEntryClickFailed`，但后台执行器又用 `||` 把两者合并成同一个 `RESET_ENTRY_UNAVAILABLE`。
+- “入口确实缺失”和“入口已经点击、导航仍在进行”因此都会立即消耗一次第 6 步局部恢复。
+- 连续三次慢跳转会在页面最终进入验证码页前耗尽恢复，自动运行按既有现场保护策略停止，造成用户看到验证码页但工作流已经被打断。
+
+### 修复
+
+- `resetEntryMissing` 继续沿用原有受限重启，不打开无状态的新密码 URL。
+- `resetEntryClickFailed` 不再立即抛出重启错误；后台在当前标签页调用既有 `PREPARE_SET_GPT_PASSWORD` 复核循环，最多继续观察 45 秒。
+- 复核期间一旦确认邮箱验证码页、邮箱已验证页或新密码页，立即在同一执行尝试继续，不消耗重启次数。
+- 额外复核仍超时且页面状态未知时，才转换为结构化 `RESET_ENTRY_UNAVAILABLE` 并进入最多两次的原有局部恢复。
+
+### 安全与兼容边界
+
+- 修复不是固定返回成功。入口点击、HTTP 成功或 URL 短暂不变都不视为密码设置完成，必须确认目标页面状态。
+- 不增加无限循环；额外复核上限为 45 秒，之后仍受两次第 6 步局部恢复上限约束。
+- 恢复过程中保留同一账号、标签页、Cookie 和步骤 1-5 进度；检测到账号变化仍停止。
+- 未改动邮箱 Provider、验证码新邮件基线、2FA、UPI/IDEAL/PIX、Free/Plus、AT 规则或 CDK 幂等账本。
+- 文档和测试不包含真实邮箱、验证码、密码、AT、Cookie、API Key、CDK 或敏感 URL 参数。
+
+### 修改文件
+
+- `background/steps/set-gpt-password.js`
+- `scripts/test-set-gpt-password-session-expiry.cjs`
+- `scripts/test-set-gpt-password-resend.cjs`
+- `docs/USER_GUIDE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- Password 点击后首次观察超时、随后目标页就绪时，同一执行尝试继续且只调用一次重置入口。
+- Password 入口确实缺失时仍受限重启，不打开无状态的新密码页。
+- `invalid_state`、会话耗尽、账号一致性和整轮停止保护继续生效。
+- 静态契约确认 `resetEntryMissing` 与 `resetEntryClickFailed` 分支处理，并复用 45 秒导航复核上限。
+
+### 验证
+
+- 定向测试：18/18 通过。
+- 完整测试：475/475 通过，其中隔离 Chrome for Testing 的 MV3 加载与真实 DOM E2E 1/1 通过。
+- 语法检查：392 个 tracked JavaScript 文件通过。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- Manifest 和运行时注入清单未变化；修复复用现有 Background 执行器和内容脚本消息。
+- 未生成发布 ZIP，未修改 Manifest 版本号。
 
 ---
 

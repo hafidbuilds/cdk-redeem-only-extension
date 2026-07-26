@@ -204,7 +204,7 @@
     function isSetGptPasswordPrepareNavigationPendingError(error) {
       const message = normalizeString(typeof error === 'string' ? error : error?.message || '');
       return isRetryableContentScriptTransportError(error)
-        || /未进入\s*OpenAI\s*设置密码邮箱验证页或新密码页|当前状态\s+unknown|设置密码页面正在切换|页面正在切换/i.test(message);
+        || /未进入\s*OpenAI\s*设置密码邮箱验证页或新密码页|当前状态\s+unknown|设置密码页面正在切换|页面正在切换|点击密码入口后等待\s*OpenAI\s*邮箱验证码页超时/i.test(message);
     }
 
     async function ensureGptPassword(state = {}, visibleStep = 6) {
@@ -1293,8 +1293,23 @@
       let prepareResult = await sendSetPasswordPageMessage('START_SET_GPT_PASSWORD_RESET', {
         email,
       }, visibleStep, 60000);
-      if (prepareResult?.resetEntryMissing || prepareResult?.resetEntryClickFailed) {
+      if (prepareResult?.resetEntryMissing) {
         throw new Error(`SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::步骤 ${visibleStep}：ChatGPT 密码入口未建立有效重置状态，需要重新启动当前步骤。`);
+      }
+      if (prepareResult?.resetEntryClickFailed) {
+        await addStepLog(
+          visibleStep,
+          '设置 GPT 密码：密码入口已点击但页面仍在慢跳转，继续在当前标签页复核验证码页，不立即重启步骤 6。',
+          'warn'
+        );
+        try {
+          prepareResult = await prepareSetPasswordFlowWithRetry(authTabId, visibleStep, {
+            timeoutMs: SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS,
+          });
+        } catch (error) {
+          if (!isSetGptPasswordPrepareNavigationPendingError(error)) throw error;
+          throw new Error(`SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::步骤 ${visibleStep}：密码入口点击后仍未确认进入验证码页，需要重新启动当前步骤。`);
+        }
       }
       if (prepareResult?.resetTriggered) {
         if (typeof waitForTabStableComplete === 'function') {
