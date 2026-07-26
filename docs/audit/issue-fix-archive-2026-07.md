@@ -23,6 +23,7 @@
 - [第 4 步验证码输入框延迟渲染时误重开注册](#2026-07-26-step4-late-verification-input-render)
 - [第 6 步 Password 行延迟渲染时连续刷新并停机](#2026-07-26-step6-late-password-entry-render)
 - [步骤 3.5 已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)
+- [侧边栏缺少步骤 3.5 展示行](#2026-07-26-step3-5-sidepanel-display)
 
 ---
 
@@ -175,6 +176,63 @@
 - Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
 - Manifest 和运行时注入清单未变化；修复复用现有 Background 执行器和内容脚本消息。
 - 未生成发布 ZIP，未修改 Manifest 版本号。
+
+---
+
+<a id="2026-07-26-step3-5-sidepanel-display"></a>
+
+## 侧边栏缺少步骤 3.5 展示行
+
+日期：2026-07-26
+
+### 故障样本
+
+用户截图显示侧边栏流程列表只有步骤 1 至 7，没有步骤 3 和步骤 4 之间的“已有账号 2FA 登录”。后台已经具备条件式 TOTP 登录逻辑，但用户无法从页面确认该分支存在。
+
+### 根因
+
+- 侧边栏流程列表直接渲染可执行工作流节点。
+- 步骤 3.5 是步骤 3 收尾期间的条件恢复分支，不是独立的后台节点，因此不会自然出现在七个真实节点列表中。
+- 若机械加入真实节点，会改变自动运行链、节点状态和进度统计，导致未实现的独立执行入口。
+
+### 修复
+
+- 在 `sidepanel/workflow-state-view.js` 中为注册流程在 `fill-password` 和 `fetch-signup-code` 之间插入 UI-only 展示行：`3.5 已有账号 2FA 登录`。
+- 展示行标记为“按需”、禁用按钮并保留 `display-only` 属性，不参与节点状态、进度计数、手动执行或跳过操作。
+- 在侧边栏事件处理和手动跳过初始化中增加 display-only 防护，避免用户误触发不存在的后台节点。
+- 增加展示行样式，保持现有流程列表布局；若未来定义模块已经提供该展示节点则不重复插入。
+
+### 安全与兼容边界
+
+- 后台仍保持七个真实可执行节点和原有自动运行链，不改变步骤 3.5 的触发条件与 TOTP 安全边界。
+- 不新增 Manifest 权限、网络接口、存储字段或独立服务。
+- 展示行不暴露邮箱、密码、TOTP 密钥、动态码、AT、Cookie 或 URL 参数。
+
+### 修改文件
+
+- `sidepanel/workflow-state-view.js`
+- `sidepanel/sidepanel-app-controller.js`
+- `sidepanel/sidepanel.css`
+- `scripts/test-sidepanel-workflow-state-view.cjs`
+- `scripts/test-extension-e2e.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 真实步骤 3.5 展示行插入步骤 3 与步骤 4 之间，并显示 `3.5` 和“按需”。
+- 展示行使用禁用按钮，不参与进度统计。
+- 已有定义模块提供展示节点时不会重复渲染。
+- display-only 行不会绑定手动跳过或执行节点处理。
+
+### 验证
+
+- 定向 UI 测试：2/2 通过。
+- 完整单元测试：489/489 通过。
+- 语法检查：394 个 tracked JavaScript 文件通过；隔离 Chrome for Testing MV3 E2E 通过。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留 `background.js` 超过 8000 行的既有非阻断警告。
+- 未生成发布 ZIP，未修改 Manifest 版本号或现有 `v2.2.0` Release。
 
 ---
 

@@ -2795,6 +2795,7 @@ with (appState.createScope()) {
   
   function initializeManualStepActions() {
     document.querySelectorAll('.step-row').forEach((row) => {
+      if (row.dataset.displayOnly === 'true') return;
       if (row.querySelector('.step-actions')) {
         return;
       }
@@ -7589,7 +7590,7 @@ const runtimeMessageController = window.SidepanelRuntimeMessageController.create
 runtimeMessageController.start();
   async function handleStepListClick(event) {
     const btn = event.target.closest('.step-btn');
-    if (!btn) {
+    if (!btn || btn.dataset.displayOnly === 'true') {
       return;
     }
     try {

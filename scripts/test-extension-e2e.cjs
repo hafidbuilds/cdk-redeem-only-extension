@@ -67,12 +67,16 @@ test('isolated Chrome for Testing loads MV3 extension and sidepanel', { timeout:
     failureDiagnostics: Boolean(document.querySelector('#btn-export-failure-diagnostics')),
     accountRecords: Boolean(document.querySelector('#account-records-list')),
     accountTasks: Boolean(document.querySelector('#account-task-list')),
+    existingTotpLogin: Boolean(document.querySelector('.step-btn[data-node-id="existing-totp-login"]')),
+    existingTotpLoginDisabled: document.querySelector('.step-btn[data-node-id="existing-totp-login"]')?.disabled === true,
   }));
   assert.deepEqual(controls, {
     configMenu: true,
     failureDiagnostics: true,
     accountRecords: true,
     accountTasks: true,
+    existingTotpLogin: true,
+    existingTotpLoginDisabled: true,
   });
 
   const sendMessage = (message) => page.evaluate(async ({ payload, targetExtensionId }) => {

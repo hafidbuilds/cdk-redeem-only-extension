@@ -34,6 +34,37 @@
         : (constants.nodeIds || []);
     }
 
+    function getDisplayWorkflowNodes() {
+      const nodes = [...(getWorkflowNodes() || [])];
+      if (nodes.some((node) => String(node?.nodeId || '').trim() === 'existing-totp-login')) {
+        return nodes;
+      }
+
+      const passwordIndex = nodes.findIndex((node) => String(node?.nodeId || '').trim() === 'fill-password');
+      const verificationIndex = nodes.findIndex((node) => String(node?.nodeId || '').trim() === 'fetch-signup-code');
+      if (passwordIndex < 0 || verificationIndex < 0 || passwordIndex >= verificationIndex) {
+        return nodes;
+      }
+
+      const displayNode = {
+        nodeId: 'existing-totp-login',
+        title: '已有账号 2FA 登录',
+        displayOrder: 35,
+        nodeType: 'display',
+        executeKey: 'existing-totp-login',
+        ui: {
+          displayOnly: true,
+          stepLabel: '3.5',
+          statusText: '按需',
+        },
+      };
+      return [
+        ...nodes.slice(0, passwordIndex + 1),
+        displayNode,
+        ...nodes.slice(passwordIndex + 1),
+      ];
+    }
+
     function getLatestState() {
       return state.getLatestState?.() || {};
     }
@@ -43,16 +74,19 @@
         return;
       }
 
-      dom.stepsList.innerHTML = (getWorkflowNodes() || []).map((node) => {
+      dom.stepsList.innerHTML = getDisplayWorkflowNodes().map((node) => {
         const nodeId = String(node.nodeId || '').trim();
         const step = helpers.getStepIdByNodeIdForCurrentMode?.(nodeId);
         const stepLabel = String(node.ui?.stepLabel || step || node.displayOrder || '').trim();
         const executeKey = String(node.executeKey || nodeId).trim();
+        const displayOnly = node.ui?.displayOnly === true || node.nodeType === 'display';
+        const rowClass = displayOnly ? 'step-row pending display-only' : 'step-row pending';
+        const statusText = displayOnly ? escapeHtml(node.ui?.statusText || '按需') : '';
         return `
-          <div class="step-row pending" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}">
+          <div class="${rowClass}" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}">
             <div class="step-indicator" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"><span class="step-num">${escapeHtml(stepLabel)}</span></div>
-            <button class="step-btn" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}">${escapeHtml(node.title || executeKey || `步骤 ${stepLabel}`)}</button>
-            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"></span>
+            <button class="step-btn" type="button" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}"${displayOnly ? ' disabled aria-disabled="true"' : ''}>${escapeHtml(node.title || executeKey || `步骤 ${stepLabel}`)}</button>
+            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}">${statusText}</span>
           </div>
         `;
       }).join('');
@@ -122,7 +156,11 @@
     };
   }
 
-  globalScope.SidepanelWorkflowStateView = {
+  const api = {
     create,
   };
+  globalScope.SidepanelWorkflowStateView = api;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
 })(self);
