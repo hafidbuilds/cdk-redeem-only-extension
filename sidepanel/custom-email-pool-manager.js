@@ -454,7 +454,8 @@
               ${entry.current ? '<span class="luckmail-tag current">当前</span>' : ''}
               ${entry.used ? '<span class="luckmail-tag used">已用</span>' : ''}
               ${!entry.used && entry.registrationBlocked ? '<span class="luckmail-tag disabled">已注册</span>' : ''}
-              ${!entry.used && !entry.registrationBlocked ? '<span class="luckmail-tag active">未用</span>' : ''}
+              ${!entry.used && !entry.registrationBlocked && isTrialIneligibleEntry(entry) ? '<span class="luckmail-tag disabled">已排除</span>' : ''}
+              ${!entry.used && !entry.registrationBlocked && !isTrialIneligibleEntry(entry) ? '<span class="luckmail-tag active">未用</span>' : ''}
               ${entry.manualSkipped ? '<span class="luckmail-tag">手动跳过</span>' : ''}
               ${entry.enabled ? '<span class="luckmail-tag active">启用</span>' : '<span class="luckmail-tag disabled">停用</span>'}
               ${entry.verificationUrl ? '<span class="luckmail-tag active">取码URL</span>' : ''}

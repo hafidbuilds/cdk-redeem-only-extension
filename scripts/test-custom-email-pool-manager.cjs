@@ -207,3 +207,37 @@ test('custom email pool renders manual skipped used row without AT', () => {
     globalThis.document = previousDocument;
   }
 });
+
+test('custom email pool renders ineligible rows excluded and selects the next available email', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: () => createRenderedItemStub() };
+  try {
+    const { dom, manager } = createManager([
+      {
+        id: 'ineligible',
+        email: 'ineligible@example.com',
+        enabled: true,
+        used: false,
+        trialEligibilityStatus: 'ineligible',
+        trialEligibilityReason: 'not-eligible',
+      },
+      { id: 'next', email: 'next@example.com', enabled: true, used: false },
+    ], {
+      state: {
+        getCurrentEmail: () => 'ineligible@example.com',
+        isAutoRunning: () => true,
+      },
+    });
+
+    manager.renderCustomEmailPoolEntries();
+
+    const ineligibleHtml = dom.customEmailPoolList.children[0].innerHTML;
+    assert.match(ineligibleHtml, /无试用资格/);
+    assert.match(ineligibleHtml, /luckmail-tag disabled">已排除/);
+    assert.doesNotMatch(ineligibleHtml, /luckmail-tag active">未用/);
+    assert.equal(dom.customEmailPoolList.children[0].className, 'luckmail-item');
+    assert.equal(dom.customEmailPoolList.children[1].className, 'luckmail-item is-current');
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});

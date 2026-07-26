@@ -84,6 +84,62 @@
 - 未打包、未修改 Manifest 版本、未创建 GitHub Release。
 
 
+---
+
+<a id="2026-07-27-ineligible-email-exclusion-display"></a>
+
+## 无试用资格邮箱显示“未用”，疑似循环选择
+
+日期：2026-07-27
+
+关联记录：[邮箱池完成状态回退](#2026-07-27-custom-email-pool-status-rollback)
+
+### 故障现象与证据
+
+用户截图中当前邮箱卡片显示“未用”，并担心此前明确无试用资格的邮箱会被自动运行反复选择。脱敏诊断显示，无资格判定发生在第 `3/5` 轮的 `c***@icloud.com`；该轮随后完成，自动运行在第 `4/5` 轮预选并提交的是另一条 `g***@icloud.com`。因此诊断没有出现同一邮箱循环，实际问题是无资格且缺 AT 时卡片仍显示“未用”，容易把“凭据未形成已用状态”和“仍可被自动选择”混为一谈。
+
+### 根因
+
+- 后台 `isCustomEmailPoolEntryAvailable()` 已将 `trialEligibilityStatus=ineligible` 排除，自动运行不会再次选择该条目。
+- Sidepanel 标签只区分 `used`、`registrationBlocked` 和普通未用；无资格但缺 AT 的条目按安全规则保持 `used=false`，因而错误显示“未用”。
+- 卡片虽然同时显示“无试用资格”和禁用的“使用此邮箱”，但“未用”标签仍造成状态含义冲突。
+
+### 修复
+
+- 无资格且未标记已用的邮箱显示“已排除”，不再显示“未用”。
+- 保留“无试用资格”徽标、详细原因和禁用的使用按钮。
+- 增加渲染回归：自动运行当前邮箱指向无资格条目时，该条目不获得当前高亮，下一条可用邮箱成为当前项。
+
+### 安全与兼容边界
+
+本次不把缺少 AT 的账号伪造为“已用”，不改变资格判定、Free 分组或存储格式。只有远端明确判定无试用资格的条目显示“已排除”；网络失败和资格未知仍显示可重试状态，不会被误当成无资格。
+
+### 修改文件
+
+- `sidepanel/custom-email-pool-manager.js`
+- `scripts/test-custom-email-pool-manager.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 无资格、缺 AT、`used=false` 的条目显示“已排除”，不显示“未用”。
+- 无资格条目不会成为自动运行当前邮箱，下一条可用邮箱会被选中。
+- 缺 AT 的普通 Free 凭据仍不显示为已用，手动跳过条目仍保持原有展示。
+
+### 验证与提交影响
+
+- 定向测试：`31/31` 通过。
+- 完整单元测试：`503/503` 通过。
+- 语法检查：`396` 个 Git 跟踪的 JavaScript 文件通过。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- 隔离 Chrome for Testing MV3 E2E：`1/1` 通过，使用固定 Chrome、临时 Profile 和 pipe 传输。
+- Manifest 引用随 Smoke 审计通过，差异没有新增真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
+- 未打包、未修改 Manifest 版本、未创建 GitHub Release。
+
+---
+
 <a id="2026-07-26-existing-account-totp-login"></a>
 
 ## 步骤 3.5 已有账号 TOTP 登录
