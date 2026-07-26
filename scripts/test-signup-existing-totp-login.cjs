@@ -65,6 +65,8 @@ test('step 3 finalizer logs into an existing TOTP account and skips registration
   assert.equal(result.existingTotpLogin, true);
   assert.equal(result.alreadyVerified, true);
   assert.equal(result.skipProfileStep, true);
+  assert.equal(result.skipSetPasswordStep, true);
+  assert.equal(result.skipSetPasswordStepReason, 'existing_totp_login');
   const fillCode = messages.find((message) => message.type === 'FILL_CODE');
   assert.ok(fillCode);
   assert.equal(fillCode.step, 8);
@@ -152,7 +154,12 @@ test('step 4 reuses the same TOTP login recovery before fetching signup mail', a
     getTabId: async () => 41,
     recoverRegisteredTotpLogin: async (input) => {
       recoveredInput = input;
-      return { handled: true, skipProfileStep: true };
+      return {
+        handled: true,
+        skipProfileStep: true,
+        skipSetPasswordStep: true,
+        skipSetPasswordStepReason: 'existing_totp_login',
+      };
     },
     sendToContentScript: async (_source, message) => {
       if (message.type === 'GET_LOGIN_AUTH_STATE') return TOTP_STATE;
@@ -176,6 +183,8 @@ test('step 4 reuses the same TOTP login recovery before fetching signup mail', a
     {
       skipProfileStep: true,
       skipProfileStepReason: 'existing_totp_login',
+      skipSetPasswordStep: true,
+      skipSetPasswordStepReason: 'existing_totp_login',
       existingTotpLogin: true,
     },
   ]]);

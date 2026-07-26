@@ -36,6 +36,7 @@ git log --oneline -- docs/audit
 | 2026-07-26 | 步骤 3 后进入已有账号 TOTP 页时被直接排除 | 增加步骤 3.5，复用本地 TOTP 密钥完成登录 | [记录](issue-fix-archive-2026-07.md#2026-07-26-existing-account-totp-login) |
 | 2026-07-26 | 侧边栏流程列表没有显示步骤 3.5 | 增加不参与执行和进度统计的“已有账号 2FA 登录（按需）”展示行 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step3-5-sidepanel-display) |
 | 2026-07-26 | 步骤 3.5 登录成功前旧失败广播已排除邮箱并启动下一轮 | 后台恢复请求由后台唯一裁决，不再竞争性广播节点失败 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step3-5-node-error-race) |
+| 2026-07-26 | 步骤 3.5 登录成功后仍执行步骤 6 并因无密码重置状态停机 | 传递条件分支结果，仅跳过真实的设置密码节点并直接进入步骤 7 | [记录](issue-fix-archive-2026-07.md#2026-07-26-step3-5-skip-redundant-password) |
 
 ## 新记录规则
 

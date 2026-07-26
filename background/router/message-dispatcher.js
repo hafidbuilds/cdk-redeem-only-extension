@@ -192,9 +192,16 @@
             notifyNodeError(nodeId, '流程已被用户停止。');
             return { ok: true };
           }
+          let completionPayload = { ...(message.payload || {}) };
           try {
             if (nodeId === 'fill-password' && typeof finalizeStep3Completion === 'function') {
-              await finalizeStep3Completion(message.payload || {});
+              const finalizeResult = await finalizeStep3Completion(completionPayload);
+              if (finalizeResult && typeof finalizeResult === 'object' && !Array.isArray(finalizeResult)) {
+                completionPayload = {
+                  ...completionPayload,
+                  ...finalizeResult,
+                };
+              }
             }
           } catch (error) {
             if (typeof isCloudflareSecurityBlockedError === 'function' && isCloudflareSecurityBlockedError(error)) {
@@ -221,18 +228,18 @@
           const completionState = isFinalNode ? completionStateCandidate : null;
           await setNodeStatus(nodeId, 'completed');
           await addLog('已完成', 'ok', { nodeId });
-          await handleStepData(resolvedStep, message.payload);
+          await handleStepData(resolvedStep, completionPayload);
           if (isFinalNode && typeof appendAccountRunRecord === 'function') {
             const successState = nodeId === 'upi-redeem'
               ? {
                 ...(completionState || {}),
                 upiRedeemSuccess: true,
-                upiRedeemCdkey: message.payload?.cdkey || completionState?.upiRedeemCdkey || '',
+                upiRedeemCdkey: completionPayload.cdkey || completionState?.upiRedeemCdkey || '',
               }
               : completionState;
             await appendAccountRunRecord('success', successState);
           }
-          notifyNodeComplete(nodeId, message.payload);
+          notifyNodeComplete(nodeId, completionPayload);
           return { ok: true };
         }
 

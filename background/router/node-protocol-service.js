@@ -24,7 +24,6 @@
     16: 'confirm-oauth',
     17: 'platform-verify',
   });
-
   function createRouterNodeProtocolService(deps = {}) {
     const {
       addLog = async () => {},
@@ -60,7 +59,6 @@
       setNodeStatus = async () => {},
       setState = async () => {},
     } = deps;
-
     async function appendManualAccountRunRecordIfNeeded(status, stateOverride = null, reason = '') {
       if (typeof appendAccountRunRecord !== 'function') {
         return null;
@@ -73,7 +71,6 @@
 
       return appendAccountRunRecord(status, state, reason);
     }
-
     function isManualPrerequisiteDoneStatus(status = '') {
       return status === 'completed'
         || status === 'manual_completed'
@@ -566,17 +563,28 @@
           if (payload.signupVerificationRequestedAt) {
             await setState({ signupVerificationRequestedAt: payload.signupVerificationRequestedAt });
           }
-          if (payload.skipProfileStep) {
+          if (payload.existingTotpLogin === true && payload.skipSetPasswordStep === true && payload.skipSetPasswordStepReason === 'existing_totp_login') {
+            const latestState = await getState();
+            const step6Key = getStepKeyForState(6, latestState);
+            const stepsToSkip = step6Key === 'set-gpt-password' ? [4, 5, 6] : [4, 5];
+            const skippedSteps = [];
+            for (const skippedStep of stepsToSkip) {
+              const status = getNodeStatusByStep(skippedStep, latestState);
+              if (isStepProtectedFromAutoSkip(status)) continue;
+              await setNodeStatusByStep(skippedStep, 'skipped', latestState);
+              skippedSteps.push(skippedStep);
+            }
+            if (skippedSteps.includes(5) && typeof markCurrentRegistrationAccountUsed === 'function') {
+              await markCurrentRegistrationAccountUsed(latestState, { logPrefix: '步骤 3 跳过步骤 5', level: 'ok' });
+            }
+            const message = step6Key === 'set-gpt-password' ? '步骤 3.5：已有账号密码和 2FA 登录均已确认，已跳过未完成的步骤 4/5/6，直接进入步骤 7。' : '步骤 3.5：已有账号密码和 2FA 登录均已确认，已跳过未完成的步骤 4/5；当前步骤 6 不是设置密码节点，将继续按所选路线执行。';
+            await addLog(message, 'ok', { step: 3, stepKey: 'fill-password' });
+          } else if (payload.skipProfileStep) {
             const latestState = await getState();
             const step5Status = getNodeStatusByStep(5, latestState);
             if (step5Status !== 'running' && step5Status !== 'completed' && step5Status !== 'manual_completed') {
               await setNodeStatusByStep(5, 'skipped', latestState);
-              if (typeof markCurrentRegistrationAccountUsed === 'function') {
-                await markCurrentRegistrationAccountUsed(latestState, {
-                  logPrefix: '步骤 3 跳过步骤 5',
-                  level: 'ok',
-                });
-              }
+              if (typeof markCurrentRegistrationAccountUsed === 'function') await markCurrentRegistrationAccountUsed(latestState, { logPrefix: '步骤 3 跳过步骤 5', level: 'ok' });
               await addLog('步骤 3：页面已直接进入已登录态，已自动跳过步骤 5。', 'warn');
             }
           }
@@ -602,6 +610,14 @@
                 step,
                 stepKey: 'fetch-signup-code',
               });
+            }
+          }
+          if (payload.existingTotpLogin === true && payload.skipSetPasswordStep === true && payload.skipSetPasswordStepReason === 'existing_totp_login') {
+            const latestState = await getState();
+            const step6Key = getStepKeyForState(6, latestState), step6Status = getNodeStatusByStep(6, latestState);
+            if (step6Key === 'set-gpt-password' && !isStepProtectedFromAutoSkip(step6Status)) {
+              await setNodeStatusByStep(6, 'skipped', latestState);
+              await addLog('步骤 3.5：已有账号密码和 2FA 登录均已确认，步骤 4 已完成收尾并跳过步骤 6，直接进入步骤 7。', 'ok', { step: 4, stepKey: 'fetch-signup-code' });
             }
           }
           if (payload.skipProfileStep) {

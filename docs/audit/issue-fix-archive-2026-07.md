@@ -25,6 +25,7 @@
 - [步骤 3.5 已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)
 - [侧边栏缺少步骤 3.5 展示行](#2026-07-26-step3-5-sidepanel-display)
 - [步骤 3.5 成功前旧失败广播排除邮箱](#2026-07-26-step3-5-node-error-race)
+- [步骤 3.5 成功后仍重复执行步骤 6](#2026-07-26-step3-5-skip-redundant-password)
 
 ---
 
@@ -1464,3 +1465,83 @@ Session ended / invalid_state
 - 敏感数据检查仅命中 `.test` 虚构邮箱，未发现真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK 或代理。
 - 仅保留既有 `background.js` 超过 8000 行的非阻断警告；没有提高审计阈值。
 - 未生成发布 ZIP，未修改 Manifest 版本号。
+
+---
+
+<a id="2026-07-26-step3-5-skip-redundant-password"></a>
+
+## 步骤 3.5 成功后仍重复执行步骤 6
+
+日期：2026-07-26
+
+关联记录：[已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)、[步骤 3.5 节点失败竞态](#2026-07-26-step3-5-node-error-race)
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-26T12:31:48.298Z`。步骤 3 已提交账号现有密码，步骤 3.5 提交本地 TOTP 并明确记录登录成功；步骤 4 随后按已登录态完成，步骤 5 被跳过，但自动运行仍启动 `set-gpt-password`。由于现有账号没有本轮新建的密码重置状态，步骤 6 两次局部恢复后报错并停止整轮：
+
+```text
+步骤 3.5：2FA 登录成功
+步骤 4：页面已直接进入 ChatGPT 已登录态
+步骤 5：skipped
+步骤 6：ChatGPT 密码入口未建立有效重置状态，需要重新启动当前步骤
+```
+
+账号、邮箱、密码、TOTP、AT、Cookie 和敏感 URL 参数均已从档案中移除。
+
+### 根因
+
+- `recoverRegisteredTotpLogin()` 已返回 `existingTotpLogin` 和跳过资料页信息，但没有明确声明现有密码已验证、无需再次设置密码。
+- 内容脚本发送 `fill-password` 完成消息后，消息分发器调用步骤 3 后台收尾，却忽略了收尾函数的返回值；条件分支结果没有进入 `handleStepData()` 和自动运行完成通知。
+- 若 TOTP 页面直到步骤 4 才被识别，步骤 4 后备恢复只转发跳过资料页字段，同样丢失密码步骤跳过语义。
+- 节点协议因此只把步骤 5 标为 `skipped`，步骤 6 的 `set-gpt-password` 仍保持 `pending` 并被自动运行执行。
+
+### 修复
+
+- 步骤 3.5 只有在确认进入 ChatGPT 已登录态后才返回 `skipSetPasswordStep=true` 和稳定原因 `existing_totp_login`。
+- `NODE_COMPLETE` 分发器合并步骤 3 后台收尾结果与原完成载荷，再用于状态处理和完成通知，避免条件分支字段在真实调用链中丢失。
+- 节点协议收到完整的步骤 3.5 成功证据后，将未完成的步骤 4、5 和真实 `set-gpt-password` 节点标为 `skipped`，自动运行的下一个待执行节点变为步骤 7。
+- 步骤 4 后备 TOTP 恢复同步转发相同字段；即使步骤 3 首次完成信号未携带结果，也能在步骤 4 收尾后跳过重复密码设置。
+- 日志明确提示已有密码和 2FA 均已确认，并说明直接进入步骤 7。
+
+### 安全与兼容边界
+
+- 必须同时满足 `existingTotpLogin=true`、`skipSetPasswordStep=true` 和原因 `existing_totp_login` 才触发；普通已登录首页、缺少 TOTP 密钥、动态码失败、网络错误或远端状态未知均不会跳过步骤 6。
+- 跳过前会解析当前工作流的步骤 6 节点。只有节点键为 `set-gpt-password` 才跳过；免 2FA 路线的 `persist-no-2fa-free` 保持待执行，继续读取会话并保存资格结果。
+- 已处于 `running`、`completed`、`manual_completed` 或 `skipped` 的节点不会被重复改写。
+- 本修复不修改账号模型、Provider、验证码新邮件基线、资格判定、Free/Plus 分组、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、Manifest 权限或存储格式。
+- 日志不记录密码、TOTP 密钥、六位动态码、完整 AT、Cookie 或其他真实凭据。
+
+### 修改文件
+
+- `background/signup-flow-helpers.js`
+- `background/steps/fetch-signup-code.js`
+- `background/router/message-dispatcher.js`
+- `background/router/node-protocol-service.js`
+- `scripts/test-signup-existing-totp-login.cjs`
+- `scripts/test-existing-totp-workflow-skip.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 步骤 3.5 成功结果包含明确的密码步骤跳过信号。
+- 步骤 3 后台收尾结果会合并进节点状态处理和自动运行通知。
+- 完整 2FA 路线跳过步骤 4/5/6，步骤 7 保持待执行。
+- 步骤 4 后备 TOTP 恢复也跳过步骤 6。
+- 免 2FA 路线不跳过 `persist-no-2fa-free`。
+- 普通已登录分支没有完整步骤 3.5 成功证据时，步骤 6 保持待执行。
+
+### 验证与提交影响
+
+- 定向测试：`10/10` 通过。
+- 完整单元测试：`495/495` 通过。
+- 语法检查：`395` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E 通过：`Chrome/150.0.7871.24`、Puppeteer 下载的固定浏览器、临时 Profile、pipe 传输；没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；路由节点协议保持 `700/700` 行，消息分发器保持 `991/1000` 行，没有提高阈值。
+- Manifest 引用检查通过且 `manifest.json` 未修改；差异中没有真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
+- 仅保留既有非阻断警告：`background.js` 超过 8000 行。
+- 修复、测试和档案由同一独立本地提交交付；未打包、未修改 Manifest 版本、未创建标签或 GitHub Release。
+
+---

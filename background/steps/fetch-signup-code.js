@@ -449,6 +449,8 @@
             await completeNodeFromBackground('fetch-signup-code', {
               skipProfileStep: true,
               skipProfileStepReason: 'existing_totp_login',
+              skipSetPasswordStep: recovered.skipSetPasswordStep === true,
+              skipSetPasswordStepReason: recovered.skipSetPasswordStepReason || '',
               existingTotpLogin: true,
             });
             return;

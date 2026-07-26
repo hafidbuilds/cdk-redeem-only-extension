@@ -239,7 +239,7 @@
             }
           : await waitForExistingTotpLoginOutcome(tabId);
         if (outcome.success) {
-          await addLog?.('步骤 3.5：2FA 登录成功，步骤 4 将按已登录状态完成，不再获取注册验证码。', 'ok', {
+          await addLog?.('步骤 3.5：2FA 登录成功，已有账号密码已确认；注册验证码、资料和重复设置密码均无需执行。', 'ok', {
             step: 3,
             stepKey: 'fill-password',
           });
@@ -249,6 +249,8 @@
             alreadyVerified: true,
             skipProfileStep: true,
             skipProfileStepReason: 'existing_totp_login',
+            skipSetPasswordStep: true,
+            skipSetPasswordStepReason: 'existing_totp_login',
             existingTotpLogin: true,
             url: outcome.url || '',
           };
