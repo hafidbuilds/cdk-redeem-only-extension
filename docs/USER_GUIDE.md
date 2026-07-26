@@ -1,6 +1,6 @@
 # 使用指南
 
-本文档对应 CDK Redeem Only `2.1.0`。版本号以 `manifest.json` 为准。
+本文档对应 CDK Redeem Only `2.2.0`。版本号以 `manifest.json` 为准。
 
 ## 安装与更新
 

@@ -2,6 +2,53 @@
 
 本文档按版本保留历史发布说明。当前版本以 `manifest.json` 为准；安装和配置请查看 [使用指南](docs/USER_GUIDE.md)，发布步骤请查看 [开发指南](docs/DEVELOPMENT.md#发布流程)。
 
+## CDK Redeem Only V2.2.0
+
+V2.2.0 是注册与密码设置工作流的可靠性修复版。重点解决 OpenAI/Auth 页面延迟渲染、主 Frame 替换、认证状态失效和 React 表单重建时自动流程过早停止或错误回到步骤 1 的问题，同时把浏览器 E2E 固定到隔离的 Chrome for Testing。
+
+### 版本信息
+
+- Git 标签：`v2.2.0`
+- Manifest 版本：`2.2.0`
+- 版本名称：`CDK Redeem Only V2.2.0`
+- 运行架构：Chrome Manifest V3 Service Worker + Sidepanel
+
+### 注册步骤 4 和步骤 5
+
+- 密码提交后的远端结果未知时保留当前认证页和邮箱并停止，不再清 Cookie、换邮箱或重复注册。
+- 步骤 4 的 Content Script 通信窗口与 75 秒页面观察预算对齐，避免后台比验证码页更早超时。
+- 已进入邮箱验证码路由但输入框延迟挂载时，先复用当前预算；仍未挂载则通过 MV3 Alarm 以 `mode: continue` 在同一轮、同一次尝试继续 `fetch-signup-code`，最多 3 次。
+- 步骤 5 点击 “Try again” 导致 React 重建并清空姓名、年龄时，后台携带本轮临时资料草稿，在原页面补填完整后再受限重提；空表单始终禁止提交。
+
+### 步骤 6 密码设置与会话恢复
+
+- ChatGPT Session/AT 读取遇到主 Frame 被替换时，会重新定位当前标签页；恢复耗尽后保留当前账号现场，不重新注册邮箱。
+- 精确识别 `Session ended + error_code: invalid_state`，沿用同一账号受限重启步骤 6；不再直接打开缺少状态的 `/reset-password/new-password`。
+- Security 设置页处于 `interactive` 时按真实可操作控件继续，不再强制等待 `document.readyState=complete`。
+- 支持新版 `Password / Add / 箭头` 普通 React 行，避免把 Passkey 行误当作密码入口。
+- Password 入口或点击后的跳转较慢时先在当前标签页继续复核；只有同页预算耗尽后才消耗有限的步骤 6 恢复次数。
+
+### 停止、诊断与开发验证
+
+- 用户主动停止后不再回放上一轮日志快照，避免停止状态下日志持续刷新；故障快照仍保留。
+- 最近失败诊断优先当前直接错误，只有当前没有错误时才使用历史快照，减少旧故障覆盖本次问题。
+- 文档整理为 README、使用指南、开发指南、CHANGELOG、月度故障档案和索引等持续维护入口，并新增文档结构审计。
+- MV3 E2E 固定使用 Puppeteer 管理的 Chrome for Testing、临时 Profile 和 pipe 传输；禁止静默回退到 Edge、系统 Chrome 或用户日常 Profile。
+
+### 安全与兼容性
+
+- 本版本不新增权限，不引入独立服务，不删除旧账号、邮箱池、任务、卡密池或 UPI/IDEAL/PIX 独立渠道状态。
+- 页面状态未知时不固定返回成功；远端 CDK 结果未知时仍只查询原请求，不重新提交。
+- 网络错误不会被解释成 Token 无效；普通日志和配置导出继续脱敏。
+
+### 验证与升级
+
+- 完整 Node 测试：`481/481` 通过。
+- 语法检查：`393` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing MV3 E2E、Documentation、Smoke、Removed Network、Phone/SMS 审计通过。
+- Manifest `25` 个唯一运行时引用全部存在，差异敏感数据扫描无高置信真实凭据命中。
+- 从 V2.1.0 升级不会清空现有数据。更新后请在 `chrome://extensions` 重新加载扩展，使 Sidepanel、内容脚本和 Service Worker 使用 V2.2.0。
+
 ## CDK Redeem Only V2.1.0
 
 V2.1.0 是 V2.0.0 之后的数据恢复与注册稳定性修复版，重点解决配置重新导入后账号/Free 分组不显示、免 2FA Free 账号导出缺失、明确无试用资格账号被同轮重复注册，以及 ChatGPT 首页登录弹窗已显示 Continue 按钮却被误报不可点击的问题。
