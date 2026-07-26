@@ -45,6 +45,7 @@ test('step 4 gives verification preparation enough time and uses resilient messa
   assert.equal(calls[0].message.type, 'PREPARE_SIGNUP_VERIFICATION');
   assert.equal(calls[0].message.payload.timeoutMs, 75000);
   assert.equal(calls[0].message.payload.maxPasswordRecoverySubmits, 0);
+  assert.equal(calls[0].message.payload.backgroundOwnsWorkflowOutcome, true);
   assert.equal(calls[0].options.timeoutMs, 105000);
   assert.equal(calls[0].options.responseTimeoutMs, 95000);
   assert.deepEqual(completed, [['fetch-signup-code', {}]]);

@@ -34,6 +34,10 @@
     return payload?.signupExistingTotpLogin === true;
   }
 
+  function shouldReportCommandErrorToWorkflow(message = {}) {
+    return message?.payload?.backgroundOwnsWorkflowOutcome !== true;
+  }
+
   function formatSignupExistingTotpLoginMessage(message = '') {
     const text = String(message || '').trim().replace(/步骤\s*-?\d+\s*[：:]\s*/g, '');
     return text.startsWith('步骤 3.5：') ? text : `步骤 3.5：2FA 登录：${text}`;
@@ -204,6 +208,7 @@
       resolveVisibleStep,
       stepLog,
       isMembershipCheckAuthPayload,
+      shouldReportCommandErrorToWorkflow,
       getMembershipAuthLogLabel,
       formatMembershipAuthLogMessage,
       formatSignupExistingTotpLoginMessage,
@@ -219,6 +224,7 @@
     resolveVisibleStep,
     isMembershipCheckAuthPayload,
     isSignupExistingTotpLoginPayload,
+    shouldReportCommandErrorToWorkflow,
     getMembershipAuthLogLabel,
     formatMembershipAuthLogMessage,
     getOAuthLoginLogOptions,

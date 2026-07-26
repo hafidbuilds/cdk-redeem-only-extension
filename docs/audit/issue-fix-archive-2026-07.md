@@ -24,6 +24,7 @@
 - [第 6 步 Password 行延迟渲染时连续刷新并停机](#2026-07-26-step6-late-password-entry-render)
 - [步骤 3.5 已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)
 - [侧边栏缺少步骤 3.5 展示行](#2026-07-26-step3-5-sidepanel-display)
+- [步骤 3.5 成功前旧失败广播排除邮箱](#2026-07-26-step3-5-node-error-race)
 
 ---
 
@@ -232,6 +233,68 @@
 - 完整单元测试：489/489 通过。
 - 语法检查：394 个 tracked JavaScript 文件通过；隔离 Chrome for Testing MV3 E2E 通过。
 - Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留 `background.js` 超过 8000 行的既有非阻断警告。
+- 未生成发布 ZIP，未修改 Manifest 版本号或现有 `v2.2.0` Release。
+
+---
+
+<a id="2026-07-26-step3-5-node-error-race"></a>
+
+## 步骤 3.5 成功前旧失败广播排除邮箱
+
+日期：2026-07-26
+
+### 故障样本
+
+脱敏诊断生成于 `2026-07-26T11:29:44.012Z`。同一轮日志先显示步骤 3.5 已读取本地 TOTP 密钥，随后旧的 `SIGNUP_USER_ALREADY_EXISTS` 被记录为节点失败并排除当前邮箱；动态码实际上继续填写和提交，约 12 秒后又确认 2FA 登录成功。此时自动运行已经开始下一轮，上一轮的迟到成功导致新一轮收到停止请求。
+
+### 根因
+
+- 步骤 3 收尾通过 `PREPARE_SIGNUP_VERIFICATION` 等待内容脚本返回页面结果，后台收到 TOTP 页面后会进入步骤 3.5 恢复。
+- 内容脚本的通用命令异常处理同时对该子请求广播 `NODE_ERROR`，而后台也在等待同一个结构化错误并决定是否恢复。
+- 两个调用方同时裁决同一节点：自动运行器先消费 `NODE_ERROR` 并执行 `user_already_exists` 排除；后台恢复仍在异步提交 TOTP，最终成功变成跨轮迟到消息。
+
+### 修复
+
+- 为后台拥有最终裁决权的认证页请求增加 `backgroundOwnsWorkflowOutcome` 标记。
+- 步骤 3 收尾的 `PREPARE_SIGNUP_VERIFICATION`、步骤 3.5 的 `GET_LOGIN_AUTH_STATE`/`FILL_CODE`、步骤 4 页面状态探测及填码前检查都携带该标记。
+- 内容脚本仍将结构化错误返回给后台，但不再为这些子请求额外广播 `NODE_ERROR`；直接 `EXECUTE_NODE` 命令继续保留原有失败上报。
+- 后台成为恢复流程的唯一裁决者：有密钥时等待步骤 3.5 最终成功/失败，缺少密钥时才沿用已注册排除规则。
+
+### 安全与兼容边界
+
+- 不吞掉直接节点执行错误，不固定返回成功，也不把网络错误解释成 Token 无效。
+- TOTP 失败、结果未知和停止请求仍使用原有会话保留与有限重试规则。
+- 不改变账号模型、Free/Plus 判断、UPI/IDEAL/PIX 状态、CDK 副作用账本、Manifest 权限或存储格式。
+- 诊断、日志和测试不包含真实邮箱、密码、TOTP 密钥、动态码、AT、Cookie 或敏感 URL 参数。
+
+### 修改文件
+
+- `content/signup-page-orchestrator.js`
+- `content/signup-page.js`
+- `background/signup-flow-helpers.js`
+- `background/steps/fetch-signup-code.js`
+- `background/verification/resend-controller.js`
+- `scripts/test-signup-page-orchestrator.cjs`
+- `scripts/test-signup-existing-totp-login.cjs`
+- `scripts/test-fetch-signup-code-prepare-timeout.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 后台拥有结果的恢复请求不会触发内容脚本竞争性节点失败广播。
+- 直接节点命令仍会报告错误。
+- 步骤 3 收尾、步骤 3.5 状态探测/动态码提交及步骤 4 页面准备均传递所有权标记。
+- 既有 TOTP 登录成功、缺少密钥、一次重试、通信中断确认和步骤 4 复用覆盖继续通过。
+
+### 验证
+
+- 定向测试：17/17 通过。
+- 完整单元测试：490/490 通过。
+- 语法检查：395 个 tracked JavaScript 文件通过；隔离 Chrome for Testing MV3 E2E 通过。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留 `background.js` 超过 8000 行的既有非阻断警告。
+- `background/verification/resend-controller.js` 保持 2000/2000 行，没有提高文件大小阈值。
 - 未生成发布 ZIP，未修改 Manifest 版本号或现有 `v2.2.0` Release。
 
 ---

@@ -110,7 +110,7 @@
           type: 'GET_LOGIN_AUTH_STATE',
           step: 3,
           source: 'background',
-          payload: {},
+          payload: { backgroundOwnsWorkflowOutcome: true },
         }, {
           timeoutMs: 8000,
           responseTimeoutMs: 6000,
@@ -212,6 +212,7 @@
               verificationKind: 'totp',
               signupExistingTotpLogin: true,
               suppressVerificationCodeLog: true,
+              backgroundOwnsWorkflowOutcome: true,
             },
           }, {
             timeoutMs: 50000,
@@ -539,6 +540,7 @@
               prepareLogLabel: '步骤 3 收尾',
               timeoutMs: 75000,
               maxPasswordRecoverySubmits: attempt === 1 ? 1 : 0,
+              backgroundOwnsWorkflowOutcome: true,
             },
           }, {
             timeoutMs: 90000,

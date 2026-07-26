@@ -90,7 +90,7 @@
         type: 'GET_LOGIN_AUTH_STATE',
         step: 4,
         source: 'background',
-        payload: {},
+        payload: { backgroundOwnsWorkflowOutcome: true },
       };
       try {
         if (typeof sendToContentScript === 'function') {
@@ -470,6 +470,7 @@
           prepareLogLabel: '步骤 4 执行',
           timeoutMs: 75000,
           maxPasswordRecoverySubmits: 0,
+          backgroundOwnsWorkflowOutcome: true,
         },
       };
       const prepareTimeoutMs = 105000;

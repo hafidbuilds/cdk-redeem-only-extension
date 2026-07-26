@@ -1,9 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 delete globalThis.MultiPageSignupPageOrchestrator;
 delete globalThis.SignupPageOrchestrator;
 require('../content/signup-page-orchestrator.js');
+const signupPageSource = fs.readFileSync(path.join(__dirname, '..', 'content', 'signup-page.js'), 'utf8');
 
 function createRequiredHandler(name) {
   return () => {
@@ -73,4 +76,17 @@ test('existing-account TOTP login logs under step 3.5 without exposing the code'
   assert.match(entries[0][0], /^步骤 3\.5：2FA 登录：/);
   assert.doesNotMatch(entries[0][0], /123456/);
   assert.deepEqual(entries[0][2], { step: 3, stepKey: 'fill-password' });
+});
+
+test('background-owned recovery commands return errors without broadcasting a competing node failure', () => {
+  const api = globalThis.MultiPageSignupPageOrchestrator;
+  assert.equal(api.shouldReportCommandErrorToWorkflow({
+    type: 'PREPARE_SIGNUP_VERIFICATION',
+    payload: { backgroundOwnsWorkflowOutcome: true },
+  }), false);
+  assert.equal(api.shouldReportCommandErrorToWorkflow({
+    type: 'EXECUTE_NODE',
+    payload: {},
+  }), true);
+  assert.match(signupPageSource, /if \(shouldReportWorkflowError\) reportError\(reportedNodeId \|\| reportedStep, err\.message\)/);
 });

@@ -1272,7 +1272,7 @@
               type: 'PREPARE_SIGNUP_VERIFICATION', step: 4, source: 'background',
               payload: {
                 password: options.password || '', prepareSource: 'step4_pre_submit',
-                prepareLogLabel: '步骤 4 填码前检查', timeoutMs: 30000,
+                prepareLogLabel: '步骤 4 填码前检查', timeoutMs: 30000, backgroundOwnsWorkflowOutcome: true,
               },
             };
             const prepareVerificationPage = async () => {

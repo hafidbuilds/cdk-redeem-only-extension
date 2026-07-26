@@ -55,6 +55,7 @@ if (document.documentElement.getAttribute(SIGNUP_PAGE_LISTENER_SENTINEL) !== '1'
       const membershipAuthCommand = isMembershipCheckAuthPayload(message.payload);
       const reportedStep = membershipAuthCommand ? null : (Number(message.payload?.visibleStep) || message.step);
       const reportedNodeId = resolveCommandNodeId(message);
+      const shouldReportWorkflowError = getSignupPageOrchestrator().shouldReportCommandErrorToWorkflow(message);
       if (message.type === 'EXECUTE_NODE' && reportedNodeId === 'fill-profile') {
         Promise.resolve()
           .then(() => handleCommand(message))
@@ -68,10 +69,10 @@ if (document.documentElement.getAttribute(SIGNUP_PAGE_LISTENER_SENTINEL) !== '1'
               if (reportedStep) {
                 log(`步骤 ${reportedStep || 5}：已被用户停止。`, 'warn');
               }
-              reportError(reportedNodeId || reportedStep, err.message);
+              if (shouldReportWorkflowError) reportError(reportedNodeId || reportedStep, err.message);
               return;
             }
-            reportError(reportedNodeId || reportedStep, err.message);
+            if (shouldReportWorkflowError) reportError(reportedNodeId || reportedStep, err.message);
           });
         sendResponse({ ok: true, accepted: true, asyncCompletion: true, nodeId: reportedNodeId });
         return;
@@ -94,7 +95,7 @@ if (document.documentElement.getAttribute(SIGNUP_PAGE_LISTENER_SENTINEL) !== '1'
         }
 
         if (reportedStep) {
-          reportError(reportedNodeId || reportedStep, err.message);
+          if (shouldReportWorkflowError) reportError(reportedNodeId || reportedStep, err.message);
         }
         sendResponse(serializeContentScriptError(err));
       });

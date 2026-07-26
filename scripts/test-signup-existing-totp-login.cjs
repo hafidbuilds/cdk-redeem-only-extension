@@ -72,6 +72,11 @@ test('step 3 finalizer logs into an existing TOTP account and skips registration
   assert.equal(fillCode.payload.verificationKind, 'totp');
   assert.equal(fillCode.payload.signupExistingTotpLogin, true);
   assert.equal(fillCode.payload.suppressVerificationCodeLog, true);
+  assert.equal(fillCode.payload.backgroundOwnsWorkflowOutcome, true);
+  const prepare = messages.find((message) => message.type === 'PREPARE_SIGNUP_VERIFICATION');
+  const stateProbe = messages.find((message) => message.type === 'GET_LOGIN_AUTH_STATE');
+  assert.equal(prepare.payload.backgroundOwnsWorkflowOutcome, true);
+  assert.equal(stateProbe.payload.backgroundOwnsWorkflowOutcome, true);
 });
 
 test('existing TOTP login without a saved secret keeps the original registered-account failure', async () => {
