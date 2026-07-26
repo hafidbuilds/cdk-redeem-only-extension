@@ -25,6 +25,7 @@ function createSessionExpiryHarness(options = {}) {
     complete: 0,
     prepare: 0,
     resetEmails: [],
+    resetWaits: [],
     tabUrls: [],
     updatedUrls: [],
   };
@@ -57,8 +58,16 @@ function createSessionExpiryHarness(options = {}) {
       if (message.type === 'START_SET_GPT_PASSWORD_RESET') {
         resetCalls += 1;
         calls.resetEmails.push(message.payload.email);
+        calls.resetWaits.push(message.payload.passwordActionWaitMs);
         if (options.expireDuringPasswordPoll) {
           return { ready: true, alreadyOnNewPasswordPage: true };
+        }
+        if (options.lateSettingsPasswordEntry && resetCalls === 1) {
+          return {
+            ready: false,
+            resetEntryMissing: true,
+            url: 'https://chatgpt.com/#settings/Security',
+          };
         }
         if (options.slowResetEntryTransition && resetCalls === 1) {
           return { ready: false, resetEntryClickFailed: true };
@@ -147,6 +156,19 @@ test('missing reset entry restarts step 6 without opening the stateless new-pass
   assert.equal(result.gptPasswordSet, true);
   assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
   assert.equal(calls.updatedUrls.includes('https://auth.openai.com/reset-password/new-password'), false);
+  assert.equal(calls.complete, 1);
+});
+
+test('late Password entry is rechecked on the same Security page before restarting step 6', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ lateSettingsPasswordEntry: true });
+
+  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+
+  assert.equal(result.gptPasswordSet, true);
+  assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
+  assert.equal(calls.tabUrls.length, 1);
+  assert.equal(calls.resetWaits[0], undefined);
+  assert.ok(calls.resetWaits[1] >= 45000);
   assert.equal(calls.complete, 1);
 });
 

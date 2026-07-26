@@ -54,6 +54,7 @@ test('step 6 settings reset waits for actionable controls instead of document co
   )?.[0] || '';
   assert.ok(resetFlow, 'startSetGptPasswordResetFlow should remain present');
   assert.doesNotMatch(resetFlow, /waitForDocumentLoadComplete/);
-  assert.match(resetFlow, /const passwordAction = await waitForChatGptSettingsPasswordAction\(25000\)/);
+  assert.match(resetFlow, /payload\.passwordActionWaitMs/);
+  assert.match(resetFlow, /waitForChatGptSettingsPasswordAction\(passwordActionWaitMs\)/);
   assert.match(resetFlow, /resetEntryMissing:\s*true/);
 });

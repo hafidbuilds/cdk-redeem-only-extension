@@ -21,6 +21,7 @@
 - [步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)
 - [步骤 6 Password 慢跳转误耗尽恢复并打断工作流](#2026-07-26-step6-slow-reset-navigation-reconcile)
 - [第 4 步验证码输入框延迟渲染时误重开注册](#2026-07-26-step4-late-verification-input-render)
+- [第 6 步 Password 行延迟渲染时连续刷新并停机](#2026-07-26-step6-late-password-entry-render)
 
 ---
 
@@ -163,6 +164,88 @@
 - 受限文件保持原阈值：`content/signup-page.js` 为 `6962/7000` 行，`content/signup-verification-page.js` 为 `174/300` 行。
 - Manifest 引用和运行时加载检查通过；没有新增运行时模块或孤立实现。
 - `git diff --check` 通过；差异中未发现真实敏感数据。
+
+### 提交与发布影响
+
+本修复使用独立本地 Git 提交，不打包、不修改版本号、不推送远端。
+
+---
+
+<a id="2026-07-26-step6-late-password-entry-render"></a>
+
+## 第 6 步 Password 行延迟渲染时连续刷新并停机
+
+日期：2026-07-26
+
+关联记录：[步骤 6 可见 Password 入口误判与诊断快照抢占](#2026-07-26-step6-visible-password-entry-detection)、[步骤 6 Password 慢跳转误耗尽恢复并打断工作流](#2026-07-26-step6-slow-reset-navigation-reconcile)
+
+### 故障现象与脱敏证据
+
+脱敏诊断生成于 `2026-07-26T04:39:23.178Z`。第 5/33 轮已经完成注册验证码和资料填写，步骤 6 连续出现：
+
+```text
+12:30:35 打开 Security and login
+12:31:00 Password 入口状态未建立，重启步骤 6（1/2）
+12:32:17 再次打开 Security and login
+12:32:42 Password 入口状态未建立，重启步骤 6（2/2）
+12:33:59 第三次打开 Security and login
+12:34:24 报告未显示 Password 入口并停止
+```
+
+停止后诊断仍显示当前页面为 `https://chatgpt.com/#settings/Security`，账号创建现场被正确保留，没有回步骤 1、清 Cookie 或更换邮箱。相邻成功轮次也显示 Security 页面加载 Password 行接近原 25 秒边界，说明设置页 DOM 渲染时间存在明显波动。
+
+### 根因
+
+- 内容脚本在每次步骤 6 尝试中只等待 Password 行 25 秒；入口未出现即返回 `resetEntryMissing`。
+- 后台收到该结果后立即抛出 `SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE`，进入步骤 6 局部重启。
+- 局部重启调用 `openPasswordSetupVerificationPage()`，其 `reloadIfSameUrl: true` 会刷新同一个 Security 地址，重新开始 React 页面渲染。
+- 因而每次 25 秒边界到达都先刷新页面，缺少一个在已确认 Security 路由上保留当前 DOM、继续等待的恢复层。
+- 既有慢跳转修复只处理“Password 已点击但尚未进入 OpenAI 验证码页”，没有覆盖“Security 已打开但 Password 行尚未挂载”。
+
+### 修复
+
+- 内容脚本的 Password 行等待支持受限参数，默认仍为 25 秒，最大不超过 60 秒。
+- 后台只在返回 URL 精确属于 ChatGPT `#settings/Security` 且结果为 `resetEntryMissing` 时，保留当前标签页并发起一次 45 秒同页复核。
+- 同页复核期间不调用 `reuseOrCreateTab`、不触发 `reloadIfSameUrl`，避免重置当前 React 渲染进度。
+- Password 行出现后继续使用现有精确定位器点击，并继续验证 OpenAI 验证码页或新密码页状态。
+- 同页 45 秒复核仍失败时，才进入既有最多两次的步骤 6 局部重启；恢复耗尽后继续保留现场停止。
+
+### 安全与兼容边界
+
+- 非 ChatGPT 主机、不是 `#settings/Security` 的 URL、明确会话失效、Password 已点击后的慢跳转和其他错误不会进入本分支。
+- 修复没有扩大 Password 文本匹配或可点击元素范围，不会误点 Security keys、Passkey、2FA 或相邻设置项。
+- Password 行可见、点击发生或 HTTP 成功都不代表密码设置成功；仍必须确认验证码页、新密码页或最终登录会话。
+- 同页复核为一次且最长 45 秒，消息响应窗口为 75 秒，不新增无限循环。
+- 本次不修改邮箱 Provider、验证码新邮件基线、账号模型、2FA、UPI/IDEAL/PIX、Free/Plus、AT 或 CDK 副作用账本。
+
+### 修改文件
+
+- `content/signup-page.js`
+- `background/steps/set-gpt-password.js`
+- `scripts/test-set-gpt-password-session-expiry.cjs`
+- `scripts/test-set-gpt-password-resend.cjs`
+- `docs/USER_GUIDE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- Security 路由首次缺少 Password 行时，同一标签页二次等待后完成密码设置。
+- 同页复核不重新打开或刷新标签页，并沿用相同账号。
+- 延长等待参数由 Background 真实传入 Content Script，且有 60 秒上限。
+- 非 Security 路由的入口缺失继续使用既有步骤 6 重启。
+- `invalid_state`、Password 已点击慢跳转、账号一致性、无状态新密码页禁止和整轮停止保护继续通过。
+
+### 验证
+
+- 定向测试：`22/22` 通过。
+- 完整单元测试：`479/479` 通过。
+- 语法检查：`393` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 MV3 E2E：`1/1` 通过，使用 Puppeteer Chrome for Testing `150.0.7871.24`、临时 Profile 和 pipe transport，未连接用户本地 Chrome。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计通过；仅保留既有 `background.js` 超过 8000 行的非阻断警告。
+- `content/signup-page.js` 为 `6966/7000` 行，没有提高尺寸阈值。
+- Manifest 引用和运行时加载检查通过；没有新增运行时模块或孤立实现。
+- `git diff --check` 通过；变更文件敏感扫描仅命中 `.test` 账号夹具中的显式虚构密码，未发现真实邮箱、密码、验证码、完整 AT、Cookie、API Key、CDK、代理或敏感 URL 参数。
 
 ### 提交与发布影响
 

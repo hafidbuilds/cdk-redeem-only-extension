@@ -18,6 +18,7 @@
   const TRANSPORT_LOSS_CONFIRM_TIMEOUT_MS = 5000;
   const TRANSPORT_LOSS_STABLE_MS = 500;
   const SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS = 45000;
+  const SET_PASSWORD_RESET_ENTRY_RECHECK_RESPONSE_TIMEOUT_MS = 75000;
   const SET_PASSWORD_RESET_PREPARE_WAIT_MS = 8000;
   const SET_PASSWORD_RESET_PREPARE_RETRY_DELAY_MS = 1000;
   const PASSWORD_SETUP_CODE_RESEND_LIMIT = 2;
@@ -87,6 +88,17 @@
       return !/^\/(?:auth\/|reset-password\/|create-account\/|email-verification|log-in|login)(?:[/?#]|$)/i.test(path);
     } catch {
       return /^https?:\/\/(?:www\.)?(?:chatgpt\.com|chat\.openai\.com)(?:[/?#]|$)/i.test(String(url || ''));
+    }
+  }
+
+  function isChatGptSecuritySettingsUrl(url = '') {
+    try {
+      const parsed = new URL(String(url || ''));
+      const host = String(parsed.hostname || '').toLowerCase();
+      return ['chatgpt.com', 'www.chatgpt.com'].includes(host)
+        && /^#settings\/security(?:[/?]|$)/i.test(parsed.hash || '');
+    } catch {
+      return false;
     }
   }
 
@@ -1293,6 +1305,17 @@
       let prepareResult = await sendSetPasswordPageMessage('START_SET_GPT_PASSWORD_RESET', {
         email,
       }, visibleStep, 60000);
+      if (prepareResult?.resetEntryMissing && isChatGptSecuritySettingsUrl(prepareResult?.url)) {
+        await addStepLog(
+          visibleStep,
+          '设置 GPT 密码：Security 页面已打开但密码入口仍在渲染，继续在当前标签页等待，不立即重载或重启步骤 6。',
+          'warn'
+        );
+        prepareResult = await sendSetPasswordPageMessage('START_SET_GPT_PASSWORD_RESET', {
+          email,
+          passwordActionWaitMs: SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS,
+        }, visibleStep, SET_PASSWORD_RESET_ENTRY_RECHECK_RESPONSE_TIMEOUT_MS);
+      }
       if (prepareResult?.resetEntryMissing) {
         throw new Error(`SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::步骤 ${visibleStep}：ChatGPT 密码入口未建立有效重置状态，需要重新启动当前步骤。`);
       }

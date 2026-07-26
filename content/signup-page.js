@@ -4280,6 +4280,10 @@ async function waitForChatGptSettingsPasswordAction(timeout = 20000) {
 
 async function startSetGptPasswordResetFlow(payload = {}) {
   const visibleStep = resolveVisibleStep(payload, 6);
+  const passwordActionWaitMs = Math.max(
+    5000,
+    Math.min(60000, Math.floor(Number(payload.passwordActionWaitMs) || 25000))
+  );
 
   const existingAuthState = getSetGptPasswordPageState();
   if (existingAuthState.state === 'session_expired_page') throw new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：OpenAI 设置密码会话已失效，需要重新启动当前步骤。`);
@@ -4291,7 +4295,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
     return prepareSetGptPasswordFlow(payload);
   }
 
-  const passwordAction = await waitForChatGptSettingsPasswordAction(25000);
+  const passwordAction = await waitForChatGptSettingsPasswordAction(passwordActionWaitMs);
   if (!passwordAction) {
     const diagnostics = getChatGptSettingsPasswordDiagnostics();
     log(
