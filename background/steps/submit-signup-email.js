@@ -33,6 +33,15 @@
       return /Content script on signup-page did not respond in \d+s|内容脚本\s+\d+(?:\.\d+)?\s*秒内未响应|Receiving end does not exist|message channel closed|A listener indicated an asynchronous response|port closed before a response was received|did not respond in \d+s/i.test(message);
     }
 
+    function createSignupEmailSubmitUncertainError(errorLike) {
+      const detail = getErrorMessage(errorLike) || '后续认证页面状态未知';
+      const error = new Error(`SIGNUP_EMAIL_SUBMIT_UNCERTAIN::步骤 2：邮箱已提交，但未能确认后续认证页面状态。已保留当前页面、邮箱和 Cookie，不会自动重新提交。原因：${detail}`);
+      error.code = 'SIGNUP_EMAIL_SUBMIT_UNCERTAIN';
+      error.retryable = false;
+      error.preserveSignupSession = true;
+      return error;
+    }
+
     const STEP2_EMAIL_ENTRY_REFRESH_MAX_ATTEMPTS = 2;
 
     function isLikelyLoggedInChatgptHomeUrl(rawUrl) {
@@ -365,9 +374,14 @@
         await addLog(`步骤 2：邮箱 ${resolvedEmail} 已提交，正在等待页面加载并确认下一步入口...`);
       }
 
-      const landingResult = await ensureSignupPostEmailPageReadyInTab(signupTabId, 2, {
-        skipUrlWait: Boolean(step2Result?.alreadyOnPasswordPage),
-      });
+      let landingResult;
+      try {
+        landingResult = await ensureSignupPostEmailPageReadyInTab(signupTabId, 2, {
+          skipUrlWait: Boolean(step2Result?.alreadyOnPasswordPage),
+        });
+      } catch (error) {
+        throw createSignupEmailSubmitUncertainError(error);
+      }
 
       await completeNodeFromBackground('submit-signup-email', {
         email: resolvedEmail,

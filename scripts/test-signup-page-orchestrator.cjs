@@ -61,6 +61,28 @@ test('signup page orchestrator forwards resend timeout payload', async () => {
   assert.equal(calls[0].payload.resendTimeoutMs, 8000);
 });
 
+test('signup password readiness uses the bounded page observation budget from background', async () => {
+  const calls = [];
+  const orchestrator = globalThis.MultiPageSignupPageOrchestrator.createSignupPageOrchestrator({
+    ensureSignupPasswordPageReady: async (timeoutMs) => {
+      calls.push(timeoutMs);
+      return { ready: true };
+    },
+  });
+
+  assert.deepEqual(await orchestrator.handleCommand({
+    type: 'ENSURE_SIGNUP_PASSWORD_PAGE_READY',
+    payload: { timeoutMs: 20000 },
+  }), { ready: true });
+  assert.deepEqual(calls, [20000]);
+
+  await orchestrator.handleCommand({
+    type: 'ENSURE_SIGNUP_PASSWORD_PAGE_READY',
+    payload: { timeoutMs: 90000 },
+  });
+  assert.deepEqual(calls, [20000, 30000]);
+});
+
 test('existing-account TOTP login logs under step 3.5 without exposing the code', () => {
   const entries = [];
   const orchestrator = globalThis.MultiPageSignupPageOrchestrator.createSignupPageOrchestrator({

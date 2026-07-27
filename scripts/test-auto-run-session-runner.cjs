@@ -306,7 +306,7 @@ test('auto-run stops immediately when the custom email pool is exhausted', async
   assert.equal(logs.some((message) => message.includes('没有可用邮箱')), true);
 });
 
-test('auto-run does not restart or select another email after an uncertain password submit', async () => {
+test('auto-run does not restart or select another email after an uncertain email submit', async () => {
   const logs = [];
   const phases = [];
   let attempts = 0;
@@ -371,8 +371,8 @@ test('auto-run does not restart or select another email after an uncertain passw
     resolveAutoRunAccountRecordStatus: (status) => status,
     runAutoSequenceFromNode: async () => {
       attempts += 1;
-      const error = new Error('SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::unknown remote result');
-      error.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+      const error = new Error('SIGNUP_EMAIL_SUBMIT_UNCERTAIN::unknown post-email page state');
+      error.code = 'SIGNUP_EMAIL_SUBMIT_UNCERTAIN';
       error.preserveSignupSession = true;
       throw error;
     },
@@ -394,7 +394,7 @@ test('auto-run does not restart or select another email after an uncertain passw
   assert.equal(attempts, 1);
   assert.equal(phases.includes('stopped'), true);
   assert.equal(appState.selectedCustomEmailPoolEmail, 'current@example.com');
-  assert.equal(logs.some((message) => message.includes('不会清理 Cookie、切换邮箱或重新注册')), true);
+  assert.equal(logs.some((message) => message.includes('不会清理 Cookie、切换邮箱或重新提交邮箱')), true);
 });
 
 test('auto-run parks cleanly when a workflow node schedules a timer resume', async () => {

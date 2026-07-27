@@ -28,6 +28,81 @@
 - [步骤 3.5 成功后仍重复执行步骤 6](#2026-07-26-step3-5-skip-redundant-password)
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 - [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
+- [步骤 2 密码页等待与后台响应超时竞态](#2026-07-27-step2-password-page-response-timeout)
+
+---
+
+<a id="2026-07-27-step2-password-page-response-timeout"></a>
+
+## 步骤 2 密码页等待被误报为内容脚本超时并重复提交邮箱
+
+日期：2026-07-27
+
+关联记录：[注册密码提交后未知状态保护](#2026-07-26-signup-password-transition-timeout)、[步骤 4 内容脚本响应窗口](#2026-07-26-step4-content-response-timeout)
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-26T23:41:11.086Z`。步骤 2 已填写邮箱并点击 Continue，约 4 秒后新认证页内容脚本报告就绪；随后先出现“等待进入密码页超时”，约 0.3 至 0.7 秒后后台又把最终错误记录为“认证页 内容脚本 20 秒内未响应”。自动运行把后一个错误当作普通可重试故障，清理 Cookie、重开页面，并在同一轮对同一邮箱继续尝试，最终两个目标轮次都达到 3 次重试上限。档案不记录真实邮箱、密码、验证码、完整 AT、Cookie、CDK 或敏感 URL 参数。
+
+### 根因
+
+- `content/signup-password-page.js` 的 `ensureSignupPasswordPageReady()` 最长观察页面 20 秒。
+- `background/signup-flow-helpers.js` 对同一条 `ENSURE_SIGNUP_PASSWORD_PAGE_READY` 消息也只给 `sendToContentScriptResilient()` 20 秒总预算；消息层会把单次响应上限裁剪到剩余总预算。
+- 内容脚本准备返回真实页面错误时，后台定时器先结束等待，真实错误因约几百毫秒的调度和消息返回开销被“内容脚本未响应”覆盖。
+- 自动运行只看到了可重试的传输错误，因此执行通用整轮重试；步骤 1 随之清理 Cookie 并再次提交当前邮箱。
+- 该命令没有声明由后台统一裁决工作流结果，内容脚本和后台还会各记一次失败，进一步造成日志中的双重错误。
+
+### 修复
+
+- 后台消息显式传入 20 秒页面观察预算，同时把单次内容脚本响应预算设为 25 秒、有限恢复总预算设为 50 秒；页面观察总能先于通信定时器结束并返回真实结果。
+- 内容脚本命令转发读取并限制后台传入的观察预算，允许范围为 1 至 30 秒，避免无界等待。
+- 命令增加 `backgroundOwnsWorkflowOutcome=true`，页面助手只返回结构化结果，由后台节点唯一记录最终失败，避免竞争性失败广播。
+- 页面导航替换主 Frame 时继续复用现有 resilient 消息通道，在总预算内重新连接；真实页面超时不是传输错误，不会被通信层重复吞掉。
+- 邮箱已经提交后若后续页面仍无法确认，步骤 2 抛出 `SIGNUP_EMAIL_SUBMIT_UNCERTAIN`，明确设置 `retryable=false` 和 `preserveSignupSession=true`。
+- 自动运行把该结构化错误归入现有的现场保留停机分支：本轮立即停止，不清 Cookie、不切换邮箱、不重复提交，也不固定返回成功。
+
+### 安全与兼容边界
+
+- 只有内容脚本通道明确发生页面换帧、端口关闭或接收端暂不可用时才在 50 秒总预算内有限重连；内容脚本返回的真实页面错误原样进入业务层，不按网络错误循环。
+- 邮箱提交前的短暂入口通信故障仍沿用既有限次恢复；保护只在 Continue 已成功、远端后续状态可能已经变化后启用。
+- 未确认密码页、验证码页或资料页时不会把节点标记完成，也不会推断账号已注册、已有试用资格或 Token 无效。
+- 本修复不修改账号统一模型、Provider Definition、验证码邮件基线、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、存储 schema、Manifest 权限或版本号。
+- 日志与诊断继续经过既有脱敏链；新增测试只使用 `.test` 虚构邮箱和无敏感参数的示例 URL。
+
+### 修改文件
+
+- `background/signup-flow-helpers.js`
+- `background/steps/submit-signup-email.js`
+- `background/auto-run/retry-policy.js`
+- `background/auto-run/session-runner.js`
+- `content/signup-page-orchestrator.js`
+- `scripts/test-signup-email-transition.cjs`
+- `scripts/test-signup-page-orchestrator.cjs`
+- `scripts/test-auto-run-email-guard.cjs`
+- `scripts/test-auto-run-session-runner.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 内容脚本 20 秒页面观察预算小于后台 25 秒单次响应预算，并处于 50 秒有限恢复总预算内。
+- 内容脚本真实的“等待进入密码页超时”能够返回，不再被“内容脚本未响应”覆盖。
+- 页面观察预算从后台 payload 传递到内容脚本，并限制为最多 30 秒。
+- 邮箱已提交但后续页面未知时产生结构化不可重试错误，不完成步骤 2。
+- 自动运行实际停机路径只执行一次当前尝试，保持当前邮箱选中，并明确提示不会清 Cookie、切换邮箱或重新提交。
+- 既有密码提交未知状态、短暂传输恢复、无试用资格和邮箱池耗尽策略继续通过。
+
+### 验证与提交影响
+
+- 定向回归测试：`21/21` 通过。
+- 完整单元测试：`512/512` 通过。
+- 语法检查：`397` 个纳入本提交的 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E：`1/1` 通过；实际为 `Chrome/150.0.7871.24`、Puppeteer 固定下载浏览器、临时 Profile、pipe 传输，没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；自动运行会话文件保持 `1100/1100` 行，未提高任何文件大小阈值。
+- Manifest 引用审计通过且 `manifest.json` 仍为 `2.2.0`、未修改权限；差异未包含真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
+- 仅保留既有非阻断警告：`background.js` 超过 8000 行。
+- 修复、测试和档案由同一独立本地提交交付；本次未打包、未修改版本、未创建标签或 GitHub Release。
 
 ---
 

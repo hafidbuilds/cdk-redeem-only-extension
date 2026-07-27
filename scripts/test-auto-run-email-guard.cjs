@@ -174,3 +174,27 @@ test('uncertain password submit always stops and preserves the current signup se
   assert.equal(action.shouldStop, true);
   assert.equal(action.forceFreshTabsNextRun, false);
 });
+
+test('uncertain email submit stops before cookies or another email can be selected', () => {
+  const policy = createAutoRunRetryPolicy({
+    AUTO_RUN_MAX_RETRIES_PER_ROUND: 3,
+    getErrorMessage: (error) => error?.message || String(error || ''),
+  });
+  const error = new Error('email accepted but password page state is unknown');
+  error.code = 'SIGNUP_EMAIL_SUBMIT_UNCERTAIN';
+  error.retryable = false;
+  error.preserveSignupSession = true;
+  const result = policy.evaluateAttemptFailure({
+    error,
+    attemptRun: 1,
+    autoRunSkipFailures: true,
+    maxAttemptsForRound: 4,
+  });
+  const action = policy.selectFailureAction(result);
+
+  assert.equal(result.blockedBySignupPasswordSubmitUncertain, true);
+  assert.equal(result.canRetry, false);
+  assert.equal(action.code, 'fail_signup_password_submit_uncertain');
+  assert.equal(action.shouldStop, true);
+  assert.equal(action.forceFreshTabsNextRun, false);
+});

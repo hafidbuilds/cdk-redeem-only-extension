@@ -124,7 +124,8 @@
 
     function isSignupPasswordSubmitUncertainFailure(error) {
       const message = String(getErrorMessage(error) || error?.message || error || '');
-      return error?.code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN' || /SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::/i.test(message);
+      return ['SIGNUP_EMAIL_SUBMIT_UNCERTAIN', 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN'].includes(error?.code)
+        || /SIGNUP_(?:EMAIL|PASSWORD)_SUBMIT_UNCERTAIN::/i.test(message);
     }
 
     function getMaxAttemptsForRound(options = {}) {

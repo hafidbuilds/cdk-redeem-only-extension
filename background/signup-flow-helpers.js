@@ -504,9 +504,13 @@
         type: 'ENSURE_SIGNUP_PASSWORD_PAGE_READY',
         step,
         source: 'background',
-        payload: {},
+        payload: {
+          timeoutMs: 20000,
+          backgroundOwnsWorkflowOutcome: true,
+        },
       }, {
-        timeoutMs: 20000,
+        timeoutMs: 50000,
+        responseTimeoutMs: 25000,
         retryDelayMs: 700,
         logMessage: `步骤 ${step}：认证页正在切换，等待密码页重新就绪...`,
       });

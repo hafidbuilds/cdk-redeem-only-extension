@@ -588,14 +588,14 @@
               });
               break;
             }
-
             if (['fail_session_frame_unavailable', 'fail_signup_password_submit_uncertain'].includes(failureAction.code)) {
-              const passwordSubmitUnknown = failureAction.code === 'fail_signup_password_submit_uncertain';
+              const emailSubmitUnknown = error?.code === 'SIGNUP_EMAIL_SUBMIT_UNCERTAIN';
               await markRoundFailed(reason, error);
-              cancelPendingCommands(passwordSubmitUnknown ? '密码提交结果未知，已保留当前注册现场并停止自动运行。' : '当前账号的认证现场无法安全继续，已保留进度并停止自动运行。');
+              cancelPendingCommands(emailSubmitUnknown ? '邮箱提交后的页面状态未知，已保留当前注册现场并停止自动运行。' : (failureAction.code === 'fail_signup_password_submit_uncertain' ? '密码提交结果未知，已保留当前注册现场并停止自动运行。' : '当前账号的认证现场无法安全继续，已保留进度并停止自动运行。'));
               await broadcastStopToContentScripts();
-              await addLog(passwordSubmitUnknown
-                ? `第 ${targetRun}/${totalRuns} 轮注册密码提交后的页面状态仍未知，自动运行已停止。请保持当前认证页面打开，并从密码或验证码步骤继续；系统不会清理 Cookie、切换邮箱或重新注册。`
+              await addLog(emailSubmitUnknown
+                ? `第 ${targetRun}/${totalRuns} 轮邮箱已提交，但后续认证页面状态仍未知，自动运行已停止。请保持当前认证页面打开并检查页面；系统不会清理 Cookie、切换邮箱或重新提交邮箱。`
+                : failureAction.code === 'fail_signup_password_submit_uncertain' ? `第 ${targetRun}/${totalRuns} 轮注册密码提交后的页面状态仍未知，自动运行已停止。请保持当前认证页面打开，并从密码或验证码步骤继续；系统不会清理 Cookie、切换邮箱或重新注册。`
                 : `第 ${targetRun}/${totalRuns} 轮账号创建已完成，但当前认证现场无法安全继续；自动运行已停止，不会清理 Cookie、换邮箱或重新注册。请保持当前 ChatGPT 页面打开，重新执行步骤 6 或继续当前进度。`, 'error');
               stoppedEarly = true;
               await broadcastAutoRunStatus('stopped', {

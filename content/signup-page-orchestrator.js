@@ -153,8 +153,13 @@
           );
         case 'ENSURE_SIGNUP_ENTRY_READY':
           return await ensureSignupEntryReady();
-        case 'ENSURE_SIGNUP_PASSWORD_PAGE_READY':
-          return await ensureSignupPasswordPageReady();
+        case 'ENSURE_SIGNUP_PASSWORD_PAGE_READY': {
+          const passwordPageWaitMs = Math.min(
+            30000,
+            Math.max(1000, Math.floor(Number(message.payload?.timeoutMs) || 20000))
+          );
+          return await ensureSignupPasswordPageReady(passwordPageWaitMs);
+        }
         case 'START_SET_GPT_PASSWORD_RESET':
           return await startSetGptPasswordResetFlow(message.payload);
         case 'PREPARE_SET_GPT_PASSWORD':
