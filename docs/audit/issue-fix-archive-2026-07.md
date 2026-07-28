@@ -4,6 +4,7 @@
 
 ## 目录
 
+- [步骤 6 登录通知误终止验证码轮询](#2026-07-29-step6-signin-notification-polling)
 - [自定义邮箱验证码未通过却被步骤 4 当作成功](#2026-07-28-manual-signup-verification-confirmation)
 - [最近失败诊断锚点修复](#2026-07-25-failure-diagnostics-anchor-fix)
 - [最近失败诊断剪贴板导出](#2026-07-25-failure-diagnostics-clipboard)
@@ -30,6 +31,64 @@
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 - [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
 - [步骤 2 密码页等待与后台响应超时竞态](#2026-07-27-step2-password-page-response-timeout)
+
+---
+
+<a id="2026-07-29-step6-signin-notification-polling"></a>
+
+## 步骤 6 登录通知误终止验证码轮询
+
+日期：2026-07-29
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-28T16:00:53.376Z`。步骤 6 已进入 `/email-verification`，页面检测到验证码输入框；自定义邮箱接口返回的最新邮件标题属于 OpenAI 新登录通知，不是“设置 GPT 密码”验证码。邮件客户端正确拒绝该邮件并返回 `CUSTOM_EMAIL_LATEST_NON_VERIFICATION`，但步骤 6 在第 `1/5` 次取码后立即终止，自动运行随后把它当作本轮失败并进入注册重试。
+
+档案只保留脱敏后的页面类型、邮件类别和结构化错误码，不包含真实邮箱、邮件正文、验证码、密码、完整 AT、Cookie、API Key、CDK 或敏感 URL 参数。
+
+### 根因与真实调用链
+
+- 自定义邮箱客户端会验证最新邮件是否确实包含目标验证码；登录通知不符合验证码语义时，抛出带 `code=CUSTOM_EMAIL_LATEST_NON_VERIFICATION` 的结构化错误。
+- `background/steps/set-gpt-password.js` 的 `isRetryablePasswordSetupCodeFetchError()` 只识别 HTTP 408/429/5xx、网关超时和取码超时文案，没有识别该结构化错误码。
+- `executeSetGptPassword()` 因此没有进入既有的下一次取码等待分支，而是在第一次异常处退出步骤 6；外层自动运行随后处理整个节点失败。
+
+### 修复
+
+- 步骤 6 的临时取码错误判断显式接纳 `CUSTOM_EMAIL_LATEST_NON_VERIFICATION`，登录通知到达时继续当前 `1/5 -> 2/5` 取码循环。
+- 连续收到非验证码最新邮件时仍沿用现有有限 Resend 和等待逻辑；取得真实验证码后继续原有提交与设置密码流程。
+- 判断只使用邮件客户端给出的结构化错误码，不依赖宽泛标题匹配，也不把登录通知正文解析成验证码。
+
+### 安全与兼容边界
+
+- 最多 5 次取码、现有 Resend 次数和等待上限均保持不变；耗尽后仍真实失败，不固定返回成功。
+- HTTP 鉴权失败、配置错误、页面错误和未列入临时范围的接口故障仍按原策略终止；网络错误不会被解释成 Token 无效。
+- 本修复不修改账号统一模型、Provider Definition、验证码新邮件基线、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、存储格式、Manifest 权限或版本号。
+- 不删除账号、Cookie 或旧数据，不记录验证码、密码、完整 AT 或其它真实凭据。
+
+### 修改文件
+
+- `background/steps/set-gpt-password.js`
+- `scripts/test-custom-email-latest-notification.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-archive-2026-07.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 第一次取码返回结构化“最新邮件不是验证码”状态，第二次取得验证码时，步骤 6 只启动一次并完成密码设置。
+- 日志明确进入下一次 `2/5` 取码，不把步骤 6 失败传播到整轮注册重试。
+- 既有 Resend 上限、会话失效恢复和其它步骤 6 错误分支继续通过。
+
+### 验证与提交影响
+
+- 定向测试：`14/14` 通过。
+- 完整单元测试：`516/516` 通过。
+- 语法检查：`398` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E 通过：`Chrome/150.0.7871.24`、Puppeteer 下载浏览器、临时 Profile、pipe 传输；没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；未提高任何文件大小或审计阈值。
+- Manifest 运行时引用检查通过且 `manifest.json` 保持 `2.2.0`、未修改权限；差异不包含真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
+- 修复、测试和档案由同一独立本地提交交付；未打包、未修改版本、未创建标签、未推送或发布。
 
 ---
 

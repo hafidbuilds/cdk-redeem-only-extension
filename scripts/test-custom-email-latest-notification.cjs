@@ -4,6 +4,8 @@ const test = require('node:test');
 const { createAssurivoFeedClient } = require('../background/verification/assurivo-feed-client.js');
 require('../background/verification/manual-confirmation.js');
 const { createVerificationResendController } = require('../background/verification/resend-controller.js');
+require('../background/steps/set-gpt-password.js');
+const { createSetGptPasswordExecutor } = globalThis.MultiPageBackgroundSetGptPassword;
 
 const SIGN_IN_NOTIFICATION_HTML = `<!DOCTYPE html>
 <html>
@@ -106,4 +108,71 @@ test('step 4 requests one fresh code after the latest custom email stays a sign-
 
   assert.equal(fetchAttempts, 3);
   assert.deepEqual(sentMessages, ['RESEND_VERIFICATION_CODE']);
+});
+
+test('step 6 keeps polling after a sign-in notification instead of restarting registration', async () => {
+  const logs = [];
+  const state = {
+    email: 'current@example.test',
+    password: 'Example-password-1',
+    customPassword: 'Example-password-1',
+    passwordAccountIdentifier: 'current@example.test',
+    setGptPasswordCodeMaxAttempts: 5,
+    setGptPasswordVerificationWaitSeconds: 0,
+  };
+  let fetchAttempts = 0;
+  let resetStarts = 0;
+  let completed = 0;
+  const executor = createSetGptPasswordExecutor({
+    addLog: async (message) => logs.push(message),
+    chrome: {
+      tabs: {
+        get: async () => ({ id: 7, url: 'https://auth.openai.com/email-verification' }),
+        update: async () => ({}),
+      },
+    },
+    completeNodeFromBackground: async () => { completed += 1; },
+    ensureContentScriptReadyOnTab: async () => {},
+    fetchVerificationCodeOnly: async () => {
+      fetchAttempts += 1;
+      if (fetchAttempts === 1) {
+        throw Object.assign(
+          new Error('步骤 6：最新邮件是 OpenAI 登录通知，不是验证码邮件。'),
+          { code: 'CUSTOM_EMAIL_LATEST_NON_VERIFICATION' }
+        );
+      }
+      return { handled: true, code: '123456', emailTimestamp: 123 };
+    },
+    getMailConfig: () => ({ provider: 'custom', label: '自定义邮箱取码 URL' }),
+    getState: async () => ({ ...state }),
+    getVerificationCodeStateKey: () => 'lastLoginCode',
+    reuseOrCreateTab: async () => 7,
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'START_SET_GPT_PASSWORD_RESET') {
+        resetStarts += 1;
+        return { ready: true };
+      }
+      if (message.type === 'SUBMIT_SET_GPT_PASSWORD_CODE') {
+        return { requiresNewPasswordNavigation: true };
+      }
+      if (message.type === 'SET_GPT_PASSWORD') {
+        return { success: true, gptPasswordSet: true };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    },
+    setState: async (patch) => Object.assign(state, patch),
+    sleepWithStop: async () => {},
+  });
+
+  const result = await executor.executeSetGptPassword({
+    ...state,
+    nodeId: 'set-gpt-password',
+    visibleStep: 6,
+  });
+
+  assert.equal(result.gptPasswordSet, true);
+  assert.equal(fetchAttempts, 2);
+  assert.equal(resetStarts, 1);
+  assert.equal(completed, 1);
+  assert.equal(logs.some((message) => message.includes('本次取码临时失败，将继续等待下一次尝试（2/5）')), true);
 });

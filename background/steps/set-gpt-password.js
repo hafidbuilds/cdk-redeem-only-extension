@@ -52,7 +52,8 @@
 
   function isRetryablePasswordSetupCodeFetchError(error) {
     const message = normalizeString(typeof error === 'string' ? error : error?.message || '');
-    return /HTTP\s*(?:408|429|5\d\d)\b|Gateway Time-out|gateway timeout|暂未返回有效验证码|自定义邮箱暂未返回有效验证码|取码接口.*(?:超时|timeout)/i.test(message);
+    return error?.code === 'CUSTOM_EMAIL_LATEST_NON_VERIFICATION'
+      || /HTTP\s*(?:408|429|5\d\d)\b|Gateway Time-out|gateway timeout|暂未返回有效验证码|自定义邮箱暂未返回有效验证码|取码接口.*(?:超时|timeout)/i.test(message);
   }
 
   function isSetGptPasswordNewPasswordUrl(url = '') {
