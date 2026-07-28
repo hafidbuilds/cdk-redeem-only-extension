@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const { createVerificationCodeExtractor } = require('../background/verification/code-extractor.js');
 const { createAssurivoFeedClient } = require('../background/verification/assurivo-feed-client.js');
 require('../background/verification/manual-confirmation.js');
 const { createVerificationResendController } = require('../background/verification/resend-controller.js');
@@ -13,6 +14,32 @@ const SIGN_IN_NOTIFICATION_HTML = `<!DOCTYPE html>
   <body>We noticed a new sign-in to your OpenAI account.</body>
 </html>`;
 
+test('generic mail HTML uses the prompt-bound code and never falls through to hidden six-digit values', () => {
+  const extractor = createVerificationCodeExtractor();
+  const client = createAssurivoFeedClient({
+    collectCustomEmailVerificationCodes: extractor.collectCustomEmailVerificationCodes,
+    getStrictVerificationBodyCodeDetails: extractor.getStrictVerificationBodyCodeDetails,
+    isAssurivoVerificationPayload: () => false,
+  });
+  const html = `<!DOCTYPE html>
+    <html data-message-id="654321"><body>
+      <p>Enter this temporary verification code to continue:</p>
+      <strong>123456</strong>
+      <a href="https://tracking.example.test/event/987654">Help center</a>
+    </body></html>`;
+
+  assert.deepEqual(client.extractCustomEmailVerificationCodeDetails(html), {
+    code: '123456',
+    source: 'generic-strict',
+  });
+  assert.deepEqual(client.extractCustomEmailVerificationCodeDetails(html, {
+    excludeCodes: ['123456'],
+  }), {
+    code: '',
+    source: 'generic-strict',
+  });
+});
+
 test('custom email fetch classifies an OpenAI sign-in notification without logging raw HTML', async () => {
   const client = createAssurivoFeedClient({
     constants: {
@@ -21,6 +48,7 @@ test('custom email fetch classifies an OpenAI sign-in notification without loggi
     },
     addLog: async () => {},
     collectCustomEmailVerificationCodes: () => [],
+    getStrictVerificationBodyCodeDetails: () => ({ codes: [], promptMatched: false }),
     fetchImpl: async () => ({
       ok: true,
       status: 200,

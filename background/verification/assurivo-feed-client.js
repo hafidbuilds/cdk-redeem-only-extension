@@ -104,7 +104,6 @@
         function isCustomEmailNonVerificationNotificationError(error) {
           return error?.code === 'CUSTOM_EMAIL_LATEST_NON_VERIFICATION';
         }
-
         function normalizeEmailForComparison(value = '') {
           return String(value || '').trim().toLowerCase();
         }
@@ -501,18 +500,20 @@
               source: 'linlinflow',
             };
           }
-          const codes = collectCustomEmailVerificationCodes(payload).filter((code, index, list) => (
+          const strictDetails = typeof payload === 'string' ? getStrictVerificationBodyCodeDetails(payload) : null;
+          const strictMatch = Boolean(strictDetails && (strictDetails.promptMatched || strictDetails.codes.length));
+          const candidates = strictMatch ? strictDetails.codes : collectCustomEmailVerificationCodes(payload);
+          const codes = candidates.filter((code, index, list) => (
             !excluded.has(code) && list.indexOf(code) === index
           ));
           if (!codes.length) {
-            return { code: '', source: 'generic' };
+            return { code: '', source: strictMatch ? 'generic-strict' : 'generic' };
           }
           return {
             code: options.preferFirstCode ? codes[0] : codes[codes.length - 1],
-            source: 'generic',
+            source: strictMatch ? 'generic-strict' : 'generic',
           };
         }
-
         function parseCustomEmailVerificationPayloadText(text = '') {
           const rawText = String(text || '').trim();
           if (!rawText) {
@@ -535,7 +536,6 @@
             return '';
           }
         }
-
         function normalizeAssurivoCredentialParts(credential = '', fallbackEmail = '') {
           const raw = String(credential || '').trim();
           const separatorIndex = raw.indexOf('----');

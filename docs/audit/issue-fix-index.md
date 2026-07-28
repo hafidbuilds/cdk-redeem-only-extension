@@ -44,6 +44,7 @@ git log --oneline -- docs/audit
 | 2026-07-27 | 步骤 2 密码页等待被误报为内容脚本超时并重复提交邮箱 | 分离页面与响应预算；最终未知时保留现场并禁止整轮重试 | [记录](issue-fix-archive-2026-07.md#2026-07-27-step2-password-page-response-timeout) |
 | 2026-07-28 | 自定义邮箱验证码未被 OpenAI 接受却被步骤 4 当作成功 | 人工确认后复核权威页面状态；拒绝或未知时保留会话停止 | [记录](issue-fix-archive-2026-07.md#2026-07-28-manual-signup-verification-confirmation) |
 | 2026-07-29 | 步骤 6 最新邮件是登录通知时首次取码即终止并重开整轮 | 识别结构化非验证码状态，在原步骤有限轮询和 Resend | [记录](issue-fix-archive-2026-07.md#2026-07-29-step6-signin-notification-polling) |
+| 2026-07-29 | 步骤 4 从 HTML 取件页连续提交隐藏六位数字并触发次数限制 | 只接受验证提示语绑定的正文码；旧码被拒后禁止回退到干扰数字 | [记录](issue-fix-archive-2026-07.md#2026-07-29-step4-generic-html-decoy-code) |
 
 ## 新记录规则
 

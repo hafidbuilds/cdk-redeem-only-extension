@@ -4,6 +4,7 @@
 
 ## 目录
 
+- [步骤 4 HTML 取件页误选隐藏六位数字](#2026-07-29-step4-generic-html-decoy-code)
 - [步骤 6 登录通知误终止验证码轮询](#2026-07-29-step6-signin-notification-polling)
 - [自定义邮箱验证码未通过却被步骤 4 当作成功](#2026-07-28-manual-signup-verification-confirmation)
 - [最近失败诊断锚点修复](#2026-07-25-failure-diagnostics-anchor-fix)
@@ -31,6 +32,67 @@
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 - [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
 - [步骤 2 密码页等待与后台响应超时竞态](#2026-07-27-step2-password-page-response-timeout)
+
+---
+
+<a id="2026-07-29-step4-generic-html-decoy-code"></a>
+
+## 步骤 4 HTML 取件页误选隐藏六位数字
+
+日期：2026-07-29
+
+关联记录：[步骤 6 登录通知轮询](#2026-07-29-step6-signin-notification-polling)、[自定义邮箱步骤 4 人工确认](#2026-07-28-manual-signup-verification-confirmation)
+
+### 故障现象与证据
+
+脱敏诊断生成于 `2026-07-28T17:00:02.598Z`。第 2 轮步骤 4 已通过自定义邮箱 HTML 取件页取得并提交六位数字，但 OpenAI 连续返回 `Incorrect code`。扩展每次点击 Resend、等待 10 秒后又立即声称取得“最新注册验证码”，共提交 4 次，最终触发 `max_check_attempts` 并停止。用户截图同时证明取件页正文存在标准文案 `Enter this temporary verification code to continue` 及一个可见六位验证码。
+
+档案不保存截图中的真实验证码、完整取件 URL、真实邮箱、页面访问令牌、密码、完整 AT、Cookie、API Key 或 CDK。
+
+### 根因与真实调用链
+
+- `fetchCustomEmailVerificationCode()` 对非 Assurivo、非 LinlinFlow 的取件页按通用 HTML/文本解析。
+- `extractCustomEmailVerificationCodeDetails()` 原先调用 `collectCustomEmailVerificationCodes()` 扫描整段原始 HTML，并允许收集所有孤立六位数字；邮件模板属性、追踪链接或隐藏元数据也可能进入候选列表。
+- 页面拒绝一个候选后，步骤 4 会把该数字加入 `excludeCodes`。旧解析器再次读取尚未更新的同一 HTML 时，会跳过已拒绝数字，却继续选择页面中的另一个六位干扰数字，因此日志看似每次取得新码，实际没有证明新邮件已经到达。
+- 连续提交这些干扰数字消耗 OpenAI 验证次数，最终触发认证页硬限制。
+
+### 修复
+
+- 通用字符串/HTML 响应先使用既有严格正文解析器，识别 OpenAI/ChatGPT 验证语义及其绑定的六位码。
+- 一旦正文匹配严格验证语义，该结果成为唯一候选来源；模板属性、追踪链接和其它裸六位数字不再参与选择。
+- 严格正文码已在 `excludeCodes` 中时返回“暂无有效新码”，不回退通用扫描；步骤 4 继续使用现有等待、有限 Resend 和重试上限。
+- 非验证 HTML、结构化 JSON、Assurivo 与 LinlinFlow 继续走原有解析路径。
+
+### 安全与兼容边界
+
+- 不把验证码写入档案、普通导出或诊断；测试只使用虚构固定数字和 `.test` 域名。
+- 不固定返回成功，不绕过 `Incorrect code` 或 `max_check_attempts`，也不增加验证码提交次数。
+- 不修改账号统一模型、Provider Definition、邮件新基线、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、存储格式、Manifest 权限或版本号。
+- `background/verification/assurivo-feed-client.js` 保持 `899/900` 行，没有提高文件大小阈值。
+
+### 修改文件
+
+- `background/verification/assurivo-feed-client.js`
+- `scripts/test-custom-email-latest-notification.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-archive-2026-07.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- HTML 同时包含正文验证码、隐藏属性六位数字和追踪链接六位数字时，只返回正文提示语绑定的验证码。
+- 正文验证码已被拒绝时返回空结果，不从同一 HTML 选择其它六位数字。
+- 登录通知分类、步骤 4 登录通知 Resend、步骤 6 登录通知轮询、页面输入检测和邮件基线测试继续通过。
+
+### 验证与提交影响
+
+- 定向测试：`8/8` 通过。
+- 完整单元测试：`517/517` 通过；语法检查：`398` 个 Git 跟踪的 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E：`1/1` 通过，实际浏览器为 `Chrome/150.0.7871.24`、Puppeteer 下载浏览器、临时 Profile、pipe 传输；没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；Manifest 运行时引用检查通过且 `manifest.json` 保持 `2.2.0`、未修改权限。
+- 差异敏感数据扫描没有高置信真实凭据命中；仅保留既有 `background.js` 超过 8000 行的非阻断警告，没有提高任何审计阈值。
+- 修复、测试和档案由同一独立本地提交交付；未打包、未修改版本、未创建标签、未推送或发布。
 
 ---
 
