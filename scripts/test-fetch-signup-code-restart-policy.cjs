@@ -13,6 +13,7 @@ test('fetch-signup-code missing verification input is parked by timer before res
 
 test('fetch-signup-code uncertain transition escapes before any internal restart', () => {
   assert.match(backgroundSource, /function\s+isSignupTransitionUncertainFailure\s*\(/);
+  assert.match(backgroundSource, /SIGNUP_MANUAL_VERIFICATION_\(\?:REJECTED\|UNCONFIRMED\)/);
   assert.match(backgroundSource, /isSignupTransitionUncertainFailure\(err\)[\s\S]{0,80}throw err/);
   const uncertainGuardIndex = backgroundSource.indexOf('if (isSignupTransitionUncertainFailure(err))');
   const restartIncrementIndex = backgroundSource.indexOf('step4RestartCount += 1;', uncertainGuardIndex);

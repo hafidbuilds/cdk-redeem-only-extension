@@ -245,6 +245,7 @@ function checkCoreFiles() {
     'background/verification/verification-keywords.js',
     'background/verification/code-extractor.js',
     'background/verification/assurivo-feed-client.js',
+    'background/verification/manual-confirmation.js',
     'background/verification/resend-controller.js',
     'background/verification-flow.js',
     'content/auth-page-detectors.js',
@@ -1021,6 +1022,7 @@ function checkStaticContracts() {
   assertIncludes(background, "'background/verification/verification-keywords.js'", 'background verification keywords script load');
   assertIncludes(background, "'background/verification/code-extractor.js'", 'background verification code extractor script load');
   assertIncludes(background, "'background/verification/assurivo-feed-client.js'", 'background verification Assurivo feed client script load');
+  assertIncludes(background, "'background/verification/manual-confirmation.js'", 'background manual verification confirmation script load');
   assertIncludes(background, "'background/verification/resend-controller.js'", 'background verification resend controller script load');
   assertIncludes(upiRedeemSessionMaterial, 'MultiPageUpiRedeemSessionMaterial', 'UPI redeem session material global');
   assertIncludes(upiRedeemSessionMaterial, 'createUpiRedeemSessionMaterial', 'UPI redeem session material factory');
@@ -1106,6 +1108,7 @@ function checkStaticContracts() {
     'verification-keywords.js',
     'code-extractor.js',
     'assurivo-feed-client.js',
+    'manual-confirmation.js',
     'resend-controller.js',
   ].forEach((file) => {
     assertBefore(

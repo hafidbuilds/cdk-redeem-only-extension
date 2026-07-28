@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { createAssurivoFeedClient } = require('../background/verification/assurivo-feed-client.js');
+require('../background/verification/manual-confirmation.js');
 const { createVerificationResendController } = require('../background/verification/resend-controller.js');
 
 const SIGN_IN_NOTIFICATION_HTML = `<!DOCTYPE html>

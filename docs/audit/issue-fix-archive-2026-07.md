@@ -4,6 +4,7 @@
 
 ## 目录
 
+- [自定义邮箱验证码未通过却被步骤 4 当作成功](#2026-07-28-manual-signup-verification-confirmation)
 - [最近失败诊断锚点修复](#2026-07-25-failure-diagnostics-anchor-fix)
 - [最近失败诊断剪贴板导出](#2026-07-25-failure-diagnostics-clipboard)
 - [Free 分组误分类修复](#2026-07-25-free-group-classification-fix)
@@ -29,6 +30,74 @@
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 - [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
 - [步骤 2 密码页等待与后台响应超时竞态](#2026-07-27-step2-password-page-response-timeout)
+
+---
+
+<a id="2026-07-28-manual-signup-verification-confirmation"></a>
+
+## 自定义邮箱验证码未通过却被步骤 4 当作成功
+
+日期：2026-07-28
+
+### 故障现象与证据
+
+自定义邮箱可以正常收到注册验证码，但用户在 OpenAI 验证码页面输入验证码并点击侧边栏“继续”后，GPT 注册仍无法完成。旧流程此时会直接把步骤 4 标为跳过，日志和节点状态呈现人工验证已完成，即使页面仍停留在 `/email-verification`、验证码已经被拒绝或远端结果尚未确认。
+
+档案只记录页面类型和错误类别，不包含真实邮箱、验证码、密码、AT、Cookie、CDK 或敏感 URL 参数。
+
+### 根因与真实调用链
+
+- 自定义邮箱路径调用 `confirmCustomVerificationStepBypass()`，侧边栏弹窗只返回用户是否点击确认，不代表 OpenAI 已接受验证码。
+- 旧实现收到 `confirmed=true` 后立即清除验证码时间戳、把 `fetch-signup-code` 节点标为 `skipped`，没有读取认证页面的提交后状态。
+- 自动运行因此继续后续注册节点，产生步骤 4 假成功；真正的验证码拒绝或未跳转只会在更晚的步骤暴露为注册失败。
+
+### 修复
+
+- 将人工确认逻辑抽离到 `background/verification/manual-confirmation.js`，由现有 `resend-controller.js` 注入页面检测和状态依赖。
+- 步骤 4 在用户点击确认后复用提交后页面检测：只有明确进入注册资料页、Passkey 注册页或 ChatGPT 已登录页才清理时间戳并把节点标为跳过。
+- OpenAI 明确拒绝验证码时返回 `SIGNUP_MANUAL_VERIFICATION_REJECTED`；页面仍停留在验证码状态且未获得成功证据时返回 `SIGNUP_MANUAL_VERIFICATION_UNCONFIRMED`。
+- 两类错误均设置 `retryable=false` 和 `preserveSignupSession=true`，并纳入自动运行的注册状态未知保护分支；当前轮保留现场停止，不进行步骤 4 内部重开或整轮换邮箱重试。
+
+### 安全与兼容边界
+
+- 本修复只收紧自定义邮箱的人工步骤 4 确认；自动邮箱 Provider 的取码、最新邮件基线、重发策略和验证码解析保持不变。
+- 登录验证码等非注册步骤仍保留既有人工确认语义，避免把注册资料页判定强加到其它工作流。
+- 未改变账号模型、邮箱池状态、Free/Plus 资格判定、CDK 幂等账本、UPI/IDEAL/PIX 独立状态、Manifest 权限或存储格式。
+- 拒绝和未知状态均不固定返回成功，不删除账号、不清 Cookie、不切换邮箱；日志不记录实际验证码或其它凭据。
+- `resend-controller.js` 通过模块抽取保持为 `1983/2000` 行，没有提高 2000 行审计阈值。
+
+### 修改文件
+
+- `background.js`
+- `background/verification/resend-controller.js`
+- `background/verification/manual-confirmation.js`
+- `scripts/audit-smoke-tests.mjs`
+- `scripts/test-custom-email-latest-notification.cjs`
+- `scripts/test-fetch-signup-code-restart-policy.cjs`
+- `scripts/test-step4-verification-input-recovery.cjs`
+- `scripts/test-verification-flow-split.cjs`
+- `CHANGELOG.md`
+- `docs/USER_GUIDE.md`
+- `docs/audit/issue-fix-archive-2026-07.md`
+- `docs/audit/issue-fix-index.md`
+
+### 回归覆盖
+
+- 人工步骤 4 只有在检测到注册资料页后才完成并返回页面原因。
+- OpenAI 明确拒绝验证码时保留注册会话，不清理时间戳或改写节点状态。
+- 验证码页状态一直未确认时停止并保留现场，不把步骤 4 标为跳过。
+- 新模块在 Service Worker 中先于 `resend-controller.js` 加载，相关 Node 测试入口同步加载该依赖。
+- 自动运行识别两类人工验证错误为不可自动重试的注册状态未知结果。
+
+### 验证与提交影响
+
+- 定向测试：`16/16` 通过。
+- 完整单元测试：`515/515` 通过。
+- 语法检查：`397` 个 JavaScript 文件通过。
+- 隔离 Chrome for Testing E2E 通过：`Chrome/150.0.7871.24`、临时 Profile、pipe 传输；没有连接系统 Chrome、Edge 或用户 Profile。
+- Documentation、Smoke、Removed Network、Phone/SMS 审计全部通过；仅保留既有非阻断警告：`background.js` 超过 8000 行。
+- Manifest 运行时引用检查通过且 `manifest.json` 未修改；差异不包含真实邮箱、密码、验证码、完整 AT、API Key、Cookie、CDK、代理或敏感 URL 参数。
+- 修复、测试和档案由同一独立本地提交交付；未打包、未修改 Manifest 版本、未创建标签、未推送或发布。
 
 ---
 

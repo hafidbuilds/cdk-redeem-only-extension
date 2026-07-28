@@ -5,6 +5,7 @@ const assurivoTime = require('../background/verification/assurivo-time.js');
 const verificationKeywords = require('../background/verification/verification-keywords.js');
 const verificationCodeExtractor = require('../background/verification/code-extractor.js');
 const assurivoFeedClient = require('../background/verification/assurivo-feed-client.js');
+require('../background/verification/manual-confirmation.js');
 require('../background/verification/resend-controller.js');
 require('../background/verification-flow.js');
 const verificationFlow = globalThis.MultiPageBackgroundVerificationFlow;

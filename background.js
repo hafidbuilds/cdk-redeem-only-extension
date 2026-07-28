@@ -95,6 +95,7 @@ importScripts(
   'background/verification/code-extractor.js',
   'background/verification/mail-baseline.js',
   'background/verification/assurivo-feed-client.js',
+  'background/verification/manual-confirmation.js',
   'background/verification/resend-controller.js',
   'background/verification-flow.js',
   'background/auto-run/summary-builder.js',
@@ -8883,7 +8884,10 @@ function isSignupVerificationInputRenderPendingFailure(error) {
 
 function isSignupTransitionUncertainFailure(error) {
   const message = String(error?.message || error || '');
-  return error?.code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN' || /SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::/i.test(message);
+  const code = String(error?.code || '').trim();
+  return code === 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN'
+    || /^SIGNUP_MANUAL_VERIFICATION_(?:REJECTED|UNCONFIRMED)$/i.test(code)
+    || /(?:SIGNUP_PASSWORD_SUBMIT_UNCERTAIN|SIGNUP_MANUAL_VERIFICATION_(?:REJECTED|UNCONFIRMED))::/i.test(message);
 }
 
 async function parkFetchSignupCodeRestart(error, options = {}) {

@@ -512,38 +512,6 @@
           const completionStep = Number(options.completionStep);
           return Number.isFinite(completionStep) && completionStep > 0 ? completionStep : step;
         }
-        async function confirmCustomVerificationStepBypass(step, options = {}) {
-          const completionStep = getCompletionStep(step, options);
-          const promptStep = getCompletionStep(step, { completionStep: options.promptStep ?? completionStep });
-          const verificationLabel = getVerificationCodeLabel(step);
-          await addLog(`步骤 ${completionStep}：当前为自定义邮箱模式，请手动在页面中输入${verificationLabel}验证码并进入下一页面。`, 'warn');
-
-          let response = null;
-          try {
-            response = await confirmCustomVerificationStepBypassRequest(promptStep);
-          } catch {
-            throw new Error(`步骤 ${completionStep}：无法打开确认弹窗，请先保持侧边栏打开后重试。`);
-          }
-
-          if (response?.error) {
-            throw new Error(response.error);
-          }
-          if (!response?.confirmed) {
-            throw new Error(`步骤 ${completionStep}：已取消手动${verificationLabel}验证码确认。`);
-          }
-
-          await setState({
-            lastEmailTimestamp: null,
-            signupVerificationRequestedAt: null,
-            loginVerificationRequestedAt: null,
-          });
-          const completionNodeId = await getNodeIdForStep(completionStep);
-          if (!completionNodeId) {
-            throw new Error(`步骤 ${completionStep} 未映射到验证码节点。`);
-          }
-          await setNodeStatus(completionNodeId, 'skipped');
-          await addLog(`步骤 ${completionStep}：已确认手动完成${verificationLabel}验证码输入，当前步骤已跳过。`, 'warn');
-        }
         function getVerificationPollPayload(step, state, overrides = {}) {
           if (typeof externalBuildVerificationPollPayload === 'function') {
             return externalBuildVerificationPollPayload(step, state, overrides);
@@ -1948,6 +1916,21 @@
               };
             }
           }
+
+    const rootScope = typeof self !== 'undefined' ? self : globalThis;
+    const manualConfirmationFactory = rootScope.MultiPageManualVerificationConfirmation?.createManualVerificationConfirmation;
+    if (typeof manualConfirmationFactory !== 'function') {
+      throw new Error('Manual verification confirmation module is not loaded.');
+    }
+    const { confirmCustomVerificationStepBypass } = manualConfirmationFactory({
+      ...context,
+      addLog,
+      detectStep4PostSubmitFallback,
+      getCompletionStep,
+      getNodeIdForStep,
+      getStep4FallbackLabel,
+      getVerificationCodeLabel,
+    });
 
     return {
       getVerificationCodeStateKey,
