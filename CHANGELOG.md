@@ -2,7 +2,18 @@
 
 本文档按版本保留历史发布说明。当前版本以 `manifest.json` 为准；安装和配置请查看 [使用指南](docs/USER_GUIDE.md)，发布步骤请查看 [开发指南](docs/DEVELOPMENT.md#发布流程)。
 
-## 未发布
+## CDK Redeem Only V2.3.0
+
+V2.3.0 是自定义邮箱验证码和注册恢复稳定性修复版，重点解决 HTML 取件页误选隐藏数字、OpenAI 登录通知误终止步骤 6 轮询，以及验证码拒绝后错误地继续消费同一封邮件候选的问题。
+
+### 版本信息
+
+- Git 标签：`v2.3.0`
+- Manifest 版本：`2.3.0`
+- 版本名称：`CDK Redeem Only V2.3.0`
+- 运行架构：Chrome Manifest V3 Service Worker + Sidepanel
+
+### 主要修复
 
 - 修复步骤 4 使用通用 HTML 取件页时，把邮件模板、追踪链接或隐藏属性中的六位数字误当成验证码并在 Resend 后连续提交的问题。只要页面匹配 OpenAI/ChatGPT 验证码正文语义，现在只接受提示语绑定的六位码；该码被拒绝后会等待新邮件，不再回退尝试同一 HTML 中的其它数字，避免触发 `max_check_attempts`。
 - 修复步骤 6 获取“设置 GPT 密码”验证码时，最新邮件恰好是 OpenAI 新登录通知便立即终止取码并触发整轮注册重试的问题。邮件客户端返回结构化 `CUSTOM_EMAIL_LATEST_NON_VERIFICATION` 后，步骤 6 现在会留在原有的最多 5 次取码循环内继续等待，并沿用既有限次 Resend；不会把通知邮件解析成验证码，也不会放宽其它真实接口错误。

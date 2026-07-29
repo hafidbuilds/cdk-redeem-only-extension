@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 扩展，用于邮箱注册、验证码处理、GPT 密码与 2FA、Access Token 读取、试用资格检测，以及 UPI、IDEAL、PIX 三个独立渠道的 CDK 兑换和 Free/Plus 账号管理。
 
-当前扩展版本：`2.2.0`。
+当前扩展版本：`2.3.0`。
 
 ## 文档入口
 
