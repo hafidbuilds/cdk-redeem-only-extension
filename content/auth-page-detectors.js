@@ -7,7 +7,8 @@
   const LOGIN_ENTRY_PATTERN = /^(?:log\s*in|sign\s*in|se\s+connecter|登录|登陆|登入|ログイン|サインイン|लॉग\s*इन(?:\s*करें)?|साइन\s*इन(?:\s*करें)?)$/i;
   const SIGNUP_ENTRY_EXCLUDED_ACTION_PATTERN = /plans?|pricing|プラン|料金|प्लान्स?|प्राइसिंग|कीमत|मूल्य/i;
   const CONTINUE_ACTION_PATTERN = /^(?:继续|下一步|送信|続行|続ける|次へ|continue|next|submit|send|जारी\s+रखें|आगे|सबमिट|भेजें)$/i;
-  const RESEND_VERIFICATION_CODE_PATTERN = /^(?:重新发送(?:验证码|电子邮件|邮件)?|再次发送(?:验证码|电子邮件|邮件)?|重发(?:验证码)?|未收到(?:验证码|邮件)|メールを再送信|コードを再送信|resend(?:\s+(?:code|email|verification\s+(?:code|email)))?|send\s+(?:a\s+)?new\s+code|send\s+(?:it\s+)?again|request\s+(?:a\s+)?new\s+code|didn'?t\s+receive(?:\s+(?:the\s+)?(?:code|email))?\??|(?:कोड|ई-?मेल|मेल)\s+(?:फिर\s+से|दोबारा|पुनः)\s+भेजें|(?:फिर\s+से|दोबारा|पुनः)\s+(?:कोड|ई-?मेल|मेल)\s+भेजें|प्राप्त\s+नहीं\s+हुआ)$/i;
+  const RESEND_VERIFICATION_CODE_PATTERN = /^(?:重新发送(?:验证码|电子邮件|邮件)?|再次发送(?:验证码|电子邮件|邮件)?|重发(?:验证码)?|未收到(?:验证码|邮件)|(?:メール|コード|確認コード|認証コード)を再送信(?:する|します)?|resend(?:\s+(?:code|email|verification\s+(?:code|email)))?|send\s+(?:a\s+)?new\s+code|send\s+(?:it\s+)?again|request\s+(?:a\s+)?new\s+code|didn'?t\s+receive(?:\s+(?:the\s+)?(?:code|email))?\??|(?:कोड|ई-?मेल|मेल)\s+(?:फिर\s+से|दोबारा|पुनः)\s+भेजें|(?:फिर\s+से|दोबारा|पुनः)\s+(?:कोड|ई-?मेल|मेल)\s+भेजें|प्राप्त\s+नहीं\s+हुआ)$/i;
+  const STRUCTURED_RESEND_ACTION_PATTERN = /^(?:resend(?:verification(?:code|email)|code|email)?|send(?:newcode|again)|requestnewcode)$/i;
   const PASSWORD_PAGE_TEXT_PATTERN = /password|पासवर्ड|パスワード|密码|密碼/i;
   const PASSWORD_PAGE_PATH_PATTERN = /\/(?:u\/)?(?:create-account|signup|log-in|login)\/password(?:[/?#]|$)/i;
   const SIGNUP_PROFILE_PAGE_PATH_PATTERN = /\/(?:create-account\/profile|u\/signup\/profile|signup\/profile|about-you)(?:[/?#]|$)/i;
@@ -43,7 +44,11 @@
   }
 
   function isResendEmailText(text = '') {
-    return RESEND_VERIFICATION_CODE_PATTERN.test(normalizePageText(text));
+    const normalized = normalizePageText(text);
+    if (RESEND_VERIFICATION_CODE_PATTERN.test(normalized)) {
+      return true;
+    }
+    return STRUCTURED_RESEND_ACTION_PATTERN.test(normalized.replace(/[\s_-]+/g, ''));
   }
 
   function isPasswordPageText(text = '') {

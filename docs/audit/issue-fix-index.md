@@ -13,6 +13,7 @@ git log --oneline -- docs/audit
 
 | 日期 | 问题 | 修复结论 | 详细记录 |
 | --- | --- | --- | --- |
+| 2026-08-08 | 日文验证码错误后第 4 步重复提交旧码，没有点击重新发送 | 识别日文错误和重发句尾变体，增加结构化属性后备；明确拒绝后请求新验证码 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step4-japanese-invalid-code-resend) |
 | 2026-08-08 | 第三步点击密码入口后验证码页返回 HTTP 500，页面停在错误页 | 仅对可确认的认证 HTTP 500 页面刷新并限次重新点击密码入口，失败时保留注册会话 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-password-switch-http-500) |
 | 2026-08-08 | GitHub Actions 中账号弹窗滚动 E2E 受 Runner 视口影响失败 | 在隔离测试页直接固定弹窗高度，稳定构造溢出并保留原滚动行为断言 | [记录](issue-fix-archive-2026-08.md#2026-08-08-github-actions-e2e-scroll-viewport) |
 | 2026-08-08 | 注册完成后仍显示并执行不再需要的第 10 步 | 工作流升级为九步，第 9 步保存 `unknown` 后结束；资格接口代码保留供手动复检 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step10-hidden-nine-step-workflow) |

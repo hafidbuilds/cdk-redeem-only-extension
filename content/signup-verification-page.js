@@ -84,13 +84,23 @@
 
     function findResendVerificationCodeTrigger({ allowDisabled = false } = {}) {
       const candidates = documentRef.querySelectorAll(
-        'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"]'
+        'button, a, [role="button"], [role="link"], input[type="button"], input[type="submit"], [data-dd-action-name], [data-testid]'
       );
       const isResendCandidate = (el) => {
-        const text = getActionText(el);
-        return typeof authPageDetectors.isResendEmailText === 'function'
-          ? authPageDetectors.isResendEmailText(text)
-          : Boolean(text && resendVerificationCodePattern.test(text));
+        const values = [
+          getActionText(el),
+          el?.textContent,
+          el?.value,
+          el?.getAttribute?.('aria-label'),
+          el?.getAttribute?.('title'),
+          el?.getAttribute?.('data-dd-action-name'),
+          el?.getAttribute?.('data-testid'),
+        ].map((value) => String(value || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+        return values.some((text) => (
+          typeof authPageDetectors.isResendEmailText === 'function'
+            ? authPageDetectors.isResendEmailText(text)
+            : Boolean(resendVerificationCodePattern.test(text))
+        ));
       };
 
       for (const el of candidates) {
@@ -102,7 +112,7 @@
         }
       }
 
-      const textCandidates = documentRef.querySelectorAll('span, div, p, label');
+      const textCandidates = documentRef.querySelectorAll('span, div, p, label, [data-dd-action-name], [data-testid]');
       for (const el of textCandidates) {
         if (!isVisibleElement(el) || !isResendCandidate(el)) continue;
         const clickable = el.closest('button, a, [role="button"], [role="link"]') || el;

@@ -37,6 +37,8 @@
       el?.value,
       el?.getAttribute?.('aria-label'),
       el?.getAttribute?.('title'),
+      el?.getAttribute?.('data-dd-action-name'),
+      el?.getAttribute?.('data-testid'),
     ]
       .filter(Boolean)
       .join(' ')

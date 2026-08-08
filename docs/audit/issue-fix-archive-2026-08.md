@@ -2253,3 +2253,47 @@ V3 重写 Free 账号导出时，`formatFreeAccountTextLine()` 直接对 `record
 - `node --test scripts/test-signup-password-transition.cjs`：`14/14` 通过。
 - 定向第三步测试 `15/15` 通过。
 - 完整 `npm run check` 通过：语法检查 `297` 个 JavaScript 文件，测试 `471/471` 通过，文档检查、Smoke Audit `150` 个运行时文件、Removed Network 审计和手机号短信残留审计均通过。Manifest、版本号、账号 schema、邮箱 Provider 和既有发布标签不变。
+
+---
+
+<a id="2026-08-08-step4-japanese-invalid-code-resend"></a>
+
+## 日文验证码错误后第 4 步重复提交旧码且未点击重新发送
+
+日期：2026-08-08
+
+关联记录：[第 4 步自定义 HTML 取件误选干扰数字](issue-fix-archive-2026-07.md#2026-07-29-step4-generic-html-decoy-code)、[第 4 步人工验证码确认](issue-fix-archive-2026-07.md#2026-07-28-manual-signup-verification-confirmation)
+
+### 故障现象与诊断证据
+
+用户在日文 OpenAI 邮箱验证码页看到明确错误“`不正確なコード`”，页面下方同时存在“`メールを再送信する`”操作，但自动流程没有点击重新发送。脱敏诊断显示内容脚本连续返回“提交后仍停留在验证码页面”，Background 因 `verificationErrorText` 为空而把结果归类为页面切换未完成，并连续重提同一个旧验证码。截图和日志中的真实邮箱、验证码、Cookie、认证令牌、请求标识及指纹浏览器参数均未写入本记录。
+
+### 根因与影响范围
+
+- `INVALID_VERIFICATION_CODE_PATTERN` 只覆盖“コードが正しくありません”等既有日文写法，没有匹配官网当前显示的“`不正確なコード`”，因此明确拒绝被降级成无明确错误的停留状态。
+- 重新发送正则使用整句匹配，只接受“`メールを再送信`”和“`コードを再送信`”，不接受当前按钮带有“する/します”句尾的文案。
+- 通用操作文本只读取可见文字、value、`aria-label` 和 title；按钮文字由组件封装或仅暴露遥测/测试属性时，`data-dd-action-name` 与 `data-testid` 无法作为后备证据。
+- 影响注册验证码提交后的拒绝恢复；正常验证码成功跳转、已有账号 TOTP、密码创建、邮箱取件接口和其它认证错误分支不改变。
+
+### 实现与安全边界
+
+- 扩展日文无效验证码检测，覆盖“`不正確なコード`”“`コードが不正確`”、无效代码和常见错误变体；仍只从错误区域或无效输入关联容器提取错误文本。
+- 扩展日文重新发送文案，接受邮件、代码、确认代码和认证代码的“再送信”按钮及“する/します”句尾。
+- `getActionText()` 增加 `data-dd-action-name` 与 `data-testid`，验证码重发检测对可见文字、无障碍属性和结构化属性逐字段判断，避免字段拼接后破坏严格文案匹配。
+- 明确识别验证码被拒绝后，既有 Background 分支将旧码加入排除集合并发送 `RESEND_VERIFICATION_CODE`，随后只提交新取到的验证码；未知停留状态仍保留有限慢跳转复核。
+- 未增加 Manifest 权限、远程接口或直接认证 `fetch`；不记录邮箱、验证码、密码、Cookie、Session、AT、请求 ID 或指纹浏览器配置。
+
+### 回归覆盖
+
+- 覆盖“`不正確なコード`”错误提取和日文“`メールを再送信する`”“`コードを再送信する`”操作识别。
+- 覆盖仅有 `data-testid=resend-verification-code` 等结构化属性时仍能找到重发控件，以及可见文字与结构化属性同时存在时逐字段匹配。
+- 覆盖明确拒绝后的后台消息顺序：首次 `FILL_CODE` 返回无效后发送一次 `RESEND_VERIFICATION_CODE`，再获取并提交不同的新验证码；不进入同码重提。
+- 负向覆盖 `Resend marketing email`，避免把普通营销邮件操作误认为验证码重发。
+
+### 验证与发布影响
+
+- 修改文件及回归测试直接 `node --check` 通过；定向验证码检测、重发和后台恢复测试 `36/36` 通过。
+- `npm run syntax` 通过，检查 `297` 个 JavaScript 文件。
+- `npm test` 通过，测试 `475/475`；隔离 MV3 E2E 使用 Puppeteer 管理的 `Chrome/150.0.7871.24`、临时隔离 Profile 和 pipe transport，未连接用户的指纹浏览器或已登录 Profile。
+- 完整 `npm run check` 通过：文档结构和链接检查通过，Smoke Audit 检查 `150` 个运行时文件，Removed Network 与手机号短信残留审计均通过。
+- Manifest、版本号、工作流节点、邮箱 Provider、账号 schema 和远程接口契约不变。实际指纹浏览器 Profile 需要重新加载扩展后再重试第 4 步。

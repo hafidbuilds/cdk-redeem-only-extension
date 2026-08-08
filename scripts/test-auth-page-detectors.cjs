@@ -40,6 +40,15 @@ test('recognizes English auth labels', () => {
   assert.equal(detectors.isResendEmailText('Resend email'), true);
 });
 
+test('recognizes Japanese resend labels and structured resend action names', () => {
+  assert.equal(detectors.isResendEmailText('メールを再送信する'), true);
+  assert.equal(detectors.isResendEmailText('コードを再送信する'), true);
+  assert.equal(detectors.isResendEmailText('メールを再送信します'), true);
+  assert.equal(detectors.isResendEmailText('resend-verification-code'), true);
+  assert.equal(detectors.isResendEmailText('resend_verification_email'), true);
+  assert.equal(detectors.isResendEmailText('Resend marketing email'), false);
+});
+
 test('recognizes French ChatGPT home auth labels', () => {
   assert.equal(detectors.isSignupEntryText('Inscription gratuite'), true);
   assert.equal(detectors.isSignupEntryText("S'inscrire gratuitement"), true);

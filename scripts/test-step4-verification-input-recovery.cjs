@@ -114,6 +114,84 @@ test('step 4 does not reload a valid verification page for one transient missing
   assert.deepEqual(reloads, []);
 });
 
+test('step 4 requests a fresh code after the page reports a Japanese invalid-code error', async () => {
+  const messages = [];
+  const state = {
+    email: 'signup-user@example.test',
+    signupVerificationCodeWaitSeconds: 0,
+  };
+  let fetchAttempt = 0;
+  let fillAttempt = 0;
+  let completed = 0;
+
+  const controller = createVerificationResendController({
+    constants: {
+      DEFAULT_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS: 0,
+      MAX_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS: 300,
+      STEP4_ASSURIVO_RESEND_CONFIRM_TIMEOUT_MS: 1,
+      STEP4_ASSURIVO_EMPTY_FEED_WAIT_MS: 1,
+      POST_SUBMIT_CONFIRM_TIMEOUT_MS: 1000,
+      POST_SUBMIT_CONFIRM_POLL_INTERVAL_MS: 100,
+      STEP4_STUCK_VERIFICATION_RESUBMIT_LIMIT: 2,
+    },
+    addLog: async () => {},
+    chrome: { tabs: { update: async () => {} } },
+    completeNodeFromBackground: async () => { completed += 1; },
+    fetchCustomEmailVerificationCode: async () => {
+      fetchAttempt += 1;
+      return {
+        handled: true,
+        code: fetchAttempt === 1 ? '123456' : '654321',
+        emailTimestamp: fetchAttempt,
+        verificationUrl: 'https://mail.example.test/latest',
+      };
+    },
+    getNodeIdForStep: async () => 'fetch-signup-code',
+    getState: async () => ({ ...state }),
+    getTabId: async () => 41,
+    isAssurivoEmptyFeedVerificationFetchError: () => false,
+    isCustomEmailNonVerificationNotificationError: () => false,
+    isRetryableCustomEmailVerificationFetchError: () => false,
+    isRetryableVerificationTransportError: () => false,
+    isStopError: () => false,
+    normalizeDigits: (value) => String(value || '').replace(/\D/g, ''),
+    sendToContentScript: async (_source, message) => {
+      messages.push(message.type);
+      return {};
+    },
+    sendToContentScriptResilient: async (_source, message) => {
+      messages.push(message.type);
+      if (message.type === 'PREPARE_SIGNUP_VERIFICATION') return { ready: true };
+      if (message.type === 'FILL_CODE') {
+        fillAttempt += 1;
+        return fillAttempt === 1
+          ? { invalidCode: true, errorText: '不正確なコード' }
+          : { success: true, url: 'https://auth.openai.com/about-you' };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    },
+    setState: async (patch) => Object.assign(state, patch),
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await controller.resolveCustomEmailVerificationStep(4, state, {
+    maxSubmitAttempts: 2,
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(fetchAttempt, 2);
+  assert.equal(fillAttempt, 2);
+  assert.equal(completed, 1);
+  assert.deepEqual(messages, [
+    'PREPARE_SIGNUP_VERIFICATION',
+    'FILL_CODE',
+    'RESEND_VERIFICATION_CODE',
+    'PREPARE_SIGNUP_VERIFICATION',
+    'FILL_CODE',
+  ]);
+});
+
 function createManualVerificationController(pageState, options = {}) {
   const nodeStatuses = [];
   const stateUpdates = [];
