@@ -1,56 +1,48 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-require('../shared/sensitive-data-redactor.js');
 require('../shared/task-schema.js');
+require('../shared/sensitive-data-redactor.js');
 const repositoryApi = require('../background/task-repository.js');
 
-function createStorage(initial = {}) {
-  const store = structuredClone(initial);
+function createStorage() {
+  const store = {};
   return {
     store,
     chromeApi: { storage: { local: {
-      async get(keys) { return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((key) => Object.hasOwn(store, key)).map((key) => [key, structuredClone(store[key])])); },
+      async get(keys) {
+        return Object.fromEntries((Array.isArray(keys) ? keys : [keys])
+          .filter((key) => Object.hasOwn(store, key))
+          .map((key) => [key, structuredClone(store[key])]));
+      },
       async set(values) { Object.assign(store, structuredClone(values)); },
     } } },
   };
 }
 
-test('task repository serializes concurrent patches without losing checkpoints', async () => {
+test('task repository deletes terminal tasks but protects active tasks', async () => {
   const storage = createStorage();
   let tick = 0;
-  const repository = repositoryApi.createTaskRepository({ chromeApi: storage.chromeApi, now: () => `2026-07-25T08:00:0${tick++}.000Z` });
-  const task = await repository.create({ type: 'register' });
-  await Promise.all([
-    repository.patch(task.taskId, { checkpoint: { emailSubmitted: true } }),
-    repository.patch(task.taskId, { checkpoint: { nodeId: 'verification' } }),
-  ]);
-  const saved = await repository.get(task.taskId);
-  assert.equal(saved.checkpoint.emailSubmitted, true);
-  assert.equal(saved.checkpoint.nodeId, 'verification');
+  const repository = repositoryApi.createTaskRepository({
+    chromeApi: storage.chromeApi,
+    now: () => new Date(Date.UTC(2026, 7, 5, 4, 0, tick++)).toISOString(),
+  });
+  const running = await repository.create({ taskId: 'task_running', type: 'register', status: 'running' });
+  const succeeded = await repository.create({ taskId: 'task_succeeded', type: 'check_eligibility', status: 'succeeded' });
+  await assert.rejects(repository.removeTerminal(running.taskId), /TASK_NOT_TERMINAL/);
+  assert.equal((await repository.removeTerminal(succeeded.taskId)).status, 'succeeded');
+  assert.equal(await repository.get(succeeded.taskId), null);
+  assert.equal((await repository.get(running.taskId)).status, 'running');
 });
 
-test('task repository redacts task payload result and errors before persistence', async () => {
+test('task repository clears all terminal tasks and preserves active work', async () => {
   const storage = createStorage();
   const repository = repositoryApi.createTaskRepository({ chromeApi: storage.chromeApi });
-  const task = await repository.create({
-    type: 'refresh_access_token',
-    payload: { password: 'secret-password', accessToken: 'token-value-123456789' },
-    result: { cookie: 'session-cookie' },
-    error: 'accessToken=plain-token-value',
-  });
-  const serialized = JSON.stringify(storage.store.accountTasksV1);
-  assert.doesNotMatch(serialized, /secret-password|token-value-123456789|session-cookie|plain-token-value/);
-  assert.match(task.payload.password, /REDACTED/);
-});
-
-test('task repository prunes old completed tasks but never active tasks', async () => {
-  const storage = createStorage();
-  let tick = 0;
-  const repository = repositoryApi.createTaskRepository({ chromeApi: storage.chromeApi, maxCompleted: 2, now: () => new Date(1721894400000 + tick++ * 1000).toISOString() });
-  const active = await repository.create({ type: 'register', status: 'running' });
-  for (let index = 0; index < 4; index += 1) await repository.create({ type: 'verify_membership', status: 'succeeded' });
-  const tasks = await repository.list();
-  assert.ok(tasks.some((task) => task.taskId === active.taskId));
-  assert.equal(tasks.filter((task) => task.status === 'succeeded').length, 2);
+  await repository.create({ taskId: 'task_running', type: 'register', status: 'running' });
+  await repository.create({ taskId: 'task_failed', type: 'register', status: 'failed' });
+  await repository.create({ taskId: 'task_succeeded', type: 'check_eligibility', status: 'succeeded' });
+  const result = await repository.clearTerminal();
+  assert.equal(result.deletedCount, 2);
+  assert.deepEqual(new Set(result.deletedTaskIds), new Set(['task_failed', 'task_succeeded']));
+  assert.deepEqual((await repository.list()).map((task) => task.taskId), ['task_running']);
 });

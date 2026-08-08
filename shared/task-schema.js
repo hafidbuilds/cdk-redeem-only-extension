@@ -3,15 +3,14 @@
   root.MultiPageTaskSchema = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createTaskSchemaModule(root) {
-  const TASK_TYPES = new Set(['register', 'refresh_access_token', 'verify_membership', 'redeem', 'provider_health_check']);
-  const TASK_STATUSES = new Set(['pending', 'running', 'waiting_remote', 'retry_wait', 'cancel_requested', 'canceled', 'succeeded', 'failed', 'interrupted', 'manual_review']);
+  const TASK_TYPES = new Set(['register', 'refresh_access_token', 'fill_session', 'check_eligibility', 'provider_health_check']);
+  const TASK_STATUSES = new Set(['pending', 'running', 'retry_wait', 'cancel_requested', 'canceled', 'succeeded', 'failed', 'interrupted', 'manual_review']);
   const TERMINAL_STATUSES = new Set(['canceled', 'succeeded', 'failed', 'interrupted', 'manual_review']);
 
   function text(value = '') { return String(value ?? '').trim(); }
   function iso(value = '') { const time = Date.parse(text(value)); return Number.isFinite(time) ? new Date(time).toISOString() : ''; }
   function normalizeType(value) { const normalized = text(value).toLowerCase(); return TASK_TYPES.has(normalized) ? normalized : ''; }
   function normalizeStatus(value) { const normalized = text(value).toLowerCase(); return TASK_STATUSES.has(normalized) ? normalized : 'pending'; }
-  function normalizeChannel(value) { const normalized = text(value).toLowerCase(); return ['upi', 'ideal', 'pix'].includes(normalized) ? normalized : ''; }
 
   function stableHash(value) {
     const input = typeof value === 'string' ? value : JSON.stringify(value, Object.keys(value || {}).sort());
@@ -38,7 +37,6 @@
       taskId: text(source.taskId) || createTaskId(Date.parse(now), options.random),
       type,
       accountId: root.MultiPageAccountRecordSchema?.normalizeAccountId?.(source.accountId) || text(source.accountId).toLowerCase(),
-      channel: normalizeChannel(source.channel),
       status,
       nodeId: text(source.nodeId),
       progress: { current: Math.max(0, Number(source.progress?.current) || 0), total: Math.max(0, Number(source.progress?.total) || 0) },
@@ -67,5 +65,5 @@
     };
   }
 
-  return { TASK_STATUSES, TASK_TYPES, TERMINAL_STATUSES, createTaskId, normalizeChannel, normalizeStatus, normalizeTask, normalizeType, stableHash };
+  return { TASK_STATUSES, TASK_TYPES, TERMINAL_STATUSES, createTaskId, normalizeStatus, normalizeTask, normalizeType, stableHash };
 });

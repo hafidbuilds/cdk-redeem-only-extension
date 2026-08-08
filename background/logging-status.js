@@ -8,6 +8,7 @@
       chrome,
       DEFAULT_STATE,
       getStepIdByNodeIdForState,
+      getSessionLogs = null,
       getState,
       isRecoverableStep9AuthFailure,
       LOG_PREFIX,
@@ -71,8 +72,10 @@
     }
 
     async function addLog(message, level = 'info', options = {}) {
-      const state = await getState();
-      const logs = state.logs || [];
+      const storedLogs = typeof getSessionLogs === 'function'
+        ? await getSessionLogs()
+        : (await getState())?.logs;
+      const logs = Array.isArray(storedLogs) ? storedLogs.slice() : [];
       const entry = buildLogEntry(message, level, options);
       logs.push(entry);
       if (logs.length > 500) logs.splice(0, logs.length - 500);

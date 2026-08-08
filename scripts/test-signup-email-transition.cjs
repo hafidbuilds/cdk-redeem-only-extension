@@ -72,3 +72,102 @@ test('step 2 preserves the signup session when the post-email page stays unknown
   );
   assert.equal(completed, false);
 });
+
+test('step 2 recovers a failed home-page probe inside the first execution', async () => {
+  const messages = [];
+  const logs = [];
+  let authEntryOpenCount = 0;
+  let completedPayload = null;
+  const executor = createStep2Executor({
+    addLog: async (message) => { logs.push(message); },
+    chrome: {
+      tabs: {
+        get: async () => ({ url: 'https://chatgpt.com/' }),
+        update: async () => {},
+      },
+    },
+    completeNodeFromBackground: async (_nodeId, payload) => { completedPayload = payload; },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupAuthEntryPageReady: async () => {
+      authEntryOpenCount += 1;
+      return { tabId: 19, result: { state: 'email_entry' } };
+    },
+    ensureSignupEntryPageReady: async () => ({ tabId: 17 }),
+    ensureSignupPostEmailPageReadyInTab: async () => ({
+      state: 'verification_page',
+      url: 'https://auth.openai.com/email-verification',
+    }),
+    getTabId: async () => 17,
+    isTabAlive: async () => true,
+    resolveSignupEmailForFlow: async () => 'first-attempt@example.test',
+    sendToContentScriptResilient: async (_source, message) => {
+      messages.push(message);
+      if (message.type === 'ENSURE_SIGNUP_ENTRY_READY') {
+        return { error: '当前页面没有可用的注册入口，也不在邮箱/密码页。URL: https://chatgpt.com/' };
+      }
+      if (message.type === 'EXECUTE_NODE') {
+        return { submitted: true };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    },
+  });
+
+  await executor.executeStep2({ email: 'first-attempt@example.test' });
+
+  assert.equal(authEntryOpenCount, 1);
+  assert.equal(messages.filter((message) => message.type === 'EXECUTE_NODE').length, 1);
+  assert.ok(messages.every((message) => message.payload.backgroundOwnsWorkflowOutcome === true));
+  assert.ok(logs.some((message) => /正在打开认证入口页再提交邮箱/.test(message)));
+  assert.equal(completedPayload.nextSignupState, 'verification_page');
+});
+
+test('step 2 retries a missing Continue button inside the current round', async () => {
+  const calls = [];
+  const entryReadyMessages = [];
+  const executeMessages = [];
+  let completedPayload = null;
+  const executor = createStep2Executor({
+    addLog: async (message) => { calls.push(['log', message]); },
+    chrome: {
+      tabs: {
+        get: async () => ({ url: 'https://chatgpt.com/' }),
+        update: async () => {},
+      },
+    },
+    completeNodeFromBackground: async (_nodeId, payload) => { completedPayload = payload; },
+    ensureContentScriptReadyOnTab: async () => {},
+    ensureSignupAuthEntryPageReady: async () => ({ tabId: 19, result: { state: 'email_entry' } }),
+    ensureSignupEntryPageReady: async () => ({ tabId: 17 }),
+    ensureSignupPostEmailPageReadyInTab: async () => ({
+      state: 'verification_page',
+      url: 'https://auth.openai.com/email-verification',
+    }),
+    getTabId: async () => 17,
+    isTabAlive: async () => true,
+    resolveSignupEmailForFlow: async () => 'current@example.test',
+    sendToContentScriptResilient: async (_source, message) => {
+      calls.push(['message', message.type]);
+      if (message.type === 'ENSURE_SIGNUP_ENTRY_READY') {
+        entryReadyMessages.push(message);
+        return { state: 'email_entry' };
+      }
+      executeMessages.push(message);
+      const executeCount = calls.filter((item) => item[0] === 'message' && item[1] === 'EXECUTE_NODE').length;
+      if (executeCount === 1) {
+        return { error: '步骤 2：未找到可点击的“继续”按钮。URL: https://chatgpt.com/' };
+      }
+      return { submitted: true };
+    },
+  });
+
+  await executor.executeStep2({ email: 'current@example.test' });
+
+  assert.equal(calls.filter((item) => item[0] === 'message' && item[1] === 'EXECUTE_NODE').length, 2);
+  assert.equal(entryReadyMessages.length, 1);
+  assert.equal(entryReadyMessages[0].payload.backgroundOwnsWorkflowOutcome, true);
+  assert.equal(executeMessages.length, 2);
+  assert.ok(executeMessages.every((message) => message.payload.backgroundOwnsWorkflowOutcome === true));
+  assert.ok(calls.some((item) => item[0] === 'log' && /打开认证入口页后重试一次/.test(item[1])));
+  assert.equal(completedPayload.nextSignupState, 'verification_page');
+  assert.equal(completedPayload.skippedPasswordStep, false);
+});

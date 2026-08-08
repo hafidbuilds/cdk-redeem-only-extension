@@ -76,6 +76,16 @@
       return ['chatgpt.com', 'www.chatgpt.com', 'chat.openai.com'].includes(hostname);
     }
 
+    function isLikelyLoggedInChatgptHomeUrl(rawUrl) {
+      const parsed = parseUrlSafely(rawUrl);
+      if (!parsed || !isSignupEntryHost(String(parsed.hostname || '').toLowerCase())) {
+        return false;
+      }
+      return !/^\/(?:auth|create-account|email-verification|log-in|login)(?:[/?#]|$)/i.test(
+        parsed.pathname || ''
+      );
+    }
+
     function isSignupPasswordPageUrl(rawUrl) {
       const parsed = parseUrlSafely(rawUrl);
       if (!parsed) return false;
@@ -196,6 +206,7 @@
       is163MailHost,
       isLocalCpaUrl,
       isLocalhostOAuthCallbackUrl,
+      isLikelyLoggedInChatgptHomeUrl,
       isSignupEmailVerificationPageUrl,
       isSignupEntryHost,
       isSignupPageHost,

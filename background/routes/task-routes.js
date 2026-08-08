@@ -18,12 +18,11 @@
         type,
         accountId: accountIds.length === 1 ? accountIds[0] : '',
         accountIds,
-        channel: String(payload.channel || payload.redeemChannel || '').trim().toLowerCase(),
         payload,
         progress: { current: 0, total: Math.max(1, accountIds.length || Number(payload.totalRuns) || 1) },
         workflowSnapshot: {
           activeFlowId: String(state.activeFlowId || '').trim(),
-          workflowVersion: Number(state.workflowVersion) || 1,
+          workflowVersion: Number(state.workflowVersion) || 3,
           nodeIds: typeof getNodeIdsForState === 'function' ? getNodeIdsForState(state) : [],
         },
         ...overrides,
@@ -47,6 +46,20 @@
         const taskId = String(payload.taskId || '').trim();
         if (!taskId) throw new Error('TASK_ID_REQUIRED');
         return { ok: true, task: await runtime.requestCancel(taskId) };
+      },
+      DELETE_ACCOUNT_TASK: async (payload = {}) => {
+        const taskId = String(payload.taskId || '').trim();
+        if (!taskId) throw new Error('TASK_ID_REQUIRED');
+        if (!repository?.removeTerminal) throw new Error('TASK_DELETE_UNAVAILABLE');
+        const task = await repository.removeTerminal(taskId);
+        await eventStore?.removeMany?.([taskId]);
+        return { ok: true, taskId, task };
+      },
+      DELETE_COMPLETED_ACCOUNT_TASKS: async () => {
+        if (!repository?.clearTerminal) throw new Error('TASK_DELETE_UNAVAILABLE');
+        const result = await repository.clearTerminal();
+        await eventStore?.removeMany?.(result.deletedTaskIds);
+        return { ok: true, ...result };
       },
       RECOVER_ACCOUNT_TASKS: async () => ({ ok: true, recovered: await runtime.recoverActiveTasks({ force: true }) }),
     };

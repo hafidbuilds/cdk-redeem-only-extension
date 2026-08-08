@@ -2,7 +2,7 @@
 // Injected on: auth0.openai.com, auth.openai.com, accounts.openai.com
 // Dynamically injected on: chatgpt.com
 
-console.log('[MultiPage:signup-page] Content script loaded on', location.href);
+console.log('[MultiPage:signup-page] Content script loaded on', location.pathname || '/');
 
 const SIGNUP_PAGE_LISTENER_SENTINEL = 'data-multipage-signup-page-listener';
 const CHATGPT_SESSION_API_URL = 'https://chatgpt.com/api/auth/session';
@@ -318,6 +318,35 @@ function isActionEnabled(el) {
 
 function findOneTimeCodeLoginTrigger() {
   return getSignupPageDetector().findOneTimeCodeLoginTrigger();
+}
+
+function findSignupPasswordSwitchTrigger(options = {}) {
+  return getSignupPageDetector().findSignupPasswordSwitchTrigger?.(options) || null;
+}
+
+function findLoginPasswordSwitchTrigger(options = {}) {
+  return getSignupPageDetector().findLoginPasswordSwitchTrigger?.(options) || null;
+}
+
+function findVerificationPasswordSwitchTrigger(options = {}) {
+  const signupTrigger = findSignupPasswordSwitchTrigger(options);
+  if (signupTrigger) {
+    return { trigger: signupTrigger, routeKind: 'signup_create' };
+  }
+  const loginTrigger = findLoginPasswordSwitchTrigger(options);
+  return loginTrigger ? { trigger: loginTrigger, routeKind: 'login' } : null;
+}
+
+async function waitForVerificationPasswordSwitchTrigger(timeout = 5000) {
+  const effectiveTimeout = Math.max(500, Number(timeout) || 5000);
+  const start = Date.now();
+  while (Date.now() - start < effectiveTimeout) {
+    throwIfStopped();
+    const match = findVerificationPasswordSwitchTrigger();
+    if (match) return match;
+    await sleep(150);
+  }
+  return null;
 }
 
 function findResendVerificationCodeTrigger({ allowDisabled = false } = {}) {
@@ -745,6 +774,7 @@ function inspectSignupEntryState() {
   if (isSignupPasswordPage() && passwordInput) {
     return {
       state: 'password_page',
+      passwordPageKind: getSignupPasswordPageHelpers().getPasswordPageKind?.() || '',
       passwordInput,
       submitButton: getSignupPasswordSubmitButton({ allowDisabled: true }),
       displayedEmail: getSignupPasswordDisplayedEmail(),
@@ -1328,15 +1358,55 @@ async function fillSignupEmailAndContinue(email, step) {
     throw new Error(`步骤 ${step}：未找到可用的邮箱输入入口。URL: ${location.href}`);
   }
 
-  log(`步骤 ${step}：正在填写邮箱：${email}`);
+  log(`步骤 ${step}：正在填写邮箱。`);
   await humanPause(500, 1400);
   await performOperationWithDelay({ stepKey: step === 2 ? 'signup-entry' : 'fill-password', kind: 'fill', label: 'signup-email' }, async () => {
     fillInput(snapshot.emailInput, email);
   });
   log(`步骤 ${step}：邮箱已填写`);
 
-  const continueButton = await getSignupEntryPageHelpers().waitForEnabledSignupEmailContinueButton?.({ timeout: 5000, sleep, throwIfStopped });
+  let activeEmailInput = snapshot.emailInput;
+  let restoredAfterRerender = false;
+  const continueButton = await getSignupEntryPageHelpers().waitForEnabledSignupEmailContinueButton?.({
+    timeout: 15000,
+    sleep,
+    throwIfStopped,
+    onPoll: async () => {
+      const currentEmailInput = getSignupEmailInput();
+      if (!currentEmailInput) return;
+      const currentValue = String(currentEmailInput.value || '').trim().toLowerCase();
+      if (currentEmailInput === activeEmailInput && currentValue === normalizedEmail) return;
+      activeEmailInput = currentEmailInput;
+      await performOperationWithDelay({ stepKey: step === 2 ? 'signup-entry' : 'fill-password', kind: 'fill', label: 'restore-signup-email' }, async () => {
+        fillInput(currentEmailInput, email);
+      });
+      if (!restoredAfterRerender) {
+        restoredAfterRerender = true;
+        log(`步骤 ${step}：邮箱表单发生切换，已重新定位输入框并恢复当前邮箱。`, 'warn');
+      }
+    },
+  });
   if (!continueButton) {
+    if (step === 2) {
+      log(`步骤 ${step}：等待 Continue 超过 15 秒，页面诊断快照：${JSON.stringify(getSignupEntryDiagnostics())}`, 'warn');
+      const currentEmailInput = getSignupEmailInput();
+      const currentValue = String(currentEmailInput?.value || '').trim().toLowerCase();
+      if (currentEmailInput && currentValue === normalizedEmail) {
+        const submittedWithEnter = await performOperationWithDelay({
+          stepKey: 'signup-entry',
+          kind: 'submit',
+          label: 'submit-signup-email-enter',
+        }, async () => getSignupEntryPageHelpers().submitSignupEmailWithEnter?.(currentEmailInput) === true);
+        if (submittedWithEnter) {
+          log(`步骤 ${step}：Continue 按钮持续不可点击，已对当前邮箱输入框执行一次回车提交兜底。`, 'warn');
+          return {
+            alreadyOnPasswordPage: false,
+            submittedWithEnter: true,
+            url: location.href,
+          };
+        }
+      }
+    }
     throw new Error(`步骤 ${step}：未找到可点击的“继续”按钮。URL: ${location.href}`);
   }
 
@@ -1376,19 +1446,26 @@ async function step2_clickRegister(payload = {}) {
 
 async function fillSignupPasswordPageAndSubmit(snapshot, password, options = {}) {
   const helper = getSignupPasswordPageHelpers().fillSignupPasswordPageAndSubmit;
-  if (typeof helper === 'function') {
-    return await helper(snapshot, password, options);
+  if (typeof helper !== 'function') {
+    throw new Error('signup-password-page.js 未加载，无法提交密码页。');
   }
+  return await helper(snapshot, password, options);
+}
 
-  const {
-    contextLabel = '步骤 3',
-    deferredSubmit = true,
-    requireSubmitButton = false,
-    fillLabel = 'signup-password',
-    submitLabel = 'submit-signup-password',
-    submitDelayMs = 120,
-    submitInitialSleepMs = 500,
-  } = options;
+function createSignupPasswordSwitchUncertainError(message = '') {
+  const error = new Error(
+    `${SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE}::${String(message || '切换到注册密码页后的页面状态无法确认。')}`
+  );
+  error.code = SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE;
+  error.retryable = false;
+  error.preserveSignupSession = true;
+  return error;
+}
+
+function scheduleSignupPasswordSwitch(trigger, options = {}) {
+  const routeKind = String(options.routeKind || '').trim() === 'login'
+    ? 'login'
+    : 'signup_create';
   const performOperationWithDelay = typeof getOperationDelayRunner === 'function'
     ? getOperationDelayRunner()
     : async (metadata, operation) => {
@@ -1396,98 +1473,105 @@ async function fillSignupPasswordPageAndSubmit(snapshot, password, options = {})
         const gate = rootScope?.CodexOperationDelay?.performOperationWithDelay;
         return typeof gate === 'function' ? gate(metadata, operation) : operation();
       };
-  const activeSnapshot = snapshot || inspectSignupEntryState();
 
-  if (!password) {
-    throw new Error(`${contextLabel}：缺少可用密码，无法自动填写密码页。`);
-  }
-  if (activeSnapshot.state !== 'password_page' || !activeSnapshot.passwordInput) {
-    logSignupPasswordDiagnostics(`${contextLabel}：未能识别可填写的密码输入框`);
-    throw new Error(`在密码页未找到密码输入框。URL: ${location.href}`);
-  }
-
-  await humanPause(600, 1500);
-  await performOperationWithDelay({ stepKey: 'fill-password', kind: 'fill', label: fillLabel }, async () => {
-    fillInput(activeSnapshot.passwordInput, password);
-  });
-  log(`${contextLabel}：密码已填写`);
-
-  const submitBtn = activeSnapshot.submitButton
-    || getSignupPasswordSubmitButton({ allowDisabled: true })
-    || await waitForElementByText('button', /continue|sign\s*up|submit|注册|创建|create|続行|登録|作成|जारी\s+रखें|आगे|सबमिट|साइन\s*अप|बनाएं|बनाएँ/i, 5000).catch(() => null);
-
-  if (!submitBtn) {
-    logSignupPasswordDiagnostics(`${contextLabel}：未找到可提交的密码页按钮`);
-    if (requireSubmitButton) {
-      throw new Error(`${contextLabel}：未找到可提交的密码页按钮。URL: ${location.href}`);
-    }
-  } else if (typeof findOneTimeCodeLoginTrigger === 'function' && findOneTimeCodeLoginTrigger()) {
-    logSignupPasswordDiagnostics(`${contextLabel}：当前密码页同时存在一次性验证码入口`, 'info');
-  }
-
-  const submitPassword = async () => {
-    throwIfStopped();
-    if (submitInitialSleepMs > 0) {
-      await sleep(submitInitialSleepMs);
-    }
-    await humanPause(500, 1300);
-    await performOperationWithDelay({ stepKey: 'fill-password', kind: 'submit', label: submitLabel }, async () => {
-      simulateClick(submitBtn);
-    });
-    log(`${contextLabel}：表单已提交`);
-  };
-
-  const signupVerificationRequestedAt = submitBtn ? Date.now() : null;
-  if (submitBtn) {
-    if (deferredSubmit) {
-      window.setTimeout(async () => {
-        try {
-          await submitPassword();
-        } catch (error) {
-          if (!isStopError(error)) {
-            console.error('[MultiPage:signup-page] deferred signup password submit failed:', error?.message || error);
-          }
+  window.setTimeout(async () => {
+    try {
+      await humanPause(350, 900);
+      await performOperationWithDelay({
+        stepKey: 'fill-password',
+        kind: 'click',
+        label: 'switch-signup-password',
+      }, async () => {
+        const liveTrigger = (routeKind === 'login'
+          ? findLoginPasswordSwitchTrigger()
+          : findSignupPasswordSwitchTrigger())
+          || (trigger?.isConnected !== false ? trigger : null);
+        if (!liveTrigger) {
+          throw new Error('入口组件在点击前已被页面重新渲染，且未能重新定位。');
         }
-      }, submitDelayMs);
-    } else {
-      await submitPassword();
+        simulateClick(liveTrigger);
+      });
+    } catch (error) {
+      const uncertainError = createSignupPasswordSwitchUncertainError(
+        `点击“使用密码继续”失败，请保持当前认证页面打开后重试。原因：${error?.message || error}`
+      );
+      reportError(3, uncertainError.message);
     }
-  }
-
-  return {
-    submitButtonFound: Boolean(submitBtn),
-    signupVerificationRequestedAt,
-    deferredSubmit: Boolean(submitBtn && deferredSubmit),
-  };
+  }, 120);
 }
 
 async function step3_fillEmailPassword(payload) {
   const { email, password } = payload;
   if (!password) throw new Error('未提供密码，步骤 3 需要可用密码。');
   const normalizedEmail = String(email || '').trim().toLowerCase();
-  const accountIdentifierType = 'email';
-  const accountIdentifier = String(payload?.accountIdentifier || email || '').trim();
 
   let snapshot = inspectSignupEntryState();
   if (snapshot.state === 'entry_home') {
     throw new Error('当前仍停留在 ChatGPT 官网首页，请先完成步骤 2。');
   }
 
-  if (
-    snapshot.state === 'verification_page'
-    || snapshot.state === 'profile_page'
-    || snapshot.state === 'logged_in_home'
-  ) {
+  if (snapshot.state === 'verification_page') {
+    const passwordSwitchMatch = await waitForVerificationPasswordSwitchTrigger(5000);
+    if (passwordSwitchMatch?.trigger) {
+      log('步骤 3：检测到官网“使用密码继续”，准备切换到密码页。', 'info', {
+        step: 3,
+        stepKey: 'fill-password',
+      });
+      scheduleSignupPasswordSwitch(passwordSwitchMatch.trigger, {
+        routeKind: passwordSwitchMatch.routeKind,
+      });
+      return {
+        passwordPageNavigationScheduled: true,
+        passwordSwitchRouteKind: passwordSwitchMatch.routeKind,
+        passwordSubmitAttempted: false,
+        signupPasswordCreationAttempted: true,
+      };
+    }
+
+    const visiblePasswordSwitchMatch = findVerificationPasswordSwitchTrigger({ allowDisabled: true });
+    if (visiblePasswordSwitchMatch?.trigger) {
+      throw createSignupPasswordSwitchUncertainError(
+        '验证码页已显示“使用密码继续”，但按钮持续不可点击；已保留当前认证页面，请稍后重试步骤 3。'
+      );
+    }
+
+    if (getSignupPageDetector().hasSignupPasswordSwitchTextHint?.() === true) {
+      const passwordSwitchDiagnostic = getSignupPageDetector().buildSignupPasswordSwitchDiagnostic?.();
+      if (passwordSwitchDiagnostic) {
+        log(`步骤 3：密码入口定位摘要：${JSON.stringify(passwordSwitchDiagnostic)}`, 'warn', {
+          step: 3,
+          stepKey: 'fill-password',
+        });
+      }
+      throw createSignupPasswordSwitchUncertainError(
+        '验证码页包含“使用密码继续”文案，但未能定位可点击元素；已保留当前认证页面，请刷新后重试步骤 3。'
+      );
+    }
+
     const completionPayload = {
-      email: email || '',
-      accountIdentifierType,
-      accountIdentifier,
-      signupVerificationRequestedAt: snapshot.state === 'verification_page' ? Date.now() : null,
+      signupVerificationRequestedAt: Date.now(),
       skippedPasswordPage: true,
+      signupPasswordCreated: false,
+      signupPasswordCreationAttempted: false,
+      passwordSubmitAttempted: false,
+      deferredSubmit: false,
+    };
+    log('步骤 3：验证码页未提供“使用密码继续”，保留官网免密码注册流程。', 'warn');
+    reportComplete(3, completionPayload);
+    return completionPayload;
+  }
+
+  if (snapshot.state === 'profile_page' || snapshot.state === 'logged_in_home') {
+    const completionPayload = {
+      signupVerificationRequestedAt: null,
+      skippedPasswordPage: true,
+      signupPasswordCreated: false,
+      signupPasswordCreationAttempted: false,
+      passwordSubmitAttempted: false,
       deferredSubmit: false,
       ...(snapshot.skipProfileStep ? { skipProfileStep: true } : {}),
     };
-    log('步骤 3：当前页面已进入验证码或后续阶段，密码页按已跳过处理。', 'warn');
+    log('步骤 3：当前页面已进入注册后续阶段，密码页按已跳过处理。', 'warn');
     reportComplete(3, completionPayload);
     return completionPayload;
   }
@@ -1507,20 +1591,28 @@ async function step3_fillEmailPassword(payload) {
   }
 
   if (normalizedEmail && snapshot.displayedEmail && snapshot.displayedEmail !== normalizedEmail) {
-    throw new Error(`当前密码页邮箱为 ${snapshot.displayedEmail}，与目标邮箱 ${email} 不一致，请先回到步骤 1 重新开始。`);
+    throw new Error('当前密码页账号与目标邮箱不一致，请先回到步骤 1 重新开始。');
   }
 
   const passwordSubmitResult = await fillSignupPasswordPageAndSubmit(snapshot, password, {
     contextLabel: '步骤 3',
     deferredSubmit: true,
+    requireSubmitButton: true,
   });
 
+  const passwordPageKind = snapshot.passwordPageKind
+    || getSignupPasswordPageHelpers().getPasswordPageKind?.()
+    || '';
+  const resumedFromVerificationPasswordSwitch = payload?.passwordSwitchResumed === true
+    && ['signup_create', 'login'].includes(String(payload?.passwordSwitchRouteKind || '').trim());
+
   const completionPayload = {
-    email,
-    accountIdentifierType,
-    accountIdentifier,
     signupVerificationRequestedAt: passwordSubmitResult.signupVerificationRequestedAt,
     deferredSubmit: passwordSubmitResult.deferredSubmit,
+    passwordSubmitAttempted: passwordSubmitResult.submitButtonFound === true,
+    signupPasswordCreationAttempted: (passwordPageKind === 'signup_create'
+      || resumedFromVerificationPasswordSwitch)
+      && passwordSubmitResult.submitButtonFound === true,
   };
 
   reportComplete(3, completionPayload);
@@ -1536,14 +1628,14 @@ const AUTH_TIMEOUT_ERROR_TITLE_PATTERN = /糟糕，出错了|エラーが発生�
 const AUTH_TIMEOUT_ERROR_DETAIL_PATTERN = /operation\s+timed\s+out|timed\s+out|タイムアウト|時間切れ|请求超时|操作超时|failed\s+to\s+fetch|network\s+error|fetch\s+failed|invalid\s+authorization\s+step|invalid_auth_step/i;
 const AUTH_MAX_CHECK_ATTEMPTS_PATTERN = /max_check_attempts|試行回数が多すぎ|数分待ってからもう一度|too\s+many\s+(?:attempts|checks|tries)|try\s+again\s+in\s+(?:a\s+)?few\s+minutes|बहुत\s+(?:ज़्यादा|ज्यादा)\s+(?:प्रयास|कोशिश)|कुछ\s+मिनट\s+बाद/i;
 const AUTH_ROUTE_ERROR_PATTERN = /405\s+method\s+not\s+allowed|route\s+error.*405|did\s+not\s+provide\s+an?\s+[`'"]?action|post\s+request\s+to\s+["']?\/email-verification/i;
-const ACCOUNT_DEACTIVATED_PATTERN = /account[_\s-]*deactivated|account\s+has\s+been\s+(?:deleted|deactivated)|do\s+not\s+have\s+an?\s+account\s+because\s+it\s+has\s+been\s+(?:deleted|deactivated)|账户(?:已被)?删除|账户(?:已被)?停用|账号(?:已被)?删除|账号(?:已被)?停用/i;
-const ACCOUNT_DEACTIVATED_ERROR = 'ACCOUNT_DEACTIVATED::账号已删除或停用，账户不可用';
 const STEP4_405_RECOVERY_ERROR_PREFIX = 'STEP4_405_RECOVERY_LIMIT::';
 const STEP4_405_RECOVERY_LIMIT = 3;
 const SIGNUP_USER_ALREADY_EXISTS_ERROR_PREFIX = 'SIGNUP_USER_ALREADY_EXISTS::';
+const STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE = '步骤 5：资料提交后检测到 user_already_exists，说明当前邮箱已经注册，当前轮将结束并排除该邮箱。';
 const STEP8_EMAIL_IN_USE_ERROR_PREFIX = 'STEP8_EMAIL_IN_USE::';
 const SIGNUP_EMAIL_EXISTS_PATTERN = /与此电子邮件地址相关联的帐户已存在|account\s+associated\s+with\s+this\s+email\s+address\s+already\s+exists|email\s+address.*already\s+exists/i;
 
+const createAccountDeactivatedError = () => getAuthPageDetectors().createAccountDeactivatedError();
 const authPageRecovery = self.MultiPageAuthPageRecovery?.createAuthPageRecovery?.({
   detailPattern: AUTH_TIMEOUT_ERROR_DETAIL_PATTERN,
   getActionText,
@@ -2338,25 +2430,11 @@ function getAuthTimeoutErrorPageState(options = {}) {
     return null;
   }
 
-  const accountDeactivatedPageText = `${document.title || ''} ${getPageTextSnapshot()}`;
-  if (ACCOUNT_DEACTIVATED_PATTERN.test(accountDeactivatedPageText)) {
-    return {
-      path,
-      url: location.href,
-      retryButton: null,
-      retryEnabled: false,
-      accountDeactivated: true,
-      accountDeactivatedMatched: true,
-      titleMatched: /authentication\s+error/i.test(accountDeactivatedPageText),
-      detailMatched: true,
-      routeErrorMatched: false,
-      fetchFailedMatched: false,
-      httpErrorPage: false,
-      maxCheckAttemptsBlocked: false,
-      emailInUseBlocked: false,
-      userAlreadyExistsBlocked: false,
-    };
-  }
+  const accountDeactivatedState = getAuthPageDetectors().getAccountDeactivatedPageState?.(
+    `${document.title || ''} ${getPageTextSnapshot()}`,
+    { path, url: location.href }
+  );
+  if (accountDeactivatedState) return accountDeactivatedState;
 
   if (authPageRecovery?.getAuthTimeoutErrorPageState) {
     const recoveryState = authPageRecovery.getAuthTimeoutErrorPageState(options);
@@ -2755,6 +2833,7 @@ function inspectLoginAuthState() {
     retryEnabled: Boolean(retryState?.retryEnabled),
     titleMatched: Boolean(retryState?.titleMatched),
     detailMatched: Boolean(retryState?.detailMatched),
+    errorCode: String(retryState?.errorCode || '').trim(),
     accountDeactivated: Boolean(retryState?.accountDeactivated),
     accountDeactivatedMatched: Boolean(retryState?.accountDeactivatedMatched),
     authHttpErrorPage: Boolean(retryState?.httpErrorPage),
@@ -2877,6 +2956,7 @@ function serializeLoginAuthState(snapshot) {
     retryEnabled: Boolean(snapshot?.retryEnabled),
     titleMatched: Boolean(snapshot?.titleMatched),
     detailMatched: Boolean(snapshot?.detailMatched),
+    errorCode: String(snapshot?.errorCode || '').trim(),
     accountDeactivated: Boolean(snapshot?.accountDeactivated),
     accountDeactivatedMatched: Boolean(snapshot?.accountDeactivatedMatched),
     maxCheckAttemptsBlocked: Boolean(snapshot?.maxCheckAttemptsBlocked),
@@ -3241,7 +3321,7 @@ function throwForStep6FatalState(snapshot, visibleStep = 7) {
   snapshot = normalizeStep6Snapshot(snapshot);
   switch (snapshot?.state) {
     case 'account_deactivated_page':
-      throw new Error(ACCOUNT_DEACTIVATED_ERROR);
+      throw createAccountDeactivatedError();
     case 'oauth_consent_page':
       return;
     case 'unknown':
@@ -3317,6 +3397,16 @@ function inspectSignupVerificationState() {
   }
 
   const loginAuthState = inspectLoginAuthState();
+  if (
+    loginAuthState?.state === 'account_deactivated_page'
+    || loginAuthState?.accountDeactivated === true
+    || String(loginAuthState?.errorCode || '').trim().toLowerCase() === 'account_deactivated'
+  ) {
+    return {
+      state: 'account_deactivated',
+      loginAuthState,
+    };
+  }
   if (isRegisteredLoginTotpVerificationState(loginAuthState)) {
     return {
       state: 'registered_login_verification',
@@ -3372,6 +3462,7 @@ async function waitForSignupVerificationTransition(timeout = 5000) {
       || snapshot.state === 'verification'
       || snapshot.state === 'error'
       || snapshot.state === 'email_exists'
+      || snapshot.state === 'account_deactivated'
       || snapshot.state === 'registered_login_verification'
     ) {
       return snapshot;
@@ -3477,6 +3568,10 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
       throw new Error('当前邮箱已存在，需要重新开始新一轮。');
     }
 
+    if (snapshot.state === 'account_deactivated') {
+      throw createAccountDeactivatedError();
+    }
+
     if (snapshot.state === 'registered_login_verification') {
       const authState = snapshot.loginAuthState || {};
         throw createSignupUserAlreadyExistsError(
@@ -3552,8 +3647,9 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
   }
 
   const finalSnapshot = inspectSignupVerificationState();
+  const currentPath = location.pathname || '/';
   const renderPendingError = new Error(
-    `${SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE}::验证码页仍保持打开，但输入框尚未完成渲染；稍后应沿用当前页面和邮箱继续步骤 4。URL: ${location.href}`
+    `${SIGNUP_VERIFICATION_INPUT_RENDER_PENDING_ERROR_CODE}::验证码页仍保持打开，但输入框尚未完成渲染；稍后应沿用当前页面和邮箱继续步骤 4。路径: ${currentPath}`
   );
   if (verificationTargetWaitRetryLogged && getSignupVerificationPageHelpers()
     .isVerificationTargetWaitRetryable?.(new Error('未找到验证码输入框。'), finalSnapshot.state) === true) {
@@ -3564,7 +3660,7 @@ async function prepareSignupVerificationFlow(payload = {}, timeout = 30000) {
   }
 
   const uncertainError = new Error(
-    `${SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE}::密码提交后等待 ${Math.round(effectiveTimeout / 1000)} 秒仍无法确认是否进入验证码页；远端账号创建状态未知，请保持当前认证页面打开并从密码/验证码步骤人工继续。URL: ${location.href}`
+    `${SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE}::密码提交后等待 ${Math.round(effectiveTimeout / 1000)} 秒仍无法确认是否进入验证码页；远端账号创建状态未知，请保持当前认证页面打开并从密码/验证码步骤人工继续。路径: ${currentPath}`
   );
   uncertainError.code = SIGNUP_PASSWORD_SUBMIT_UNCERTAIN_ERROR_CODE;
   uncertainError.retryable = false;
@@ -3949,7 +4045,7 @@ async function recoverSetGptPasswordAuthRetryPage(visibleStep = 6, contextLabel 
     maxClickAttempts: 3,
     pathPatterns: getSetGptPasswordAuthRetryPathPatterns(),
     step: visibleStep,
-    stepKey: 'set-gpt-password',
+    stepKey: resolveSetGptPasswordStepKey(visibleStep),
     timeoutMs: 15000,
     waitAfterClickMs: 3000,
   });
@@ -4020,7 +4116,7 @@ function getResetPasswordSubmitButton({ allowDisabled = false } = {}) {
 }
 
 function getResetPasswordFieldErrorText() {
-  const pattern = /password.*(?:match|weak|short|required|invalid|same|reuse|reused)|(?:match|weak|short|required|invalid|same|reuse|reused).*password|密码.*(?:不一致|太短|太弱|无效|必填|重复|用过)|(?:不一致|太短|太弱|无效|必填|重复|用过).*密码|パスワード.*(?:一致しません|短すぎ|弱い|無効|必須|再利用|使用済み|同じパスワード)|(?:一致しません|短すぎ|弱い|無効|必須|再利用|使用済み|同じパスワード).*パスワード|पासवर्ड.*(?:(?:मेल|मिलान).{0,24}(?:नहीं|नही)|कमज़ोर|कमजोर|बहुत\s+छोटा|ज़रूरी|जरूरी|आवश्यक|अमान्य|गलत|(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:मेल|मिलान).{0,24}(?:नहीं|नही)|कमज़ोर|कमजोर|बहुत\s+छोटा|ज़रूरी|जरूरी|आवश्यक|अमान्य|गलत|(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).{0,120}पासवर्ड/i;
+  const pattern = /password.*(?:match|weak|short|required|invalid|same|reuse|reused)|(?:match|weak|short|required|invalid|same|reuse|reused).*password|密码.*(?:不一致|太短|太弱|无效|必填|重复|用过)|(?:不一致|太短|太弱|无效|必填|重复|用过).*密码|パスワード.*(?:一致しません|短すぎ|弱い|無効|必須|再利用|使用済み|同じパスワード)|(?:一致しません|短すぎ|弱い|無効|必須|再利用|使用済み|同じパスワード).*パスワード|비밀번호.*(?:일치하지|너무\s*짧|약함|필수|유효하지|잘못|재사용|다시\s*사용|이전에\s*사용)|(?:일치하지|너무\s*짧|약함|필수|유효하지|잘못|재사용|다시\s*사용|이전에\s*사용).*비밀번호|पासवर्ड.*(?:(?:मेल|मिलान).{0,24}(?:नहीं|नही)|कमज़ोर|कमजोर|बहुत\s+छोटा|ज़रूरी|जरूरी|आवश्यक|अमान्य|गलत|(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:मेल|मिलान).{0,24}(?:नहीं|नही)|कमज़ोर|कमजोर|बहुत\s+छोटा|ज़रूरी|जरूरी|आवश्यक|अमान्य|गलत|(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).{0,120}पासवर्ड/i;
   const candidates = Array.from(document.querySelectorAll(
     '[role="alert"], [aria-live], [data-error], .error, .text-error, .text-danger, p, div'
   ));
@@ -4052,13 +4148,21 @@ function getResetPasswordSuccessText() {
 }
 
 function isResetPasswordReuseErrorText(value = '') {
-  return /password.*(?:must\s+not\s+be\s+)?re(?:use|used)|re(?:use|used).*password|密码.*(?:重复|用过|不能.*相同)|(?:重复|用过|不能.*相同).*密码|パスワード.*(?:再利用|使用済み|同じパスワード)|(?:再利用|使用済み|同じパスワード).*パスワード|पासवर्ड.*(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).*पासवर्ड/i.test(String(value || ''));
+  return /password.*(?:must\s+not\s+be\s+)?re(?:use|used)|re(?:use|used).*password|密码.*(?:重复|用过|不能.*相同)|(?:重复|用过|不能.*相同).*密码|パスワード.*(?:再利用|使用済み|同じパスワード)|(?:再利用|使用済み|同じパスワード).*パスワード|비밀번호.*(?:재사용|다시\s*사용|이전에\s*사용|같은\s*비밀번호)|(?:재사용|다시\s*사용|이전에\s*사용|같은\s*비밀번호).*비밀번호|पासवर्ड.*(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).*पासवर्ड/i.test(String(value || ''));
+}
+
+function resolveSetGptPasswordStepKey(visibleStep = 8) {
+  return Number(visibleStep) === 7 ? 'fetch-gpt-password-code' : 'set-gpt-password';
+}
+
+function isSetGptPasswordCurrentPasswordPage() {
+  return /\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(location.pathname || '')
+    && Boolean(getSignupPasswordInput());
 }
 
 function getSetGptPasswordPageState() {
-  if (authPageRecovery?.isSessionEndedInvalidStatePage?.()) {
-    return { state: 'session_expired_page', url: location.href, errorCode: 'invalid_state' };
-  }
+  const sessionExpiredErrorCode = authPageRecovery?.isSessionEndedInvalidStatePage?.() ? 'invalid_state' : (authPageRecovery?.isChatGptSessionExpiredPage?.() ? 'chatgpt_session_expired' : '');
+  if (sessionExpiredErrorCode) return { state: 'session_expired_page', url: location.href, errorCode: sessionExpiredErrorCode };
   const resetInputs = getResetPasswordInputs();
   if (isResetPasswordNewPasswordPage()) {
     const successText = getResetPasswordSuccessText();
@@ -4101,6 +4205,14 @@ function getSetGptPasswordPageState() {
       url: location.href,
       passwordInputCount: resetInputs.inputs.length,
       errorText: getResetPasswordFieldErrorText(),
+    };
+  }
+  if (isSetGptPasswordCurrentPasswordPage()) {
+    return {
+      state: 'current_password_page',
+      url: location.href,
+      hasDisplayedEmail: Boolean(getSignupPasswordDisplayedEmail()),
+      passwordErrorText: getSignupPasswordFieldErrorText(),
     };
   }
   const retryState = getSetGptPasswordAuthRetryPageState();
@@ -4182,7 +4294,7 @@ async function waitForSetGptPasswordInteractiveReady(visibleStep, label, timeout
         log(
           `${label}当前 readyState=${getDocumentReadyStateSnapshot()}，但页面关键控件已就绪，继续执行。`,
           'warn',
-          { step: visibleStep, stepKey: 'set-gpt-password' }
+          { step: visibleStep, stepKey: resolveSetGptPasswordStepKey(visibleStep) }
         );
       }
       return snapshot;
@@ -4194,6 +4306,55 @@ async function waitForSetGptPasswordInteractiveReady(visibleStep, label, timeout
   }
 
   throw new Error(`${label}长时间未完成加载，当前 readyState=${getDocumentReadyStateSnapshot()}，页面状态 ${snapshot.state}。URL: ${snapshot.url || location.href}`);
+}
+
+function createSetGptPasswordCurrentPasswordError(visibleStep, message) {
+  return new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：${message}`);
+}
+
+async function submitSetGptPasswordCurrentPasswordChallenge(payload = {}) {
+  const visibleStep = resolveVisibleStep(payload, 7);
+  const expectedEmail = String(payload.email || '').trim().toLowerCase();
+  const currentPassword = String(payload.currentPassword || '');
+  const snapshot = inspectSignupEntryState();
+  const displayedEmail = String(snapshot.displayedEmail || '').trim().toLowerCase();
+
+  if (!isSetGptPasswordCurrentPasswordPage() || snapshot.state !== 'password_page') throw createSetGptPasswordCurrentPasswordError(visibleStep, '当前密码确认页已变化，请重新执行步骤 7。');
+  if (!expectedEmail || !displayedEmail || displayedEmail !== expectedEmail) throw createSetGptPasswordCurrentPasswordError(visibleStep, '当前密码确认页账号与本轮账号不一致，请重新执行步骤 7。');
+  if (!currentPassword) throw createSetGptPasswordCurrentPasswordError(visibleStep, '当前账号缺少可用于身份确认的已存密码，请重新执行步骤 7。');
+  if (snapshot.passwordErrorText) throw createSetGptPasswordCurrentPasswordError(visibleStep, 'OpenAI 已拒绝当前账号密码，请检查账号凭据后重新执行步骤 7。');
+
+  const stepKey = resolveSetGptPasswordStepKey(visibleStep);
+  log(`步骤 ${visibleStep}：检测到当前密码确认页，正在验证当前账号后继续密码设置流程。`, 'info', { step: visibleStep, stepKey });
+  await fillSignupPasswordPageAndSubmit(snapshot, currentPassword, {
+    contextLabel: `步骤 ${visibleStep}`,
+    deferredSubmit: false,
+    requireSubmitButton: true,
+    fillLabel: 'set-gpt-password-current-password',
+    operationStepKey: stepKey,
+    submitLabel: 'submit-set-gpt-password-current-password',
+    submitInitialSleepMs: 0,
+  });
+
+  const terminalStates = new Set(['email_verification_page', 'new_password_page', 'email_already_verified_page', 'session_expired_page', 'auth_retry_page']);
+  let transition = await waitForSetGptPasswordPageState(
+    (state) => terminalStates.has(state.state)
+      || (state.state === 'current_password_page' && Boolean(state.passwordErrorText)),
+    30000
+  );
+  if (transition.state === 'auth_retry_page') {
+    await recoverSetGptPasswordAuthRetryPage(visibleStep, '当前密码确认后');
+    transition = await waitForSetGptPasswordPageState(
+      (state) => terminalStates.has(state.state) && state.state !== 'auth_retry_page',
+      15000
+    );
+  }
+  if (transition.state === 'session_expired_page') throw createSetGptPasswordCurrentPasswordError(visibleStep, 'OpenAI 设置密码会话已失效，需要重新执行步骤 7。');
+  if (transition.state === 'current_password_page') throw createSetGptPasswordCurrentPasswordError(visibleStep, 'OpenAI 已拒绝当前账号密码，请检查账号凭据后重新执行步骤 7。');
+  if (!['email_verification_page', 'new_password_page', 'email_already_verified_page'].includes(transition.state)) throw createSetGptPasswordCurrentPasswordError(visibleStep, '当前密码确认后未进入验证码页或新密码页，请重新执行步骤 7。');
+
+  log(`步骤 ${visibleStep}：当前密码验证已通过，继续收取设置密码验证码。`, 'ok', { step: visibleStep, stepKey });
+  return transition;
 }
 
 function isChatGptHostForSettings() {
@@ -4275,6 +4436,7 @@ async function waitForChatGptSettingsPasswordAction(timeout = 20000) {
   let clickedSecurityNav = false;
   while (Date.now() - start < timeout) {
     throwIfStopped();
+    if (getSetGptPasswordPageState().state === 'session_expired_page') throw new Error('SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 7：ChatGPT 会话已过期，请重新登录后重试当前步骤。');
     const action = getChatGptSettingsPasswordAction();
     if (action) {
       return action;
@@ -4305,6 +4467,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
     existingAuthState.state === 'email_verification_page'
     || existingAuthState.state === 'new_password_page'
     || existingAuthState.state === 'email_already_verified_page'
+    || existingAuthState.state === 'current_password_page'
   ) {
     return prepareSetGptPasswordFlow(payload);
   }
@@ -4315,7 +4478,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
     log(
       `步骤 ${visibleStep}：新版 ChatGPT 设置页未显示“密码”入口，需要重新启动当前步骤建立有效重置状态。`,
       'warn',
-      { step: visibleStep, stepKey: 'set-gpt-password' }
+      { step: visibleStep, stepKey: resolveSetGptPasswordStepKey(visibleStep) }
     );
     return {
       ready: false,
@@ -4330,10 +4493,11 @@ async function startSetGptPasswordResetFlow(payload = {}) {
     : async (_metadata, operation) => operation();
   await humanPause(350, 900);
   const clickedUrl = location.href;
-  await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'click', label: 'open-chatgpt-password-settings' }, async () => {
+  const stepKey = resolveSetGptPasswordStepKey(visibleStep);
+  await performOperationWithDelay({ stepKey, kind: 'click', label: 'open-chatgpt-password-settings' }, async () => {
     simulateClick(passwordAction);
   });
-  log(`步骤 ${visibleStep}：已点击 ChatGPT 安全设置里的“密码”入口，等待进入邮箱验证码页。`, 'info', { step: visibleStep, stepKey: 'set-gpt-password' });
+  log(`步骤 ${visibleStep}：已点击 ChatGPT 安全设置里的“密码”入口，等待进入身份确认页或邮箱验证码页。`, 'info', { step: visibleStep, stepKey });
 
   const transition = await waitForSetGptPasswordPageState(
     (state) => state.state !== 'unknown' || location.href !== clickedUrl,
@@ -4344,7 +4508,7 @@ async function startSetGptPasswordResetFlow(payload = {}) {
     log(
       `步骤 ${visibleStep}：密码行入口点击后页面未跳转，需要重新启动当前步骤建立有效重置状态。`,
       'warn',
-      { step: visibleStep, stepKey: 'set-gpt-password' }
+      { step: visibleStep, stepKey }
     );
     return {
       ready: false,
@@ -4372,10 +4536,13 @@ async function prepareSetGptPasswordFlow(payload = {}) {
     visibleStep,
     `步骤 ${visibleStep}：设置 GPT 密码页`,
     waitTimeoutMs,
-    ['email_verification_page', 'new_password_page', 'email_already_verified_page']
+    ['email_verification_page', 'new_password_page', 'email_already_verified_page', 'current_password_page']
   );
-  const snapshot = ['email_verification_page', 'new_password_page', 'email_already_verified_page'].includes(readySnapshot.state)
-    ? readySnapshot
+  const advancedSnapshot = readySnapshot.state === 'current_password_page'
+    ? await submitSetGptPasswordCurrentPasswordChallenge(payload)
+    : readySnapshot;
+  const snapshot = ['email_verification_page', 'new_password_page', 'email_already_verified_page'].includes(advancedSnapshot.state)
+    ? advancedSnapshot
     : await waitForSetGptPasswordPageState(
         (state) => state.state === 'email_verification_page'
           || state.state === 'new_password_page'
@@ -4384,7 +4551,7 @@ async function prepareSetGptPasswordFlow(payload = {}) {
       );
 
   if (snapshot.state === 'new_password_page') {
-    log(`步骤 ${visibleStep}：已在设置新密码页，准备直接填写 GPT 密码。`, 'info', { step: visibleStep, stepKey: 'set-gpt-password' });
+    log(`步骤 ${visibleStep}：已在设置新密码页，准备直接填写 GPT 密码。`, 'info', { step: visibleStep, stepKey: resolveSetGptPasswordStepKey(visibleStep) });
     return {
       ready: true,
       alreadyOnNewPasswordPage: true,
@@ -4392,7 +4559,7 @@ async function prepareSetGptPasswordFlow(payload = {}) {
     };
   }
   if (snapshot.state === 'email_already_verified_page') {
-    log(`步骤 ${visibleStep}：设置 GPT 密码邮箱已验证，准备直接进入新密码页。`, 'ok', { step: visibleStep, stepKey: 'set-gpt-password' });
+    log(`步骤 ${visibleStep}：设置 GPT 密码邮箱已验证，准备直接进入新密码页。`, 'ok', { step: visibleStep, stepKey: resolveSetGptPasswordStepKey(visibleStep) });
     return {
       ready: true,
       emailAlreadyVerified: true,
@@ -4401,7 +4568,7 @@ async function prepareSetGptPasswordFlow(payload = {}) {
     };
   }
   if (snapshot.state === 'email_verification_page') {
-    log(`步骤 ${visibleStep}：设置 GPT 密码邮箱验证码页已就绪。`, 'info', { step: visibleStep, stepKey: 'set-gpt-password' });
+    log(`步骤 ${visibleStep}：设置 GPT 密码邮箱验证码页已就绪。`, 'info', { step: visibleStep, stepKey: resolveSetGptPasswordStepKey(visibleStep) });
     return {
       ready: true,
       emailVerificationPage: true,
@@ -4502,10 +4669,11 @@ async function submitSetGptPasswordVerificationCode(payload = {}) {
     : async (_metadata, operation) => operation();
   const verificationTarget = await waitForVerificationCodeTarget(15000);
 
-  log(`步骤 ${visibleStep}：正在填写设置 GPT 密码验证码：${code}`, 'info', { step: visibleStep, stepKey: 'set-gpt-password' });
+  const stepKey = resolveSetGptPasswordStepKey(visibleStep);
+  log(`步骤 ${visibleStep}：正在填写设置 GPT 密码验证码：${code}`, 'info', { step: visibleStep, stepKey });
   if (verificationTarget.type === 'split') {
     const splitInputs = verificationTarget.elements || [];
-    await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'grouped-code', label: 'set-gpt-password-split-code' }, async () => {
+    await performOperationWithDelay({ stepKey, kind: 'grouped-code', label: 'set-gpt-password-split-code' }, async () => {
       for (let index = 0; index < 6 && index < splitInputs.length; index += 1) {
         const targetInput = splitInputs[index];
         try {
@@ -4521,18 +4689,18 @@ async function submitSetGptPasswordVerificationCode(payload = {}) {
     const submitButton = await waitForVerificationSubmitButton(splitInputs[0], 4000).catch(() => null);
     if (submitButton) {
       await humanPause(150, 450);
-      await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'submit', label: 'submit-set-gpt-password-code' }, async () => {
+      await performOperationWithDelay({ stepKey, kind: 'submit', label: 'submit-set-gpt-password-code' }, async () => {
         simulateClick(submitButton);
       });
     }
   } else {
-    await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'fill', label: 'set-gpt-password-code' }, async () => {
+    await performOperationWithDelay({ stepKey, kind: 'fill', label: 'set-gpt-password-code' }, async () => {
       fillInput(verificationTarget.element, code);
     });
     const submitButton = await waitForVerificationSubmitButton(verificationTarget.element, 5000).catch(() => null);
     if (submitButton) {
       await humanPause(150, 450);
-      await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'submit', label: 'submit-set-gpt-password-code' }, async () => {
+      await performOperationWithDelay({ stepKey, kind: 'submit', label: 'submit-set-gpt-password-code' }, async () => {
         simulateClick(submitButton);
       });
     }
@@ -4540,9 +4708,9 @@ async function submitSetGptPasswordVerificationCode(payload = {}) {
 
   const outcome = await waitForSetGptPasswordCodeSubmitOutcome(visibleStep);
   if (outcome.invalidCode) {
-    log(`步骤 ${visibleStep}：设置 GPT 密码验证码被拒绝：${outcome.errorText}`, 'warn', { step: visibleStep, stepKey: 'set-gpt-password' });
+    log(`步骤 ${visibleStep}：设置 GPT 密码验证码被拒绝：${outcome.errorText}`, 'warn', { step: visibleStep, stepKey });
   } else if (outcome.newPasswordPage) {
-    log(`步骤 ${visibleStep}：设置 GPT 密码验证码已通过，进入新密码页。`, 'ok', { step: visibleStep, stepKey: 'set-gpt-password' });
+    log(`步骤 ${visibleStep}：设置 GPT 密码验证码已通过，进入新密码页。`, 'ok', { step: visibleStep, stepKey });
   }
   return outcome;
 }
@@ -4632,7 +4800,7 @@ async function waitForSetGptPasswordSubmitOutcome(visibleStep, timeout = 30000, 
         }
         log(`步骤 ${visibleStep}：GPT 密码提交后仍停留在新密码页，正在重新提交（第 ${submitClickCount}/${maxSubmitClicks} 次）...`, 'warn', {
           step: visibleStep,
-          stepKey: 'set-gpt-password',
+          stepKey: resolveSetGptPasswordStepKey(visibleStep),
         });
         await humanPause(350, 900);
         simulateClick(submitButton);
@@ -4702,11 +4870,12 @@ async function setGptPasswordOnResetPage(payload = {}) {
     ? getOperationDelayRunner()
     : async (_metadata, operation) => operation();
   await humanPause(150, 450);
-  await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'fill', label: 'set-gpt-password-new-password' }, async () => {
+  const stepKey = resolveSetGptPasswordStepKey(visibleStep);
+  await performOperationWithDelay({ stepKey, kind: 'fill', label: 'set-gpt-password-new-password' }, async () => {
     fillInput(passwordInput, password);
     fillInput(confirmInput, password);
   });
-  log(`步骤 ${visibleStep}：GPT 密码已填写到两个密码框。`, 'info', { step: visibleStep, stepKey: 'set-gpt-password' });
+  log(`步骤 ${visibleStep}：GPT 密码已填写到两个密码框。`, 'info', { step: visibleStep, stepKey });
 
   const submitButton = await waitForResetPasswordSubmitButton(7000);
   if (!submitButton) {
@@ -4714,7 +4883,7 @@ async function setGptPasswordOnResetPage(payload = {}) {
   }
 
   await humanPause(150, 450);
-  await performOperationWithDelay({ stepKey: 'set-gpt-password', kind: 'submit', label: 'submit-set-gpt-password' }, async () => {
+  await performOperationWithDelay({ stepKey, kind: 'submit', label: 'submit-set-gpt-password' }, async () => {
     simulateClick(submitButton);
   });
   const waitForOutcome = payload.waitForOutcome !== false;
@@ -4723,7 +4892,7 @@ async function setGptPasswordOnResetPage(payload = {}) {
       ? `步骤 ${visibleStep}：GPT 密码已提交，等待页面跳转确认。`
       : `步骤 ${visibleStep}：GPT 密码已提交，后台将轮询页面状态。`,
     'info',
-    { step: visibleStep, stepKey: 'set-gpt-password' }
+    { step: visibleStep, stepKey }
   );
   if (!waitForOutcome) {
     const submittedSnapshot = getSetGptPasswordPageState();
@@ -4801,13 +4970,7 @@ async function fillVerificationCode(step, payload) {
     }
   }
 
-  logVerificationCode(
-    step,
-    payload,
-    payload?.suppressVerificationCodeLog === true
-      ? `步骤 ${step}：正在填写 6 位验证码（内容不写入日志）`
-      : `步骤 ${step}：正在填写验证码：${code}`
-  );
+  logVerificationCode(step, payload, payload?.suppressVerificationCodeLog === true ? `步骤 ${step}：正在填写 6 位验证码（内容不写入日志）` : `步骤 ${step}：正在填写验证码：${code}`);
 
   if (step === 8) {
     await waitForLoginVerificationPageReady(10000, step, {
@@ -4886,9 +5049,23 @@ async function fillVerificationCode(step, payload) {
         .slice(0, 6)
         .map((input) => String(input?.value || '').trim() || '_')
         .join('');
-      logVerificationCode(step, payload, `步骤 ${step}：分格验证码输入框未稳定呈现目标值，当前页面值为 ${current}，准备继续观察提交流程。`, 'warn');
+      logVerificationCode(
+        step,
+        payload,
+        payload?.suppressVerificationCodeLog === true
+          ? `步骤 ${step}：分格验证码输入框未稳定呈现目标值，当前值不写入日志，准备继续观察提交流程。`
+          : `步骤 ${step}：分格验证码输入框未稳定呈现目标值，当前页面值为 ${current}，准备继续观察提交流程。`,
+        'warn'
+      );
     } else {
-      logVerificationCode(step, payload, `步骤 ${step}：分格验证码输入框已稳定显示 ${code}。`, 'info');
+      logVerificationCode(
+        step,
+        payload,
+        payload?.suppressVerificationCodeLog === true
+          ? `步骤 ${step}：分格验证码输入框已稳定显示 6 位验证码（内容不写入日志）。`
+          : `步骤 ${step}：分格验证码输入框已稳定显示 ${code}。`,
+        'info'
+      );
     }
 
     await sleep(250);
@@ -6421,7 +6598,7 @@ async function waitForStep5SubmitOutcome(options = {}) {
     throwIfStopped();
     const retryState = getStep5AuthRetryPageState();
     if (retryState?.userAlreadyExistsBlocked) {
-      throw createSignupUserAlreadyExistsError();
+      throw createSignupUserAlreadyExistsError(STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE);
     }
     if (retryState?.maxCheckAttemptsBlocked) {
       throw createAuthMaxCheckAttemptsError();
@@ -6490,7 +6667,7 @@ async function waitForStep5SubmitOutcome(options = {}) {
 
   const finalRetryState = getStep5AuthRetryPageState();
   if (finalRetryState?.userAlreadyExistsBlocked) {
-    throw createSignupUserAlreadyExistsError();
+    throw createSignupUserAlreadyExistsError(STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE);
   }
   if (finalRetryState?.maxCheckAttemptsBlocked) {
     throw createAuthMaxCheckAttemptsError();
@@ -6603,7 +6780,7 @@ async function waitForStep5ProfileReadyBeforeFill(timeout = 60000) {
       throw createAuthMaxCheckAttemptsError();
     }
     if (retryState?.userAlreadyExistsBlocked) {
-      throw createSignupUserAlreadyExistsError();
+      throw createSignupUserAlreadyExistsError(STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE);
     }
     if (retryState) {
       lastState = 'auth_retry_page';

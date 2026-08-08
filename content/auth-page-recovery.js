@@ -54,6 +54,13 @@
       return sessionEndedMatched && invalidStateMatched;
     }
 
+    function isChatGptSessionExpiredPage() {
+      const text = `${typeof document !== 'undefined' ? document.title || '' : ''} ${typeof getPageTextSnapshot === 'function' ? getPageTextSnapshot() : ''}`;
+      const expiredMatched = /session\s+(?:has\s+)?expired|会话(?:已|已经)?过期|세션이\s*만료되었습니다|セッション(?:の)?有効期限が切れました|सत्र\s+समाप्त\s+हो\s+गया/i.test(text);
+      const loginMatched = /(?:log|sign)\s*in\s+to\s+continue|登录.{0,40}继续|继续.{0,40}登录|계속\s*사용하려면\s*로그인|(?:続ける|継続|引き続き).{0,40}ログイン|लॉग\s*इन.{0,40}जारी|जारी.{0,40}लॉग\s*इन/i.test(text);
+      return expiredMatched && loginMatched;
+    }
+
     function getAuthTimeoutErrorPageState(options = {}) {
       const { pathPatterns = [] } = options;
       const pathname = location.pathname || '';
@@ -173,6 +180,7 @@
         timeoutMs = 12000,
         waitAfterClickMs = 3000,
       } = options;
+      const resolvedStep = Number(step) || 4;
       const maxIdlePolls = timeoutMs > 0
         ? Math.max(1, Math.ceil(timeoutMs / Math.max(1, pollIntervalMs)))
         : Number.POSITIVE_INFINITY;
@@ -212,7 +220,7 @@
 
         if (retryState.userAlreadyExistsBlocked) {
           throw new Error(
-            'SIGNUP_USER_ALREADY_EXISTS::步骤 4：检测到 user_already_exists，说明当前用户已存在，当前轮将直接停止。'
+            `SIGNUP_USER_ALREADY_EXISTS::步骤 ${resolvedStep}：${resolvedStep === 5 ? '资料提交后' : ''}检测到 user_already_exists，说明当前邮箱已经注册，当前轮将结束并排除该邮箱。`
           );
         }
 
@@ -284,7 +292,7 @@
 
       if (finalRetryState.userAlreadyExistsBlocked) {
         throw new Error(
-          'SIGNUP_USER_ALREADY_EXISTS::步骤 4：检测到 user_already_exists，说明当前用户已存在，当前轮将直接停止。'
+          `SIGNUP_USER_ALREADY_EXISTS::步骤 ${resolvedStep}：${resolvedStep === 5 ? '资料提交后' : ''}检测到 user_already_exists，说明当前邮箱已经注册，当前轮将结束并排除该邮箱。`
         );
       }
 
@@ -296,6 +304,7 @@
     return {
       getAuthRetryButton,
       getAuthTimeoutErrorPageState,
+      isChatGptSessionExpiredPage,
       isSessionEndedInvalidStatePage,
       recoverAuthRetryPage,
     };

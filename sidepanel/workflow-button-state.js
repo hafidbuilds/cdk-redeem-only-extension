@@ -1,4 +1,9 @@
 (function attachSidepanelWorkflowButtonState(globalScope) {
+  const REQUIRED_FINAL_NODE_IDS = new Set([
+    'check-trial-eligibility',
+    'persist-no-2fa-free',
+  ]);
+
   function normalizeNodeId(value = '') {
     return String(value || '').trim();
   }
@@ -14,11 +19,22 @@
     return new Set(toNodeList(value));
   }
 
+  function isNodeManuallySkippable(nodeId = '') {
+    const normalizedNodeId = normalizeNodeId(nodeId);
+    return Boolean(normalizedNodeId) && !REQUIRED_FINAL_NODE_IDS.has(normalizedNodeId);
+  }
+
+  function createSkippableNodeSet(nodeIds = []) {
+    return new Set(toNodeList(nodeIds).filter(isNodeManuallySkippable));
+  }
+
   function createWorkflowButtonStateManager(context = {}) {
     const {
       getNodeIds = () => [],
+      getNodeDefinition = () => null,
       getIndependentExecuteNodes = () => new Set(),
       getSkippableNodes = () => new Set(),
+      isConditionalNodeRequired = () => false,
       isDoneStatus = (status) => status === 'completed' || status === 'manual_completed' || status === 'skipped',
     } = context;
 
@@ -34,6 +50,18 @@
       return toNodeSet(getSkippableNodes());
     }
 
+    function isManualPrerequisiteReady(nodeId = '', statuses = {}) {
+      const normalizedNodeId = normalizeNodeId(nodeId);
+      const status = String(statuses[normalizedNodeId] || 'pending').trim();
+      if (isDoneStatus(status)) {
+        return true;
+      }
+      const definition = getNodeDefinition(normalizedNodeId) || {};
+      return status === 'pending'
+        && String(definition.applicability || '').trim() === 'conditional'
+        && !isConditionalNodeRequired(normalizedNodeId);
+    }
+
     function arePreviousNodesReadyForManualExecute(nodeId = '', statuses = {}) {
       const normalizedNodeId = normalizeNodeId(nodeId);
       const ids = nodeIds();
@@ -41,7 +69,9 @@
       if (currentIndex <= 0) {
         return true;
       }
-      return ids.slice(0, currentIndex).every((previousNodeId) => isDoneStatus(statuses[previousNodeId]));
+      return ids.slice(0, currentIndex).every((previousNodeId) => (
+        isManualPrerequisiteReady(previousNodeId, statuses)
+      ));
     }
 
     function canExecuteNodeWithoutPreviousNode(nodeId = '', statuses = {}) {
@@ -124,13 +154,16 @@
       canExecuteNodeWithoutPreviousNode,
       getManualSkipButtonState,
       getStepButtonState,
+      isManualPrerequisiteReady,
       isActiveControlEnabled,
       isResetDisabled,
     };
   }
 
   const api = {
+    createSkippableNodeSet,
     createWorkflowButtonStateManager,
+    isNodeManuallySkippable,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

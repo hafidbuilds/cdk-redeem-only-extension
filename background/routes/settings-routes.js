@@ -1,8 +1,8 @@
 (function attachSettingsRoutes(root, factory) {
-  const api = factory();
+  const api = factory(root);
   root.MultiPageSettingsRoutes = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-})(typeof self !== 'undefined' ? self : globalThis, function createSettingsRoutesModule() {
+})(typeof self !== 'undefined' ? self : globalThis, function createSettingsRoutesModule(rootScope) {
   function requireHandler(handler, name) {
     if (typeof handler !== 'function') {
       throw new Error(`Missing settings route handler: ${name}`);
@@ -140,10 +140,14 @@
       const plusPaymentChanged = hasOwn(updates, 'plusPaymentMethod')
         && normalizePlusPaymentMethodForDisplay(currentState?.plusPaymentMethod || 'legacyWallet')
           !== normalizePlusPaymentMethodForDisplay(updates.plusPaymentMethod || 'legacyWallet');
+      const registrationRouteChanged = hasOwn(updates, 'registrationFreeRoute')
+        && normalizeString(currentState?.registrationFreeRoute).toLowerCase()
+          !== normalizeString(updates.registrationFreeRoute).toLowerCase();
       const nextPlusModeEnabled = hasOwn(updates, 'plusModeEnabled')
         ? Boolean(updates.plusModeEnabled)
         : Boolean(currentState?.plusModeEnabled);
       const stepModeChanged = modeChanged
+        || registrationRouteChanged
         || (nextPlusModeEnabled && plusPaymentChanged);
       const oauthFlowTimeoutDisabled = hasOwn(updates, 'oauthFlowTimeoutEnabled')
         && updates.oauthFlowTimeoutEnabled === false;
@@ -164,24 +168,19 @@
       }
       if (stepModeChanged && typeof getStepIdsForState === 'function') {
         const nextStateForSteps = { ...currentState, ...stateUpdates };
-        const nextNodeIds = typeof getNodeIdsForState === 'function'
-          ? getNodeIdsForState(nextStateForSteps)
-          : getStepIdsForState(nextStateForSteps).map((stepId) => requireHandler(getStepKeyForState, 'getStepKeyForState')(stepId, nextStateForSteps)).filter(Boolean);
-        stateUpdates.nodeStatuses = Object.fromEntries(nextNodeIds.map((nodeId) => [nodeId, 'pending']));
+        const nextNodeIds = typeof getNodeIdsForState === 'function' ? getNodeIdsForState(nextStateForSteps) : getStepIdsForState(nextStateForSteps)
+          .map((stepId) => requireHandler(getStepKeyForState, 'getStepKeyForState')(stepId, nextStateForSteps)).filter(Boolean);
+        const routeDefaults = rootScope.MultiPageStepDefinitions?.getDefaultNodeStatuses?.(nextStateForSteps) || {};
+        stateUpdates.nodeStatuses = Object.fromEntries(nextNodeIds.map((nodeId) => [nodeId, String(routeDefaults[nodeId] || 'pending').trim()]));
+        stateUpdates.workflowVersion = rootScope.MultiPageStepDefinitions?.WORKFLOW_VERSION || 3;
         stateUpdates.currentNodeId = '';
       }
       await requireHandler(setState, 'setState')(stateUpdates);
       await syncCustomEmailPoolTrialEligibilityTransitions?.(currentState?.customEmailPoolEntries, updates.customEmailPoolEntries, { enabled: allowCustomEmailPoolStatusReset });
-      if (Boolean(currentState?.contributionMode) && typeof setContributionMode === 'function') {
-        await setContributionMode(true);
-      }
-      if (Object.keys(stateUpdates).length > 0 && typeof broadcastDataUpdate === 'function') {
-        broadcastDataUpdate(stateUpdates);
-      }
+      if (Boolean(currentState?.contributionMode) && typeof setContributionMode === 'function') await setContributionMode(true);
+      if (Object.keys(stateUpdates).length > 0 && typeof broadcastDataUpdate === 'function') broadcastDataUpdate(stateUpdates);
       if (modeChanged) {
-        const selectedPlusPaymentMethod = getPlusPaymentMethodLabel(
-          stateUpdates.plusPaymentMethod ?? currentState?.plusPaymentMethod ?? 'legacyWallet'
-        );
+        const selectedPlusPaymentMethod = getPlusPaymentMethodLabel(stateUpdates.plusPaymentMethod ?? currentState?.plusPaymentMethod ?? 'legacyWallet');
         await requireHandler(addLog, 'addLog')(
           Boolean(updates.plusModeEnabled)
             ? `Plus 模式已开启，已切换为 ChatGPT 会话读取 步骤，当前支付方式：${selectedPlusPaymentMethod}。`

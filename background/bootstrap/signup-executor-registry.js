@@ -54,11 +54,11 @@
       isSignupPasswordPageUrl: deps.isSignupPasswordPageUrl,
       isTabAlive: deps.isTabAlive,
       persistRegistrationEmailState: deps.persistRegistrationEmailState,
+      readChatGptSessionForTotpRecovery: deps.readChatGptSessionForTotpRecovery,
       resolveExistingTotpCredential: deps.resolveExistingTotpCredential,
       reuseOrCreateTab: deps.reuseOrCreateTab,
       sendToContentScriptResilient: deps.sendToContentScriptResilient,
       setEmailState: deps.setEmailState,
-      setExistingTotpLoginDisplayStatus: deps.setExistingTotpLoginDisplayStatus,
       setState: deps.setState,
       sleepWithStop: deps.sleepWithStop,
       SIGNUP_AUTH_ENTRY_URL: deps.SIGNUP_AUTH_ENTRY_URL,
@@ -128,7 +128,6 @@
       VERIFICATION_POLL_MAX_ROUNDS: deps.VERIFICATION_POLL_MAX_ROUNDS,
     }) || {};
 
-    let upiRedeemExecutor = null;
     let step9Executor = null;
     let step9ExecutorCreated = false;
     const executors = {
@@ -162,9 +161,22 @@
         getTabId: deps.getTabId,
         isTabAlive: deps.isTabAlive,
         sendToContentScript: deps.sendToContentScript,
+        sendToContentScriptResilient: deps.sendToContentScriptResilient,
         setPasswordState: deps.setPasswordState,
         setState: deps.setState,
         SIGNUP_PAGE_INJECT_FILES: deps.SIGNUP_PAGE_INJECT_FILES,
+        waitForTabUrlMatch: deps.waitForTabUrlMatch,
+      }) || null,
+      existingTotpLogin: root.MultiPageBackgroundExistingTotpLogin?.createExistingTotpLoginExecutor?.({
+        addLog: deps.addLog,
+        completeNodeFromBackground: deps.completeNodeFromBackground,
+        getState: deps.getState,
+        getTabId: deps.getTabId,
+        markCurrentRegistrationAccountDeactivated: deps.markCurrentRegistrationAccountDeactivated,
+        recoverRegisteredTotpLogin: signupFlowHelpers.recoverRegisteredTotpLogin,
+        sendToContentScriptResilient: deps.sendToContentScriptResilient,
+        setNodeStatus: deps.setNodeStatus,
+        setState: deps.setState,
       }) || null,
       step4: root.MultiPageBackgroundStep4?.createStep4Executor?.({
         addLog: deps.addLog,
@@ -176,6 +188,7 @@
         generateRandomName: deps.generateRandomName,
         ensureMail2925MailboxSession: deps.ensureMail2925MailboxSession,
         ensureIcloudMailSession: deps.ensureIcloudMailSessionForVerification,
+        executeExistingTotpLogin: (state) => executors.existingTotpLogin.executeExistingTotpLogin(state),
         getMailConfig: deps.getMailConfig,
         getTabId: deps.getTabId,
         HOTMAIL_PROVIDER: deps.HOTMAIL_PROVIDER,
@@ -189,13 +202,14 @@
         YYDSMAIL_PROVIDER: deps.YYDSMAIL_PROVIDER,
         resolveCustomEmailVerificationStep: verificationFlowHelpers.resolveCustomEmailVerificationStep,
         resolveVerificationStep: verificationFlowHelpers.resolveVerificationStep,
-        recoverRegisteredTotpLogin: signupFlowHelpers.recoverRegisteredTotpLogin,
         reuseOrCreateTab: deps.reuseOrCreateTab,
         sendToContentScript: deps.sendToContentScript,
         sendToContentScriptResilient: deps.sendToContentScriptResilient,
         setState: deps.setState,
+        setNodeStatus: deps.setNodeStatus,
         setPasswordState: deps.setPasswordState,
         isRetryableContentScriptTransportError: deps.isRetryableContentScriptTransportError,
+        markCurrentRegistrationAccountDeactivated: deps.markCurrentRegistrationAccountDeactivated,
         shouldUseCustomRegistrationEmail: deps.shouldUseCustomRegistrationEmail,
         STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS: deps.STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS,
         throwIfStopped: deps.throwIfStopped,
@@ -321,15 +335,15 @@
         getState: deps.getState,
         getTabId: deps.getTabId,
         isTabAlive: deps.isTabAlive,
-        markCurrentRegistrationAccountTrialIneligible: deps.markCurrentRegistrationAccountTrialIneligible,
         markCurrentRegistrationAccountUsed: deps.markCurrentRegistrationAccountUsed,
+        resolveExistingTotpCredential: deps.resolveExistingTotpCredential,
         registerTab: deps.registerTab,
         sendTabMessageUntilStopped: deps.sendTabMessageUntilStopped,
         setState: deps.setState,
         SIGNUP_PAGE_INJECT_FILES: deps.SIGNUP_PAGE_INJECT_FILES,
         sleepWithStop: deps.sleepWithStop,
         throwIfStopped: deps.throwIfStopped,
-        checkRegistrationUpiTrialEligibility: (...args) => upiRedeemExecutor.checkRegistrationUpiTrialEligibility(...args),
+        upsertRegistrationResult: deps.upsertRegistrationResult,
         upsertUpiAccountCredentialBackup: deps.upsertUpiAccountCredentialBackup,
         waitForTabCompleteUntilStopped: deps.waitForTabCompleteUntilStopped,
       }) || null,
@@ -346,51 +360,44 @@
         setState: deps.setState,
         sleepWithStop: deps.sleepWithStop,
         throwIfStopped: deps.throwIfStopped,
-        checkRegistrationUpiTrialEligibility: (...args) => upiRedeemExecutor.checkRegistrationUpiTrialEligibility(...args),
+        upsertRegistrationResult: deps.upsertRegistrationResult,
         upsertUpiAccountCredentialBackup: deps.upsertUpiAccountCredentialBackup,
         waitForTabCompleteUntilStopped: deps.waitForTabCompleteUntilStopped,
       }) || null,
     };
 
-    upiRedeemExecutor = root.MultiPageBackgroundUpiRedeem?.createUpiRedeemExecutor?.({
+    executors.checkTrialEligibility = root.MultiPageBackgroundCheckTrialEligibility?.createCheckTrialEligibilityExecutor?.({
       addLog: deps.addLog,
-      appendAccountRunRecord: deps.appendAccountRunRecord,
-      chrome: deps.chrome,
+      checkRegistrationUpiTrialEligibility: (...args) => {
+        if (typeof deps.checkRegistrationTrialEligibility !== 'function') {
+          throw new Error('Free 账号注册资格检测能力尚未接入。');
+        }
+        return deps.checkRegistrationTrialEligibility(...args);
+      },
       completeNodeFromBackground: deps.completeNodeFromBackground,
-      deleteUpiCredentialMembershipCredentials: deps.deleteUpiCredentialMembershipCredentials,
-      ensureContentScriptReadyOnTabUntilStopped: deps.ensureContentScriptReadyOnTabUntilStopped,
-      fetchImpl: deps.fetchImpl,
-      getState: deps.getState,
-      getTabId: deps.getTabId,
-      isTabAlive: deps.isTabAlive,
-      markCustomEmailPoolEntryTrialEligibility: deps.markCustomEmailPoolEntryTrialEligibility,
-      markCurrentRegistrationAccountUsed: deps.markCurrentRegistrationAccountUsed,
-      registerTab: deps.registerTab,
-      sendTabMessageUntilStopped: deps.sendTabMessageUntilStopped,
-      setPersistentSettings: deps.setPersistentSettings,
-      setState: deps.setState,
-      broadcastDataUpdate: deps.broadcastDataUpdate,
-      refreshPendingUpiCredentialMembershipRedeemStatuses: deps.refreshPendingUpiCredentialMembershipRedeemStatuses,
-      redeemUpiCredentialMembershipFree: deps.redeemUpiCredentialMembershipFree,
-      externalEffectLedger: root.MultiPageRuntimeExternalEffectLedger,
-      taskLockManager: root.MultiPageRuntimeTaskLockManager,
-      taskRuntime: root.MultiPageRuntimeTaskRuntime,
-      sleepWithStop: deps.sleepWithStop,
-      throwIfStopped: deps.throwIfStopped,
-      upsertTrialEligibleFreeCredential: deps.upsertTrialEligibleFreeCredential,
-      waitForTabCompleteUntilStopped: deps.waitForTabCompleteUntilStopped,
-    }) || null;
-    executors.upiRedeem = upiRedeemExecutor;
-    executors.no2faFree = root.MultiPageBackgroundNo2faFreeRoute?.createNo2faFreeRouteExecutor?.({
-      addLog: deps.addLog,
-      checkRegistrationUpiTrialEligibility: (...args) => upiRedeemExecutor.checkRegistrationUpiTrialEligibility(...args),
-      completeNodeFromBackground: deps.completeNodeFromBackground,
-      getCustomEmailPoolEntries: deps.getCustomEmailPoolEntries,
       getState: deps.getState,
       markCurrentRegistrationAccountUsed: deps.markCurrentRegistrationAccountUsed,
       readCurrentChatGptSessionForExport: deps.readCurrentChatGptSessionForExport,
       setState: deps.setState,
       throwIfStopped: deps.throwIfStopped,
+    }) || null;
+    executors.no2faFree = root.MultiPageBackgroundNo2faFreeRoute?.createNo2faFreeRouteExecutor?.({
+      addLog: deps.addLog,
+      checkRegistrationUpiTrialEligibility: (...args) => {
+        if (typeof deps.checkRegistrationTrialEligibility !== 'function') {
+          throw new Error('Free 账号注册资格检测能力尚未接入。');
+        }
+        return deps.checkRegistrationTrialEligibility(...args);
+      },
+      completeNodeFromBackground: deps.completeNodeFromBackground,
+      getCustomEmailPoolEntries: deps.getCustomEmailPoolEntries,
+      getState: deps.getState,
+      markCurrentRegistrationAccountUsed: deps.markCurrentRegistrationAccountUsed,
+      readCurrentChatGptSessionForExport: deps.readCurrentChatGptSessionForExport,
+      resolveExistingTotpCredential: deps.resolveExistingTotpCredential,
+      setState: deps.setState,
+      throwIfStopped: deps.throwIfStopped,
+      upsertRegistrationResult: deps.upsertRegistrationResult,
     }) || null;
 
     Object.defineProperty(executors, 'step9', {

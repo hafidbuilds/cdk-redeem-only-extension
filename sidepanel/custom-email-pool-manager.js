@@ -107,11 +107,9 @@
         entry.accessToken
         || entry.token
         || entry.access_token
-        || entry.upiRedeemAccessToken
         || storedCredential.accessToken
         || storedCredential.token
         || storedCredential.access_token
-        || storedCredential.upiRedeemAccessToken
         || ''
       ).trim();
     }
@@ -137,7 +135,6 @@
         credential.accessToken
         || credential.token
         || credential.access_token
-        || credential.upiRedeemAccessToken
         || ''
       ).trim();
       if (status === 'free' && (
@@ -189,7 +186,7 @@
       const verificationUrl = normalizeVerificationUrl(
         rawEntry?.verificationUrl || rawEntry?.url || parsedEntry.verificationUrl || ''
       );
-      const accessToken = String(rawEntry?.accessToken || rawEntry?.access_token || rawEntry?.upiRedeemAccessToken || '').trim();
+      const accessToken = String(rawEntry?.accessToken || rawEntry?.access_token || '').trim();
       const accessTokenMasked = String(rawEntry?.accessTokenMasked || '').trim()
         || maskAccessToken(accessToken);
       const note = String(rawEntry?.note || '').trim();
@@ -250,7 +247,6 @@
         || storedCredential.accessToken
         || storedCredential.token
         || storedCredential.access_token
-        || storedCredential.upiRedeemAccessToken
         || ''
       ).trim();
       if (!accessToken && entry.manualSkipped !== true) {

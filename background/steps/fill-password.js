@@ -11,10 +11,58 @@
       getTabId,
       isTabAlive,
       sendToContentScript,
+      sendToContentScriptResilient,
       setPasswordState,
       setState,
       SIGNUP_PAGE_INJECT_FILES,
+      waitForTabUrlMatch,
     } = deps;
+
+    function createSignupPasswordSubmitUncertainError(message = '') {
+      const error = new Error(`SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::${String(message || '注册密码页切换结果未知。')}`);
+      error.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
+      error.retryable = false;
+      error.preserveSignupSession = true;
+      return error;
+    }
+
+    function isSignupCreatePasswordUrl(url = '') {
+      try {
+        const parsed = new URL(String(url || ''));
+        return /\/(?:u\/)?(?:create-account|signup)\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+      } catch {
+        return /\/(?:u\/)?(?:create-account|signup)\/password(?:[/?#]|$)/i.test(String(url || ''));
+      }
+    }
+
+    function isLoginPasswordUrl(url = '') {
+      try {
+        const parsed = new URL(String(url || ''));
+        return /\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+      } catch {
+        return /\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(String(url || ''));
+      }
+    }
+
+    function isVerificationPasswordSwitchTargetUrl(url = '') {
+      return isSignupCreatePasswordUrl(url) || isLoginPasswordUrl(url);
+    }
+
+    function buildStep3Message(identity, password, extraPayload = {}) {
+      return {
+        type: 'EXECUTE_NODE',
+        nodeId: 'fill-password',
+        step: 3,
+        source: 'background',
+        payload: {
+          email: identity.email,
+          accountIdentifierType: identity.accountIdentifierType,
+          accountIdentifier: identity.accountIdentifier,
+          password,
+          ...extraPayload,
+        },
+      };
+    }
 
     function resolveStep3AccountIdentity(state = {}) {
       const resolvedEmail = String(state?.email || '').trim();
@@ -96,22 +144,67 @@
         logMessage: '步骤 3：密码页内容脚本未就绪，正在等待页面恢复...',
       });
 
-      const identityLabel = `邮箱为 ${identity.accountIdentifier}`;
       await addLog(
-        `步骤 3：正在填写密码，${identityLabel}，密码为${state.customPassword ? '自定义' : '自动生成'}（${password.length} 位）`
+        `步骤 3：正在填写密码，密码为${state.customPassword ? '自定义' : '自动生成'}（${password.length} 位）`
       );
-      await sendToContentScript('signup-page', {
-        type: 'EXECUTE_NODE',
-        nodeId: 'fill-password',
-        step: 3,
-        source: 'background',
-        payload: {
-          email: identity.email,
-          accountIdentifierType: identity.accountIdentifierType,
-          accountIdentifier: identity.accountIdentifier,
-          password,
-        },
-      });
+      const initialResult = await sendToContentScript(
+        'signup-page',
+        buildStep3Message(identity, password)
+      );
+
+      if (initialResult?.passwordPageNavigationScheduled === true) {
+        const passwordSwitchRouteKind = String(initialResult?.passwordSwitchRouteKind || '').trim();
+        await addLog('步骤 3：已点击官网“使用密码继续”，正在等待密码页加载。', 'info', {
+          step: 3,
+          stepKey: 'fill-password',
+        });
+        const matchedTab = typeof waitForTabUrlMatch === 'function'
+          ? await waitForTabUrlMatch(
+              signupTabId,
+              (url) => isVerificationPasswordSwitchTargetUrl(url),
+              { timeoutMs: 20000, retryDelayMs: 250 }
+            )
+          : null;
+        if (!matchedTab) {
+          throw createSignupPasswordSubmitUncertainError(
+            '点击“使用密码继续”后 20 秒内未进入密码页；已保留当前认证页面，请从步骤 3 重试。'
+          );
+        }
+
+        await ensureContentScriptReadyOnTab('signup-page', signupTabId, {
+          inject: SIGNUP_PAGE_INJECT_FILES,
+          injectSource: 'signup-page',
+          timeoutMs: 45000,
+          retryDelayMs: 700,
+          logMessage: '步骤 3：密码页正在加载，等待内容脚本恢复后继续填写密码...',
+        });
+
+        const resumeSender = typeof sendToContentScriptResilient === 'function'
+          ? sendToContentScriptResilient
+          : sendToContentScript;
+        const resumedResult = await resumeSender(
+          'signup-page',
+          buildStep3Message(identity, password, {
+            passwordSwitchResumed: true,
+            passwordSwitchRouteKind,
+          }),
+          {
+            timeoutMs: 45000,
+            responseTimeoutMs: 30000,
+            retryDelayMs: 700,
+            logMessage: '步骤 3：注册密码页通信仍在恢复，正在继续等待...',
+            logStep: 3,
+            logStepKey: 'fill-password',
+          }
+        );
+        if (resumedResult?.error) {
+          throw createSignupPasswordSubmitUncertainError(
+            `密码页恢复后未能提交密码。原因：${resumedResult.error}`
+          );
+        }
+      } else if (initialResult?.error) {
+        throw new Error(initialResult.error);
+      }
 
       if (typeof appendAccountRunRecord === 'function') {
         try {

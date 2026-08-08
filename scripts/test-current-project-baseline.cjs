@@ -2,45 +2,33 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const fixture = require('./fixtures/current-project-baseline.cjs');
-const credentialFormat = require('../shared/membership-credential-format.js');
-const redeemChannelState = require('../shared/redeem-channel-state.js');
+const accountSchema = require('../shared/account-record-schema.js');
+const freeResults = require('../shared/free-account-results.js');
 
-test('baseline fixture covers current Free, Plus, token, and deactivated states', () => {
+test('baseline fixture covers all V3 Free eligibility and validity states', () => {
   assert.deepEqual(Object.keys(fixture.accounts), [
-    'free',
-    'upiPlus',
-    'idealPlus',
-    'pixPlus',
-    'missingAccessToken',
-    'invalidAccessToken',
-    'deactivated',
+    'eligible', 'unknown', 'failed', 'ineligible', 'missingAccessToken', 'deactivated',
   ]);
   assert.equal(fixture.accounts.missingAccessToken.accessTokenStatus, 'missing');
-  assert.equal(fixture.accounts.invalidAccessToken.accessTokenStatus, 'invalid');
   assert.equal(fixture.accounts.deactivated.validityStatus, 'deactivated');
-  assert.equal(fixture.accounts.upiPlus.redeemChannel, 'upi');
-  assert.equal(fixture.accounts.idealPlus.redeemChannel, 'ideal');
-  assert.equal(fixture.accounts.pixPlus.redeemChannel, 'pix');
 });
 
-test('baseline Free export field order remains compatible', () => {
-  assert.equal(
-    credentialFormat.formatFreeCredentialLine(fixture.accounts.free),
-    'free.account@example.com---fixture-password---FIXTURETOTPSECRET---fixture-access-token---2026-07-25 00:00:00'
-  );
+test('V3 grouping only places explicit ineligible accounts in the ineligible group', () => {
+  assert.equal(freeResults.getItemGroup(fixture.accounts.eligible), 'free');
+  assert.equal(freeResults.getItemGroup(fixture.accounts.unknown), 'free');
+  assert.equal(freeResults.getItemGroup(fixture.accounts.failed), 'free');
+  assert.equal(freeResults.getItemGroup(fixture.accounts.ineligible), 'free-ineligible');
 });
 
-test('baseline channel state stays independent', () => {
-  assert.deepEqual(redeemChannelState.REDEEM_CHANNELS, ['upi', 'ideal', 'pix']);
-  assert.equal(fixture.channels.upi.failureCount, 1);
-  assert.equal(fixture.channels.ideal.failureCount, 2);
-  assert.equal(fixture.channels.pix.failureCount, 0);
-  assert.notEqual(fixture.channels.upi.pool[0], fixture.channels.pix.pool[0]);
-});
-
-test('baseline all-redeem choice enables only the selected viable channel', () => {
-  const selectable = Object.entries(fixture.redeemChoice)
-    .filter(([, state]) => state.redeemCount > 0)
-    .map(([channel]) => channel);
-  assert.deepEqual(selectable, ['pix']);
+test('canonical membership status rejects historical Plus classification', () => {
+  const normalized = accountSchema.normalizeAccountRecord({
+    id: 'legacy@example.com',
+    lifecycle: { membershipStatus: 'plus', eligibilityStatus: 'eligible' },
+    metadata: { paidChannels: ['upi'], legacyPlanType: 'plus', keep: 'history' },
+  });
+  assert.equal(normalized.schemaVersion, 3);
+  assert.equal(normalized.lifecycle.membershipStatus, 'unknown');
+  assert.equal(Object.hasOwn(normalized.metadata, 'paidChannels'), false);
+  assert.equal(Object.hasOwn(normalized.metadata, 'legacyPlanType'), false);
+  assert.equal(normalized.metadata.keep, 'history');
 });

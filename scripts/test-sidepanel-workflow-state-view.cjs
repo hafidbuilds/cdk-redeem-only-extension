@@ -8,7 +8,7 @@ globalThis.document = {
 };
 const workflowStateView = require('../sidepanel/workflow-state-view.js');
 
-test('workflow list visibly inserts the conditional existing-account 2FA row between steps 3 and 4', () => {
+test('workflow list renders existing-account 2FA as the real fourth node', () => {
   const dom = {
     stepsList: {
       innerHTML: '',
@@ -21,17 +21,27 @@ test('workflow list visibly inserts the conditional existing-account 2FA row bet
     constants: {
       workflowNodes: [
         { nodeId: 'fill-password', title: '填写密码并继续', displayOrder: 30 },
-        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 40 },
+        { nodeId: 'existing-totp-login', title: '已有账号 2FA 登录', displayOrder: 40, applicability: 'conditional' },
+        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 50 },
+        { nodeId: 'fill-profile', title: '填写姓名和生日', displayOrder: 60 },
+        { nodeId: 'fetch-gpt-password-code', title: '收取设置密码验证码', displayOrder: 70 },
+        { nodeId: 'set-gpt-password', title: '设置 GPT 密码', displayOrder: 80 },
+        { nodeId: 'enable-totp-mfa', title: '设置或校验 2FA', displayOrder: 90 },
       ],
-      nodeIds: ['fill-password', 'fetch-signup-code'],
+      nodeIds: ['open-chatgpt', 'submit-signup-email', 'fill-password', 'existing-totp-login', 'fetch-signup-code', 'fill-profile', 'fetch-gpt-password-code', 'set-gpt-password', 'enable-totp-mfa'],
       statusIcons: {},
     },
     helpers: {
       getStepIdByNodeIdForCurrentMode: (nodeId) => ({
         'fill-password': 3,
-        'fetch-signup-code': 4,
+        'existing-totp-login': 4,
+        'fetch-signup-code': 5,
+        'fill-profile': 6,
+        'fetch-gpt-password-code': 7,
+        'set-gpt-password': 8,
+        'enable-totp-mfa': 9,
       }[nodeId] || null),
-      getNodeStatuses: () => ({ 'fill-password': 'pending', 'fetch-signup-code': 'pending' }),
+      getNodeStatuses: () => ({}),
       isDoneStatus: () => false,
     },
     callbacks: {},
@@ -41,10 +51,10 @@ test('workflow list visibly inserts the conditional existing-account 2FA row bet
   const html = dom.stepsList.innerHTML;
   assert.ok(html.indexOf('填写密码并继续') < html.indexOf('已有账号 2FA 登录'));
   assert.ok(html.indexOf('已有账号 2FA 登录') < html.indexOf('获取注册验证码'));
-  assert.match(html, /step-num">3\.5<\/span>/);
-  assert.match(html, /data-display-only="true" disabled aria-disabled="true"/);
-  assert.match(html, />按需<\/span>/);
-  assert.equal(dom.stepsProgress.textContent, '0 / 2');
+  assert.match(html, /step-num">4<\/span>/);
+  assert.match(html, /data-node-id="existing-totp-login" data-step-key="existing-totp-login" data-display-only="false"/);
+  assert.doesNotMatch(html, /step-num">3\.5<\/span>/);
+  assert.equal(dom.stepsProgress.textContent, '0 / 9');
 });
 
 test('workflow list does not duplicate the 2FA display row when a definition already provides it', () => {
@@ -59,8 +69,8 @@ test('workflow list does not duplicate the 2FA display row when a definition alr
     constants: {
       workflowNodes: [
         { nodeId: 'fill-password', title: '填写密码并继续', displayOrder: 30 },
-        { nodeId: 'existing-totp-login', title: '已有账号 2FA 登录', displayOrder: 35, ui: { displayOnly: true, stepLabel: '3.5' } },
-        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 40 },
+        { nodeId: 'existing-totp-login', title: '已有账号 2FA 登录', displayOrder: 40, applicability: 'conditional' },
+        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 50 },
       ],
       nodeIds: ['fill-password', 'fetch-signup-code'],
     },
@@ -76,9 +86,9 @@ test('workflow list does not duplicate the 2FA display row when a definition alr
   assert.equal((dom.stepsList.innerHTML.match(/已有账号 2FA 登录/g) || []).length, 1);
 });
 
-test('conditional 2FA row renders live states without changing the seven-node progress model', () => {
-  const statusEl = { textContent: '', dataset: { pendingText: '按需' } };
-  const row = { className: 'step-row pending display-only', dataset: { displayOnly: 'true' } };
+test('formal step 4 renders live node states and participates in nine-node progress', () => {
+  const statusEl = { textContent: '', dataset: {} };
+  const row = { className: 'step-row pending', dataset: { displayOnly: 'false', routeSkipped: 'false' } };
   globalThis.document.querySelector = (selector) => {
     if (!selector.includes('existing-totp-login')) return null;
     return selector.startsWith('.step-status') ? statusEl : row;
@@ -88,17 +98,23 @@ test('conditional 2FA row renders live states without changing the seven-node pr
     stepsProgress: { textContent: '' },
   };
   let currentState = {
-    existingTotpLoginDisplayStatus: 'running',
-    nodeStatuses: { 'fill-password': 'completed', 'fetch-signup-code': 'pending' },
+    nodeStatuses: {
+      'open-chatgpt': 'completed',
+      'submit-signup-email': 'completed',
+      'fill-password': 'completed',
+      'existing-totp-login': 'running',
+      'fetch-signup-code': 'pending',
+      'fill-profile': 'pending',
+      'fetch-gpt-password-code': 'pending',
+      'set-gpt-password': 'pending',
+      'enable-totp-mfa': 'pending',
+    },
   };
   const view = workflowStateView.create({
     dom,
     constants: {
-      workflowNodes: [
-        { nodeId: 'fill-password', title: '填写密码并继续', displayOrder: 30 },
-        { nodeId: 'fetch-signup-code', title: '获取注册验证码', displayOrder: 40 },
-      ],
-      nodeIds: ['fill-password', 'fetch-signup-code'],
+      workflowNodes: [],
+      nodeIds: ['open-chatgpt', 'submit-signup-email', 'fill-password', 'existing-totp-login', 'fetch-signup-code', 'fill-profile', 'fetch-gpt-password-code', 'set-gpt-password', 'enable-totp-mfa'],
       statusIcons: { running: '', completed: '完成', failed: '失败' },
     },
     helpers: {
@@ -110,23 +126,42 @@ test('conditional 2FA row renders live states without changing the seven-node pr
   });
 
   view.renderStepStatuses(currentState);
-  assert.equal(row.className, 'step-row running display-only');
+  assert.equal(row.className, 'step-row running');
   assert.equal(statusEl.textContent, '');
-  assert.equal(dom.stepsProgress.textContent, '1 / 2');
+  assert.equal(dom.stepsProgress.textContent, '3 / 9');
 
-  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'completed' };
+  currentState.nodeStatuses['existing-totp-login'] = 'completed';
   view.renderStepStatuses(currentState);
-  assert.equal(row.className, 'step-row completed display-only');
+  assert.equal(row.className, 'step-row completed');
   assert.equal(statusEl.textContent, '完成');
-  assert.equal(dom.stepsProgress.textContent, '1 / 2');
+  assert.equal(dom.stepsProgress.textContent, '4 / 9');
 
-  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'failed' };
+  currentState.nodeStatuses['existing-totp-login'] = 'failed';
   view.renderStepStatuses(currentState);
-  assert.equal(row.className, 'step-row failed display-only');
+  assert.equal(row.className, 'step-row failed');
   assert.equal(statusEl.textContent, '失败');
 
-  currentState = { ...currentState, existingTotpLoginDisplayStatus: 'pending' };
+  currentState.nodeStatuses['existing-totp-login'] = 'pending';
   view.renderStepStatuses(currentState);
-  assert.equal(row.className, 'step-row pending display-only');
-  assert.equal(statusEl.textContent, '按需');
+  assert.equal(row.className, 'step-row pending');
+  assert.equal(statusEl.textContent, '');
+});
+
+test('route-skipped nodes stay neutral and show the route explanation when status is skipped', () => {
+  const statusEl = { textContent: '', dataset: { pendingText: '当前路线跳过' } };
+  const row = { className: 'step-row skipped route-skipped', dataset: { displayOnly: 'false', routeSkipped: 'true' } };
+  globalThis.document.querySelector = (selector) => {
+    if (!selector.includes('security-factor-not-required')) return null;
+    return selector.startsWith('.step-status') ? statusEl : row;
+  };
+  const view = workflowStateView.create({
+    constants: {
+      statusIcons: { skipped: '跳过' },
+    },
+  });
+
+  view.renderSingleNodeStatus('security-factor-not-required', 'skipped');
+
+  assert.equal(statusEl.textContent, '当前路线跳过');
+  assert.equal(row.className, 'step-row pending route-skipped');
 });

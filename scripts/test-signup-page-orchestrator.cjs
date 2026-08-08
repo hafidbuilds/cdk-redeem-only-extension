@@ -49,14 +49,15 @@ test('signup page orchestrator forwards resend timeout payload', async () => {
   const result = await orchestrator.handleCommand({
     type: 'RESEND_VERIFICATION_CODE',
     payload: {
-      visibleStep: 6,
+      visibleStep: 7,
+      nodeId: 'fetch-gpt-password-code',
       resendTimeoutMs: 8000,
     },
   });
 
   assert.deepEqual(result, { resent: true });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].step, 6);
+  assert.equal(calls[0].step, 7);
   assert.equal(calls[0].timeout, 8000);
   assert.equal(calls[0].payload.resendTimeoutMs, 8000);
 });
@@ -83,7 +84,7 @@ test('signup password readiness uses the bounded page observation budget from ba
   assert.deepEqual(calls, [20000, 30000]);
 });
 
-test('existing-account TOTP login logs under step 3.5 without exposing the code', () => {
+test('existing-account TOTP login redacts complete and partial split-input values', () => {
   const entries = [];
   const orchestrator = globalThis.MultiPageSignupPageOrchestrator.createSignupPageOrchestrator({
     log: (...args) => entries.push(args),
@@ -92,12 +93,19 @@ test('existing-account TOTP login logs under step 3.5 without exposing the code'
   orchestrator.logVerificationCode(8, {
     signupExistingTotpLogin: true,
     suppressVerificationCodeLog: true,
-  }, '步骤 8：正在填写 6 位验证码（内容不写入日志）');
+  }, '步骤 8：分格验证码输入框已稳定显示 123456。');
+  orchestrator.logVerificationCode(8, {
+    signupExistingTotpLogin: true,
+    suppressVerificationCodeLog: true,
+  }, '步骤 8：分格验证码输入框未稳定呈现目标值，当前页面值为 12_4__，准备继续观察提交流程。', 'warn');
 
-  assert.equal(entries.length, 1);
-  assert.match(entries[0][0], /^步骤 3\.5：2FA 登录：/);
+  assert.equal(entries.length, 2);
+  assert.match(entries[0][0], /^步骤 4：已有账号 2FA 登录：/);
   assert.doesNotMatch(entries[0][0], /123456/);
-  assert.deepEqual(entries[0][2], { step: 3, stepKey: 'fill-password' });
+  assert.doesNotMatch(entries[1][0], /12_4__/);
+  assert.match(entries[0][0], /\[REDACTED\]/);
+  assert.match(entries[1][0], /\[REDACTED\]/);
+  assert.deepEqual(entries[0][2], { step: 4, stepKey: 'existing-totp-login' });
 });
 
 test('background-owned recovery commands return errors without broadcasting a competing node failure', () => {

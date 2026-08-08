@@ -55,7 +55,12 @@
     if (classification.kind === 'deactivated') {
       return {
         credentials: { ...current, accessToken: '', accessTokenStatus: 'invalid', accessTokenUpdatedAt: checkedAt },
-        lifecycle: { validityStatus: 'deactivated', reasonCode: 'ACCOUNT_DEACTIVATED', checkedAt },
+        lifecycle: {
+          validityStatus: 'deactivated',
+          reasonCode: 'ACCOUNT_DEACTIVATED',
+          reason: normalizeText(evidence.message || evidence.error) || '账号已删除或停用，账户不可用。',
+          checkedAt,
+        },
         retryable: false,
       };
     }
@@ -80,7 +85,7 @@
     };
   }
 
-  function canRedeemAccount(record = {}) {
+  function canUseAccount(record = {}) {
     const validityStatus = normalizeText(record.lifecycle?.validityStatus).toLowerCase();
     const accessTokenStatus = normalizeText(record.credentials?.accessTokenStatus).toLowerCase();
     if (validityStatus === 'deactivated' || validityStatus === 'invalid') {
@@ -150,7 +155,7 @@
   return {
     buildAccessTokenPatch,
     buildTrialEligibilityPatch,
-    canRedeemAccount,
+    canUseAccount,
     classifyAccessTokenEvidence,
     createAccountLifecycleService,
   };

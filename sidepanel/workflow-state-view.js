@@ -35,34 +35,7 @@
     }
 
     function getDisplayWorkflowNodes() {
-      const nodes = [...(getWorkflowNodes() || [])];
-      if (nodes.some((node) => String(node?.nodeId || '').trim() === 'existing-totp-login')) {
-        return nodes;
-      }
-
-      const passwordIndex = nodes.findIndex((node) => String(node?.nodeId || '').trim() === 'fill-password');
-      const verificationIndex = nodes.findIndex((node) => String(node?.nodeId || '').trim() === 'fetch-signup-code');
-      if (passwordIndex < 0 || verificationIndex < 0 || passwordIndex >= verificationIndex) {
-        return nodes;
-      }
-
-      const displayNode = {
-        nodeId: 'existing-totp-login',
-        title: '已有账号 2FA 登录',
-        displayOrder: 35,
-        nodeType: 'display',
-        executeKey: 'existing-totp-login',
-        ui: {
-          displayOnly: true,
-          stepLabel: '3.5',
-          statusText: '按需',
-        },
-      };
-      return [
-        ...nodes.slice(0, passwordIndex + 1),
-        displayNode,
-        ...nodes.slice(passwordIndex + 1),
-      ];
+      return [...(getWorkflowNodes() || [])];
     }
 
     function getLatestState() {
@@ -80,13 +53,16 @@
         const stepLabel = String(node.ui?.stepLabel || step || node.displayOrder || '').trim();
         const executeKey = String(node.executeKey || nodeId).trim();
         const displayOnly = node.ui?.displayOnly === true || node.nodeType === 'display';
-        const rowClass = displayOnly ? 'step-row pending display-only' : 'step-row pending';
-        const statusText = displayOnly ? escapeHtml(node.ui?.statusText || '按需') : '';
+        const routeSkipped = node.applicability === 'route-skipped';
+        const rowClass = displayOnly
+          ? 'step-row pending display-only'
+          : `step-row ${routeSkipped ? 'pending' : (node.defaultStatus || 'pending')}${routeSkipped ? ' route-skipped' : ''}`;
+        const statusText = displayOnly || routeSkipped ? escapeHtml(node.ui?.statusText || '') : '';
         return `
-          <div class="${rowClass}" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}">
+          <div class="${rowClass}" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}" data-route-skipped="${routeSkipped ? 'true' : 'false'}">
             <div class="step-indicator" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"><span class="step-num">${escapeHtml(stepLabel)}</span></div>
-            <button class="step-btn" type="button" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}"${displayOnly ? ' disabled aria-disabled="true"' : ''}>${escapeHtml(node.title || executeKey || `步骤 ${stepLabel}`)}</button>
-            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"${displayOnly ? ` data-pending-text="${escapeHtml(node.ui?.statusText || '按需')}"` : ''}>${statusText}</span>
+            <button class="step-btn" type="button" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}" data-step-key="${escapeHtml(executeKey)}" data-display-only="${displayOnly ? 'true' : 'false'}"${displayOnly || routeSkipped ? ' disabled aria-disabled="true"' : ''}>${escapeHtml(node.title || executeKey || `步骤 ${stepLabel}`)}</button>
+            <span class="step-status" data-step="${escapeHtml(step)}" data-node-id="${escapeHtml(nodeId)}"${displayOnly || routeSkipped ? ` data-pending-text="${escapeHtml(node.ui?.statusText || '')}"` : ''}>${statusText}</span>
           </div>
         `;
       }).join('');
@@ -105,14 +81,16 @@
       const selectorNodeId = escapeCssValue(normalizedNodeId);
       const statusEl = document.querySelector(`.step-status[data-node-id="${selectorNodeId}"]`);
       const row = document.querySelector(`.step-row[data-node-id="${selectorNodeId}"]`);
+      const routeSkipped = row?.dataset?.routeSkipped === 'true';
       if (statusEl) {
-        statusEl.textContent = normalizedStatus === 'pending' && statusEl.dataset?.pendingText
+        statusEl.textContent = (routeSkipped || normalizedStatus === 'pending') && statusEl.dataset?.pendingText
           ? statusEl.dataset.pendingText
           : (constants.statusIcons?.[normalizedStatus] || '');
       }
       if (row) {
         const displayOnlyClass = row.dataset?.displayOnly === 'true' ? ' display-only' : '';
-        row.className = `step-row ${normalizedStatus}${displayOnlyClass}`;
+        const routeSkippedClass = routeSkipped ? ' route-skipped' : '';
+        row.className = `step-row ${routeSkipped ? 'pending' : normalizedStatus}${displayOnlyClass}${routeSkippedClass}`;
       }
     }
 
@@ -138,10 +116,6 @@
       getNodeIds().forEach((nodeId) => {
         renderSingleNodeStatus(nodeId, statuses[nodeId]);
       });
-      renderSingleNodeStatus(
-        'existing-totp-login',
-        currentState?.existingTotpLoginDisplayStatus || 'pending'
-      );
       updateProgressCounter();
     }
 
@@ -150,8 +124,9 @@
         return;
       }
       const statuses = helpers.getNodeStatuses?.(getLatestState()) || {};
-      const completed = Object.values(statuses).filter((status) => helpers.isDoneStatus?.(status)).length;
-      dom.stepsProgress.textContent = `${completed} / ${getNodeIds().length}`;
+      const nodeIds = getNodeIds();
+      const completed = nodeIds.filter((nodeId) => helpers.isDoneStatus?.(statuses[nodeId])).length;
+      dom.stepsProgress.textContent = `${completed} / ${nodeIds.length}`;
     }
 
     return {

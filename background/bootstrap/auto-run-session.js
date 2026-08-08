@@ -49,7 +49,10 @@
     function throwIfAutoRunSessionStopped(sessionId) {
       const normalizedSessionId = normalizeAutoRunSessionId(sessionId);
       if (normalizedSessionId && !isCurrentAutoRunSessionId(normalizedSessionId)) {
-        throw new Error(stopErrorMessage);
+        const error = new Error(stopErrorMessage);
+        error.code = 'AUTO_RUN_SESSION_SUPERSEDED';
+        error.retryable = false;
+        throw error;
       }
       throwIfStopped();
     }

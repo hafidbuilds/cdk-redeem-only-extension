@@ -23,7 +23,40 @@
     async function get(taskId) { return (await readRoot()).items[String(taskId || '').trim()] || null; }
     async function list() { return Object.values((await readRoot()).items).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)); }
     async function listActive() { return (await list()).filter((task) => !schema.TERMINAL_STATUSES.has(task.status)); }
-    return { create, get, list, listActive, patch, readRoot, save };
+    async function removeTerminal(taskId) {
+      return enqueue(async () => {
+        const normalizedTaskId = String(taskId || '').trim();
+        if (!normalizedTaskId) throw new Error('TASK_ID_REQUIRED');
+        const rootValue = await readRoot();
+        const task = rootValue.items[normalizedTaskId] || null;
+        if (!task) throw new Error('TASK_NOT_FOUND');
+        if (!schema.TERMINAL_STATUSES.has(task.status)) throw new Error('TASK_NOT_TERMINAL');
+        const items = { ...rootValue.items };
+        delete items[normalizedTaskId];
+        await chromeApi.storage.local.set({
+          [STORAGE_KEY]: { schemaVersion: 1, items, updatedAt: now() },
+        });
+        return task;
+      });
+    }
+    async function clearTerminal() {
+      return enqueue(async () => {
+        const rootValue = await readRoot();
+        const deletedTaskIds = [];
+        const items = {};
+        Object.entries(rootValue.items).forEach(([taskId, task]) => {
+          if (schema.TERMINAL_STATUSES.has(task.status)) deletedTaskIds.push(taskId);
+          else items[taskId] = task;
+        });
+        if (deletedTaskIds.length) {
+          await chromeApi.storage.local.set({
+            [STORAGE_KEY]: { schemaVersion: 1, items, updatedAt: now() },
+          });
+        }
+        return { deletedTaskIds, deletedCount: deletedTaskIds.length };
+      });
+    }
+    return { clearTerminal, create, get, list, listActive, patch, readRoot, removeTerminal, save };
   }
   return { STORAGE_KEY, createTaskRepository };
 });

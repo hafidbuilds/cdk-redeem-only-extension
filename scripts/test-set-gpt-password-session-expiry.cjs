@@ -23,9 +23,13 @@ function createSessionExpiryHarness(options = {}) {
   };
   const calls = {
     complete: 0,
+    completedNodes: [],
+    generatePassword: 0,
     prepare: 0,
     resetEmails: [],
+    resetPasswords: [],
     resetWaits: [],
+    sentNodeIds: [],
     tabUrls: [],
     updatedUrls: [],
   };
@@ -37,9 +41,11 @@ function createSessionExpiryHarness(options = {}) {
       tabs: {
         get: async () => ({
           id: 7,
-          url: options.expireDuringPasswordPoll
+          url: options.expireDuringPasswordPoll && passwordSubmitCalls > 0
             ? 'https://auth.openai.com/error'
-            : 'https://chatgpt.com/#settings/Security',
+            : (options.newPasswordReady
+              ? 'https://auth.openai.com/reset-password/new-password'
+              : 'https://chatgpt.com/#settings/Security'),
         }),
         update: async (_tabId, update) => {
           if (update?.url) calls.updatedUrls.push(update.url);
@@ -47,17 +53,28 @@ function createSessionExpiryHarness(options = {}) {
         },
       },
     },
-    completeNodeFromBackground: async () => { calls.complete += 1; },
+    completeNodeFromBackground: async (nodeId) => {
+      calls.complete += 1;
+      calls.completedNodes.push(nodeId);
+    },
     ensureContentScriptReadyOnTab: async () => {},
+    generatePassword: () => {
+      calls.generatePassword += 1;
+      return 'Generated-password-2';
+    },
+    getTabId: async () => 7,
     getState: async () => ({ ...state }),
+    isTabAlive: async () => true,
     reuseOrCreateTab: async (_source, url) => {
       calls.tabUrls.push(url);
       return 7;
     },
     sendToContentScriptResilient: async (_source, message) => {
+      calls.sentNodeIds.push([message.type, message.payload?.nodeId]);
       if (message.type === 'START_SET_GPT_PASSWORD_RESET') {
         resetCalls += 1;
         calls.resetEmails.push(message.payload.email);
+        calls.resetPasswords.push(message.payload.currentPassword);
         calls.resetWaits.push(message.payload.passwordActionWaitMs);
         if (options.expireDuringPasswordPoll) {
           return { ready: true, alreadyOnNewPasswordPage: true };
@@ -121,50 +138,101 @@ test('session-ended detector requires both the terminal message and exact invali
   }
 });
 
-test('step 6 restarts in place with the same account after invalid_state', async () => {
-  const { calls, executor, state } = createSessionExpiryHarness();
-  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+test('ChatGPT settings session-expired modal is detected across supported locales', () => {
+  const originalDocument = globalThis.document;
+  try {
+    globalThis.document = { title: 'ChatGPT' };
+    let pageText = '';
+    const recovery = createAuthPageRecovery({ getPageTextSnapshot: () => pageText });
 
-  assert.equal(result.gptPasswordSet, true);
+    for (const localizedText of [
+      'Session expired. Log in to continue using the app.',
+      '会话已过期。要继续使用此应用，请登录。',
+      '세션이 만료되었습니다 앱을 계속 사용하려면 로그인하세요. 로그인',
+      'セッションの有効期限が切れました。アプリを引き続き使用するにはログインしてください。',
+      'सत्र समाप्त हो गया। ऐप का उपयोग जारी रखने के लिए लॉग इन करें।',
+    ]) {
+      pageText = localizedText;
+      assert.equal(recovery.isChatGptSessionExpiredPage(), true, localizedText);
+    }
+
+    pageText = 'Session management settings. Log in to manage another account.';
+    assert.equal(recovery.isChatGptSessionExpiredPage(), false);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('step 7 restarts its reset entry in place with the same account after invalid_state', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness();
+  const result = await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
+
+  assert.equal(result.gptPasswordResetStage, 'new_password_ready');
   assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
   assert.equal(calls.tabUrls.length, 2);
   assert.equal(calls.complete, 1);
+  assert.deepEqual(calls.completedNodes, ['fetch-gpt-password-code']);
+  assert.equal(calls.generatePassword, 0);
+  assert.equal(calls.sentNodeIds.every(([, nodeId]) => nodeId === 'fetch-gpt-password-code'), true);
   assert.equal(state.email, 'same-account@example.test');
 });
 
-test('step 6 session restart is bounded to two restarts', async () => {
+test('step 7 passes the password already bound to the current account for the current-password challenge', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ newPasswordReady: true });
+
+  await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
+
+  assert.ok(calls.resetPasswords.length >= 1);
+  assert.equal(calls.resetPasswords.every((password) => password === 'Example-password-1'), true);
+  assert.equal(calls.generatePassword, 0);
+});
+
+test('step 7 does not send a password that belongs to a different account', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ newPasswordReady: true });
+  state.passwordAccountIdentifier = 'different-account@example.test';
+
+  await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
+
+  assert.ok(calls.resetPasswords.length >= 1);
+  assert.equal(calls.resetPasswords.every((password) => password === ''), true);
+});
+
+test('step 7 reset entry recovery is bounded to two restarts', async () => {
   const { calls, executor, state } = createSessionExpiryHarness({ alwaysExpire: true });
   await assert.rejects(
-    executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 }),
+    executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 }),
     (error) => isSetGptPasswordSessionExpiredError(error)
   );
   assert.equal(calls.resetEmails.length, 3);
   assert.equal(calls.complete, 0);
 });
 
-test('auth error URL is probed and restarts step 6 instead of being treated as password success', async () => {
-  const { calls, executor, state } = createSessionExpiryHarness({ expireDuringPasswordPoll: true });
-  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
-  assert.equal(result.gptPasswordSet, true);
-  assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
-  assert.equal(calls.complete, 1);
+test('step 8 requires the step 7 checkpoint and never starts the reset flow itself', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ newPasswordReady: true });
+  await assert.rejects(
+    executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 8 }),
+    (error) => error.code === 'SET_GPT_PASSWORD_SESSION_EXPIRED'
+      && error.restartNodeId === 'fetch-gpt-password-code'
+  );
+  assert.equal(calls.resetEmails.length, 0);
+  assert.equal(calls.complete, 0);
 });
 
-test('missing reset entry restarts step 6 without opening the stateless new-password URL', async () => {
+test('missing reset entry restarts step 7 without opening the stateless new-password URL', async () => {
   const { calls, executor, state } = createSessionExpiryHarness({ resetEntryMissing: true });
-  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
-  assert.equal(result.gptPasswordSet, true);
+  const result = await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
+  assert.equal(result.gptPasswordResetStage, 'new_password_ready');
   assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
   assert.equal(calls.updatedUrls.includes('https://auth.openai.com/reset-password/new-password'), false);
   assert.equal(calls.complete, 1);
 });
 
-test('late Password entry is rechecked on the same Security page before restarting step 6', async () => {
+test('late Password entry is rechecked on the same Security page before restarting step 7', async () => {
   const { calls, executor, state } = createSessionExpiryHarness({ lateSettingsPasswordEntry: true });
 
-  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+  const result = await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
 
-  assert.equal(result.gptPasswordSet, true);
+  assert.equal(result.gptPasswordResetStage, 'new_password_ready');
   assert.deepEqual(calls.resetEmails, ['same-account@example.test', 'same-account@example.test']);
   assert.equal(calls.tabUrls.length, 1);
   assert.equal(calls.resetWaits[0], undefined);
@@ -175,15 +243,48 @@ test('late Password entry is rechecked on the same Security page before restarti
 test('slow reset-entry navigation is reconciled on the same attempt instead of stopping the workflow', async () => {
   const { calls, executor, state } = createSessionExpiryHarness({ slowResetEntryTransition: true });
 
-  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 6 });
+  const result = await executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 });
 
-  assert.equal(result.gptPasswordSet, true);
+  assert.equal(result.gptPasswordResetStage, 'new_password_ready');
   assert.deepEqual(calls.resetEmails, ['same-account@example.test']);
   assert.equal(calls.prepare, 1);
   assert.equal(calls.complete, 1);
 });
 
-test('unrelated invalid_state text is not classified as a step 6 restart signal', () => {
+test('step 8 submits only on the same account new-password page', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ newPasswordReady: true });
+  Object.assign(state, {
+    gptPasswordResetStage: 'new_password_ready',
+    gptPasswordResetEmail: state.email,
+    gptPasswordResetReadyAt: new Date().toISOString(),
+  });
+
+  const result = await executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 8 });
+
+  assert.equal(result.gptPasswordSet, true);
+  assert.equal(calls.resetEmails.length, 0);
+  assert.deepEqual(calls.completedNodes, ['set-gpt-password']);
+  assert.equal(calls.sentNodeIds.every(([, nodeId]) => nodeId === 'set-gpt-password'), true);
+});
+
+test('step 8 session loss requests an automatic restart from step 7', async () => {
+  const { calls, executor, state } = createSessionExpiryHarness({ newPasswordReady: true, expireDuringPasswordPoll: true });
+  Object.assign(state, {
+    gptPasswordResetStage: 'new_password_ready',
+    gptPasswordResetEmail: state.email,
+    gptPasswordResetReadyAt: new Date().toISOString(),
+  });
+
+  await assert.rejects(
+    executor.executeSetGptPassword({ ...state, nodeId: 'set-gpt-password', visibleStep: 8 }),
+    (error) => error.code === 'SET_GPT_PASSWORD_SESSION_EXPIRED'
+      && error.restartNodeId === 'fetch-gpt-password-code'
+  );
+  assert.equal(calls.resetEmails.length, 0);
+  assert.equal(calls.complete, 0);
+});
+
+test('unrelated invalid_state text is not classified as a password split restart signal', () => {
   assert.equal(isSetGptPasswordSessionExpiredError(new Error('invalid_state')), false);
   assert.equal(isSetGptPasswordSessionExpiredError('SET_GPT_PASSWORD_SESSION_EXPIRED::redacted'), true);
   assert.equal(isSetGptPasswordSessionExpiredError('SET_GPT_PASSWORD_RESET_ENTRY_UNAVAILABLE::redacted'), true);

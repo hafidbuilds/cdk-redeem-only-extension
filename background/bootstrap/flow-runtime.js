@@ -30,12 +30,6 @@
       plusPaymentMethod: 'upi',
       registrationFreeRoute: 'passkey-free',
     }) || PLUS_UPI_STEP_DEFINITIONS;
-    const PLUS_UPI_REDEEM_ONLY_STEP_DEFINITIONS = globalScope.MultiPageStepDefinitions?.getSteps?.({
-      activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-      plusModeEnabled: true,
-      plusPaymentMethod: 'upi',
-      upiRedeemStopAfterRedeem: true,
-    }) || PLUS_UPI_STEP_DEFINITIONS.slice(0, 7);
     const LOCAL_CPA_JSON_NO_RT_STEP_DEFINITIONS = globalScope.MultiPageStepDefinitions?.getSteps?.({
       activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
       panelMode: 'local-cpa-json-no-rt',
@@ -50,10 +44,14 @@
     ];
     const STEP_IDS = Array.from(new Set(normalizeStepIds(ALL_STEP_DEFINITIONS)));
     const DEFAULT_STEP_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
-    const DEFAULT_NODE_IDS = Array.from(new Set(ALL_STEP_DEFINITIONS
+    const DEFAULT_NODE_STATUSES = globalScope.MultiPageStepDefinitions?.getDefaultNodeStatuses?.({
+      activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+      registrationFreeRoute: 'full-2fa',
+    }) || Object.fromEntries(PLUS_UPI_STEP_DEFINITIONS
       .map((definition) => String(definition?.key || '').trim())
-      .filter(Boolean)));
-    const DEFAULT_NODE_STATUSES = Object.fromEntries(DEFAULT_NODE_IDS.map((nodeId) => [nodeId, 'pending']));
+      .filter(Boolean)
+      .map((nodeId) => [nodeId, 'pending']));
+    const DEFAULT_NODE_IDS = Object.keys(DEFAULT_NODE_STATUSES);
     const NORMAL_STEP_IDS = normalizeStepIds(NORMAL_STEP_DEFINITIONS);
     const PLUS_UPI_STEP_IDS = normalizeStepIds(PLUS_UPI_STEP_DEFINITIONS);
     const PLUS_STEP_IDS = PLUS_UPI_STEP_IDS;
@@ -75,7 +73,6 @@
       normalizePlusPaymentMethod: deps.normalizePlusPaymentMethod,
       plusStepDefinitions: PLUS_UPI_STEP_DEFINITIONS,
       plusStepIds: PLUS_UPI_STEP_IDS,
-      plusUpiRedeemOnlyStepDefinitions: PLUS_UPI_REDEEM_ONLY_STEP_DEFINITIONS,
       signupMethodEmail: deps.signupMethodEmail,
     });
 
@@ -149,7 +146,6 @@
       PLUS_UPI_STEP_DEFINITIONS,
       NO_2FA_FREE_STEP_DEFINITIONS,
       PASSKEY_FREE_STEP_DEFINITIONS,
-      PLUS_UPI_REDEEM_ONLY_STEP_DEFINITIONS,
       LOCAL_CPA_JSON_NO_RT_STEP_DEFINITIONS,
       PLUS_STEP_DEFINITIONS,
       ALL_STEP_DEFINITIONS,

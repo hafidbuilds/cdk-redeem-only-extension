@@ -31,7 +31,7 @@ test('late verification input parks and resumes the same step before any registr
   assert.ok(uncertainGuardIndex > pendingGuardIndex);
   assert.ok(restartIncrementIndex > uncertainGuardIndex);
   assert.match(pendingBranch, /parkFetchSignupCodeRestart\(err/);
-  assert.match(pendingBranch, /resumeLabel: '继续步骤 4'/);
+  assert.match(pendingBranch, /resumeLabel: '继续步骤 5'/);
   assert.match(pendingBranch, /resumeCounterKey: 'step4VerificationRenderResumeCount'/);
   assert.match(pendingBranch, /maxResumeCount: 3/);
   assert.doesNotMatch(pendingBranch, /invalidateDownstreamAfterAutoRunNodeRestart|setRestartNode\('open-chatgpt'\)/);

@@ -6,10 +6,18 @@
   const FAILURE_MESSAGE_PATTERN = /\b(?:failed|failure|exception)\b|(?:^|[\s:：])(?:失败|错误|异常)(?=[：:，,。！!\s]|$)/i;
   const TIMEOUT_OUTCOME_PATTERN = /\b(?:timed\s+out|timeout)(?=\s*(?:[.:!]|$))|超时(?=\s*(?:[：:，,。！!]|URL\b|$))/i;
   const FAILURE_LEVELS = new Set(['error', 'failed', 'failure']);
+  const RECOVERY_COMPLETION_PATTERN = /(?:已成功完成|已完成|completed|succeeded|success)/i;
   const LOG_RADIUS = 100;
+  const STRUCTURED_ERROR_CODE_PATTERN = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?=::)/g;
 
   function sanitizePlainText(value = '') {
-    return String(value ?? '')
+    const structuredCodes = [];
+    const protectedValue = String(value ?? '').replace(STRUCTURED_ERROR_CODE_PATTERN, (code) => {
+      const index = structuredCodes.push(code) - 1;
+      return `@@CODE${index}@@`;
+    });
+
+    return protectedValue
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]{8,}/gi, 'Bearer [REDACTED]')
       .replace(/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[JWT_REDACTED]')
       .replace(/\b(?:sk|key|token)-[A-Za-z0-9_-]{8,}\b/gi, '[TOKEN_REDACTED]')
@@ -21,7 +29,8 @@
       .replace(/((?:已生成)?姓名(?:已填写)?\s*[:：]?\s*)(?:[A-Z][A-Z .'-]{1,80}|[\u3400-\u9fff·]{2,20})(?=\s*(?:[,，。;；]|$))/gi, '$1[NAME_REDACTED]')
       .replace(/\b[A-Za-z0-9._~+\/-]{20,}\b/g, '[TOKEN_REDACTED]')
       .replace(/\b\d{4,8}\b/g, '[NUMBER_REDACTED]')
-      .replace(/\b([A-Z0-9._%+-])[A-Z0-9._%+-]*@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi, '$1***@$2');
+      .replace(/\b([A-Z0-9._%+-])[A-Z0-9._%+-]*@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi, '$1***@$2')
+      .replace(/@@CODE(\d+)@@/g, (_match, index) => structuredCodes[Number(index)] || '[CODE_REDACTED]');
   }
 
   function sanitizeUrl(value = '') {
@@ -61,15 +70,48 @@
     return /^\s*(?:快照|snapshot)(?:\s|[:：])/i.test(String(entry?.message || ''));
   }
 
+  function isFailureRecovered(source = [], failureIndex = -1) {
+    if (failureIndex < 0 || failureIndex >= source.length) return false;
+    const failure = source[failureIndex] || {};
+    const nodeId = String(failure.nodeId || '').trim();
+    const stepKey = String(failure.stepKey || '').trim();
+    if (!nodeId && !stepKey) return false;
+
+    for (let index = failureIndex + 1; index < source.length; index += 1) {
+      const candidate = source[index] || {};
+      const sameNode = nodeId && String(candidate.nodeId || '').trim() === nodeId;
+      const sameStepKey = !nodeId && stepKey && String(candidate.stepKey || '').trim() === stepKey;
+      if (!sameNode && !sameStepKey) continue;
+      if (
+        String(candidate.level || '').trim().toLowerCase() === 'ok'
+        && RECOVERY_COMPLETION_PATTERN.test(String(candidate.message || ''))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function findLatestFailureIndex(source = []) {
     for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (!isArchivedSnapshot(source[index]) && isFailureLevel(source[index])) return index;
+      if (
+        !isArchivedSnapshot(source[index])
+        && isFailureLevel(source[index])
+        && !isFailureRecovered(source, index)
+      ) return index;
     }
     for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (!isArchivedSnapshot(source[index]) && isExplicitFailureMessage(source[index])) return index;
+      if (
+        !isArchivedSnapshot(source[index])
+        && isExplicitFailureMessage(source[index])
+        && !isFailureRecovered(source, index)
+      ) return index;
     }
     for (let index = source.length - 1; index >= 0; index -= 1) {
-      if (isFailureLevel(source[index]) || isExplicitFailureMessage(source[index])) return index;
+      if (
+        (isFailureLevel(source[index]) || isExplicitFailureMessage(source[index]))
+        && !isFailureRecovered(source, index)
+      ) return index;
     }
     return -1;
   }

@@ -33,36 +33,25 @@
       executeNodeViaCompletionSignal,
       exportCurrentSessionJson,
       exportUpiAccountCredentialBackupTextFile = null,
-      checkUpiCredentialMembershipBatch = null,
-      checkUpiCredentialMembershipOne = null,
-      checkUpiCredentialMembershipTrialEligibility = null,
-      deleteUpiCredentialMembershipCredentials = null,
-      deleteUpiCredentialMembershipCheckResults = null,
-      exportUpiCredentialMembershipCheckResults = null,
-      fillUpiCredentialMembershipFreeAccessTokens = null,
-      getUpiCredentialMembershipCredentialPool = null,
-      getUpiCredentialMembershipCheckResults = null,
-      identifyUpiCredentialMembershipFreePlus = null,
-      importUpiCredentialMembershipFreeResults = null,
-      loginUpiCredentialMembershipAccount = null,
-      moveUpiCredentialMembershipAccountGroup = null,
-      pruneIneligibleFreeUpiCredentialMembership = null,
-      redeemUpiCredentialMembershipFree = null,
-      refreshUpiCredentialMembershipAccessTokens = null,
-      retryFailedUpiRedeemCdkey = null,
-      stopUpiCredentialMembershipCheck = null,
-      stopUpiCredentialMembershipRedeem = null,
-      verifyUpiCredentialMembershipPlus = null,
+      checkFreeAccountEligibility = null,
+      deleteFreeAccountResults = null,
+      exportFreeAccountResults = null,
+      fillFreeAccountAccessTokens = null,
+      startFillFreeAccountSessions = null,
+      resumeFillFreeAccountSessions = null,
+      stopFillFreeAccountSessions = null,
+      isFreeAccountSessionFillActive = null,
+      getFreeAccountResults = null,
+      importFreeAccountResults = null,
+      loginFreeAccount = null,
+      refreshFreeAccountAccessTokens = null,
+      stopFreeAccountCheck = null,
       exportSettingsBundle,
       ensureContentScriptReadyOnTabUntilStopped = null,
       fetchHostedCheckoutVerificationCodeManually = null,
       testCheckoutConversionProxy = null,
       fetchGeneratedEmail,
       refreshCardHelperCardBalance,
-      cancelUpiRedeemCdkeyJobs = null,
-      refreshUpiRedeemCdkeyStatuses = null,
-      retryUpiRedeemCdkeyJobs = null,
-      checkUpiRedeemSubscriptionStatuses = null,
       refreshOAuthTimeoutWindowAfterCheckoutSuccess = null,
       finalizeStep3Completion,
       finalizeIcloudAliasAfterSuccessfulFlow,
@@ -198,11 +187,6 @@
       verifyHotmailAccount,
     } = deps;
 
-    function getRouterRedeemRefreshServiceModule() {
-      const rootScope = typeof self !== 'undefined' ? self : globalThis;
-      return rootScope.MultiPageRouterRedeemRefreshService || {};
-    }
-
     function getRouterNodeProtocolServiceModule() {
       const rootScope = typeof self !== 'undefined' ? self : globalThis;
       return rootScope.MultiPageRouterNodeProtocolService || {};
@@ -222,26 +206,6 @@
       const rootScope = typeof self !== 'undefined' ? self : globalThis;
       return rootScope.MultiPageRouterMessageDispatcher || {};
     }
-
-    const createRouterRedeemRefreshService = getRouterRedeemRefreshServiceModule().createRouterRedeemRefreshService;
-    if (typeof createRouterRedeemRefreshService !== 'function') {
-      throw new Error('Router redeem refresh service module is not loaded.');
-    }
-    const {
-      refreshPendingUpiCredentialMembershipRedeemStatuses,
-      refreshUpiRedeemCdkeyStatusesAndSync,
-      syncUpiCredentialMembershipResultsAfterCdkeyRefresh,
-    } = createRouterRedeemRefreshService({
-      addLog,
-      broadcastDataUpdate,
-      checkUpiRedeemSubscriptionStatuses,
-      getState,
-      isAutoRunLockedState,
-      refreshUpiRedeemCdkeyStatuses,
-      retryFailedUpiRedeemCdkey,
-      retryUpiRedeemCdkeyJobs,
-      setState,
-    });
 
     const createRouterPaymentSessionService = getRouterPaymentSessionServiceModule().createRouterPaymentSessionService;
     if (typeof createRouterPaymentSessionService !== 'function') {
@@ -330,11 +294,8 @@
       buildPersistentSettingsPayload,
       mergeCustomEmailPoolEntriesForSettings,
       cancelScheduledAutoRun,
-      cancelUpiRedeemCdkeyJobs,
       checkIcloudSession,
-      checkUpiCredentialMembershipBatch,
-      checkUpiCredentialMembershipOne,
-      checkUpiCredentialMembershipTrialEligibility,
+      checkFreeAccountEligibility,
       clearAccountRunHistory,
       clearAutoRunTimerAlarm,
       clearStopRequest,
@@ -346,7 +307,11 @@
       executeNodeForManualChain,
       exportSettingsBundle,
       fetchGeneratedEmail,
-      fillUpiCredentialMembershipFreeAccessTokens,
+      fillFreeAccountAccessTokens,
+      startFillFreeAccountSessions,
+      resumeFillFreeAccountSessions,
+      stopFillFreeAccountSessions,
+      isFreeAccountSessionFillActive,
       findStepByNodeId,
       getNextNodeIdForState,
       getNodeIdsForState,
@@ -363,11 +328,9 @@
       lockAutomationWindowFromMessage,
       normalizeHotmailAccounts,
       normalizeRunCount,
-      refreshUpiRedeemCdkeyStatusesAndSync,
       resetState,
       resolveSignupMethod,
       resumeAutoRun,
-      retryUpiRedeemCdkeyJobs,
       scheduleAutoRun,
       setContributionMode,
       setEmailState,
@@ -379,38 +342,36 @@
       shouldAutoContinueManualNode,
       skipAutoRunCountdown,
       startAutoRunLoop,
-      syncUpiCredentialMembershipResultsAfterCdkeyRefresh,
       validateAutoRunStart,
       validateModeSwitch,
     });
 
-    const createRouterMessageDispatcher = getRouterMessageDispatcherModule().createRouterMessageDispatcher;
+    const routerMessageDispatcherModule = getRouterMessageDispatcherModule();
+    const createRouterMessageDispatcher = routerMessageDispatcherModule.createRouterMessageDispatcher;
     if (typeof createRouterMessageDispatcher !== 'function') {
       throw new Error('Router message dispatcher module is not loaded.');
     }
-    const { handleMessage } = createRouterMessageDispatcher({
+    const { handleMessage: dispatchMessage } = createRouterMessageDispatcher({
       addLog,
       appendAccountRunRecord,
       appendManualAccountRunRecordIfNeeded,
       batchUpdateLuckmailPurchases,
       broadcastDataUpdate,
-      checkUpiRedeemSubscriptionStatuses,
       clearStopRequest,
       completeNodeFromBackground,
       deleteHotmailAccount,
       deleteHotmailAccounts,
       deleteMail2925Account,
       deleteMail2925Accounts,
-      deleteUpiCredentialMembershipCheckResults,
-      deleteUpiCredentialMembershipCredentials,
+      deleteFreeAccountResults,
       deps,
       disableUsedLuckmailPurchases,
       executeNodeForManualChain,
       exportCurrentSessionJson,
       exportUpiAccountCredentialBackupTextFile,
-      exportUpiCredentialMembershipCheckResults,
+      exportFreeAccountResults,
       fetchHostedCheckoutVerificationCodeManually,
-      fillUpiCredentialMembershipFreeAccessTokens,
+      fillFreeAccountAccessTokens,
       finalizeStep3Completion,
       findHotmailAccount,
       findStepByNodeId,
@@ -421,20 +382,18 @@
       getState,
       getStepKeyForState,
       getStopRequested,
-      getUpiCredentialMembershipCheckResults,
-      getUpiCredentialMembershipCredentialPool,
+      getFreeAccountResults,
       handleCloudflareSecurityBlocked,
       handleStepData,
-      identifyUpiCredentialMembershipFreePlus,
-      importUpiCredentialMembershipFreeResults,
+      importFreeAccountResults,
+      isFreeAccountSessionFillActive,
       invalidateDownstreamAfterStepRestart,
       isAutoRunLockedState,
       isCloudflareSecurityBlockedError,
       isStaleAutoRunNodeMessage,
       isStopError,
       listLuckmailPurchasesForManagement,
-      loginUpiCredentialMembershipAccount,
-      moveUpiCredentialMembershipAccountGroup,
+      loginFreeAccount,
       normalizeHotmailAccounts,
       normalizeNodeProtocolMessage,
       normalizeString,
@@ -444,9 +403,7 @@
       patchMail2925Account,
       pauseRemovedPaymentWorkerJob,
       pollContributionStatus,
-      pruneIneligibleFreeUpiCredentialMembership,
-      redeemUpiCredentialMembershipFree,
-      refreshUpiCredentialMembershipAccessTokens,
+      refreshFreeAccountAccessTokens,
       refreshCardHelperCardBalance,
       refreshChatGptSessionAndInspectPlusActivation,
       refreshOAuthTimeoutWindowAfterCheckoutSuccess,
@@ -467,8 +424,7 @@
       shouldAutoContinueManualNode,
       skipNode,
       startContributionFlow,
-      stopUpiCredentialMembershipCheck,
-      stopUpiCredentialMembershipRedeem,
+      stopFreeAccountCheck,
       syncHotmailAccounts,
       testCheckoutConversionProxy,
       testHotmailAccountMailAccess,
@@ -476,13 +432,19 @@
       upsertLegacyWalletAccount,
       upsertMail2925Account,
       verifyHotmailAccount,
-      verifyUpiCredentialMembershipPlus,
     });
+
+    async function handleMessage(message, sender) {
+      const response = await dispatchMessage(message, sender);
+      const compactResponse = routerMessageDispatcherModule.compactRuntimeMessageResponse;
+      return typeof compactResponse === 'function'
+        ? compactResponse(message, response)
+        : response;
+    }
 
     return {
       handleMessage,
       handleStepData,
-      refreshPendingUpiCredentialMembershipRedeemStatuses,
     };
   }
 

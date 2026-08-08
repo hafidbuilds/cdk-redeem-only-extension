@@ -9,6 +9,56 @@ rg -n "关键词" docs/audit/issue-fix-archive-*.md
 git log --oneline -- docs/audit
 ```
 
+## 2026-08
+
+| 日期 | 问题 | 修复结论 | 详细记录 |
+| --- | --- | --- | --- |
+| 2026-08-08 | 注册完成后仍显示并执行不再需要的第 10 步 | 工作流升级为九步，第 9 步保存 `unknown` 后结束；资格接口代码保留供手动复检 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step10-hidden-nine-step-workflow) |
+| 2026-08-08 | 第 10 步仍按旧协议请求资格接口，缺少 GCash 检查参数和服务授权 | 发送 `check_gcash_pm` 与独立 Bearer 令牌，按 GCash 字段区分无资格、配置失败和临时错误 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step10-gcash-api-contract) |
+| 2026-08-02 | 第 4 步账号已停用时仍继续等待验证码或重开当前账号 | 标记账号封禁；手动停止，自动运行同轮换下一个账号 | [记录](issue-fix-archive-2026-08.md#2026-08-02-step4-account-deactivated-replacement) |
+| 2026-08-02 | 七步工作流的步骤 3.5、密码重置和最终安全流程无法独立恢复 | 升级为固定十步；按节点检查点连续推进并迁移旧状态 | [记录](issue-fix-archive-2026-08.md#2026-08-02-workflow-v2-ten-step-refactor) |
+| 2026-08-03 | 第 10 步确认无试用资格后又选择同一账号 | 统一写入生命周期、排除邮箱池并让 Provider 来源失效 | [记录](issue-fix-archive-2026-08.md#2026-08-03-trial-ineligible-account-reselection) |
+| 2026-08-03 | 第 7 步进入当前密码确认页后被误判并回退，导致第 8 步缺少检查点 | 识别 `/log-in/password`，同邮箱提交已绑定密码后继续第 7 步 | [记录](issue-fix-archive-2026-08.md#2026-08-03-step7-current-password-challenge) |
+| 2026-08-03 | 第 7 步遇到 ChatGPT 会话过期弹窗后仍等待 Password 入口并报 75 秒超时 | 识别多语言过期弹窗并立即提示重新登录 | [记录](issue-fix-archive-2026-08.md#2026-08-03-step7-chatgpt-session-expired-modal) |
+| 2026-08-03 | 第 8 步未识别韩文密码复用错误，反复提交同一密码并回退第 7 步 | 提取并分类韩文错误，生成不同密码后在第 8 步重试 | [记录](issue-fix-archive-2026-08.md#2026-08-03-step8-korean-password-reuse) |
+| 2026-08-03 | 第 10 步明确无资格后，同一账号又回第 7 步重新执行 | 无资格绕过认证链恢复，结束当前轮并切换下一账号 | [记录](issue-fix-archive-2026-08.md#2026-08-03-step10-ineligible-post-auth-restart) |
+| 2026-08-04 | 选择免 2FA Free 路线后，自动运行仍执行第 7 步 | 重置时保留路线，并按恢复后的路线重建默认节点状态 | [记录](issue-fix-archive-2026-08.md#2026-08-04-no-2fa-route-reset-step7) |
+| 2026-08-04 | 免 2FA 完成一轮后，第 10 步在下一轮仍显示完成 | 重置消息携带权威路线节点图，侧栏用本轮待执行状态覆盖旧高亮 | [记录](issue-fix-archive-2026-08.md#2026-08-04-auto-run-reset-stale-step10-ui) |
+| 2026-08-04 | 免 2FA 第 9 步固定跳过却一直显示蓝色高亮 | 路线跳过节点统一灰置并显示“当前路线跳过” | [记录](issue-fix-archive-2026-08.md#2026-08-04-route-skipped-step9-active-style) |
+| 2026-08-04 | 账号工具仍保留卡密池、兑换和 Plus 分组，资格结果无法按两个 Free 分组统一管理 | 升级到 Free Account Tool V3.0.0，迁移 `freeAccountResults` 并删除 CDK/Plus 全链路 | [记录](issue-fix-archive-2026-08.md#2026-08-04-free-account-tool-v3-removal) |
+| 2026-08-04 | V3 两个 Free 分组已经生成，但首屏找不到入口 | 将“Free 账号”入口移到顶栏，点击后直接显示两个分组 | [记录](issue-fix-archive-2026-08.md#2026-08-04-free-groups-entry-hidden-below-fold) |
+| 2026-08-04 | 第 10 步资格落库节点仍显示并接受单独“跳过” | 三条路线的最终节点不再生成跳过按钮，Side Panel 与 Background 双重拒绝 | [记录](issue-fix-archive-2026-08.md#2026-08-04-step10-manual-skip-button) |
+| 2026-08-04 | 深色主题的 AT/Session 导出下拉框中 Session 文字几乎不可见 | 为原生选择框和选项显式设置明暗主题配色及 color-scheme | [记录](issue-fix-archive-2026-08.md#2026-08-04-session-export-select-dark-contrast) |
+| 2026-08-04 | Free 组与无资格 Free 组的公共操作起点、顺序和换行位置不对齐 | 公共操作使用一致顺序，Free 专属操作移入独立工具行 | [记录](issue-fix-archive-2026-08.md#2026-08-04-free-group-toolbar-alignment) |
+| 2026-08-04 | 切回完整 2FA 后仍显示免 2FA 的第 7/8 步跳过和旧节点完成状态 | 即时重置 Side Panel 路线状态，并修复 Background 路线保存的作用域异常 | [记录](issue-fix-archive-2026-08.md#2026-08-04-full-2fa-route-stale-no2fa-state) |
+| 2026-08-05 | 免 2FA 第 10 步被误报为当前模式不存在并回退第 7 步 | 路线注册表不再依赖已删除的 Plus 标志，免 2FA 与 Passkey 按所选路线执行 | [记录](issue-fix-archive-2026-08.md#2026-08-05-no2fa-step10-registry-plus-flag) |
+| 2026-08-05 | Free 与无资格 Free 的 AT/Session 导出错误下载为 V3 JSON | 改为逐账号一行的 UTF-8 TXT，Session 作为凭据字段保留完整内容 | [记录](issue-fix-archive-2026-08.md#2026-08-05-free-export-txt-format) |
+| 2026-08-05 | Free 账号分组弹窗无法独立上下滑动，滚轮会移动主界面 | 面板建立真实纵向滚动区，打开时锁定底层页面并阻止滚动穿透 | [记录](issue-fix-archive-2026-08.md#2026-08-05-free-account-modal-scroll) |
+| 2026-08-05 | 任务列表刷新没有反馈，已结束任务也没有删除入口 | 刷新显示忙碌状态和完成时间；支持逐条及批量删除终态任务与事件 | [记录](issue-fix-archive-2026-08.md#2026-08-05-account-task-refresh-delete) |
+| 2026-08-05 | 步骤 2 邮箱已填写但 Continue 慢渲染，导致当前账号整轮重试 | 延长等待并恢复重渲染表单；按钮不可用时对匹配邮箱执行一次回车提交 | [记录](issue-fix-archive-2026-08.md#2026-08-05-step2-continue-enter-fallback) |
+| 2026-08-05 | 自动运行在第 1 步前因 Session storage quota 超限终止 | Free 结果与规范账号改为 Local-only，启动时清除旧 Session 重复副本 | [记录](issue-fix-archive-2026-08.md#2026-08-05-session-storage-quota-free-results) |
+| 2026-08-05 | 120 个已导入账号缺少 Session，现有 AT 刷新无法持久续跑或自动导出 | 新增缺 Session 统计和可停止、可续跑的串行补充 Session 任务，逐条落库并自动下载 TXT | [记录](issue-fix-archive-2026-08.md#2026-08-05-batch-fill-free-account-sessions) |
+| 2026-08-05 | 补充 Session 卡片长期显示 0/120 或续跑前旧状态，事件看不到失败原因 | 登录开始即写序号和计数，任务卡自动刷新；事件显示脱敏错误码、具体原因和中文生命周期文案 | [记录](issue-fix-archive-2026-08.md#2026-08-05-session-fill-progress-events-visibility) |
+| 2026-08-05 | 补充 Session 已处理约 20 个账号但成功始终为 0 | 启动和续跑前清除自动注册遗留停止标志；新的停止信号按整批取消处理 | [记录](issue-fix-archive-2026-08.md#2026-08-05-session-fill-stale-global-stop) |
+| 2026-08-05 | 补充 Session 任务卡已推进到 12/100，事件面板仍停在 1/100 | 打开事件后随任务轮询同步刷新；关闭或删除时解除当前事件任务 | [记录](issue-fix-archive-2026-08.md#2026-08-05-task-events-stale-after-open) |
+| 2026-08-05 | 登录完成后连续报 `FREE_ACCOUNT_SESSION_INCOMPLETE`，成功仍为 0 | 解包 Session 读取器响应外壳，保存和校验内层完整接口内容 | [记录](issue-fix-archive-2026-08.md#2026-08-05-session-reader-envelope-incomplete) |
+| 2026-08-06 | 补充 Session 部分失败后无法查看早期原因，事件自动刷新总拉回底部 | 压缩优先保留错误事件；用户向上滚动时保持位置 | [记录](issue-fix-archive-2026-08.md#2026-08-06-task-event-failure-retention-scroll) |
+| 2026-08-07 | 第 5 步已注册邮箱被诊断成步骤 4，结构化错误码又被误遮盖 | 按调用步骤输出文案并保护 `SIGNUP_USER_ALREADY_EXISTS` 错误码 | [记录](issue-fix-archive-2026-08.md#2026-08-07-step5-user-already-exists-diagnostic) |
+| 2026-08-07 | 免 2FA 第 10 步存储配额超限后只能回第 7 步重试 | 增加 `unlimitedStorage`，配额错误只有限重试当前第 10 步 | [记录](issue-fix-archive-2026-08.md#2026-08-07-no2fa-step10-storage-quota-retry) |
+| 2026-08-07 | 免 2FA 手动处理前六步后第 10 步仍灰置，无法直接执行 | 未触发 TOTP 时条件性第 4 步不再阻塞，第 10 步执行前自动补记跳过 | [记录](issue-fix-archive-2026-08.md#2026-08-07-no2fa-step10-manual-execution) |
+| 2026-08-07 | 免 2FA 第 10 步资格接口超时后又自动回到第 7 步 | 临时资格失败只有限重试当前第 10 步，不再探测认证页或重置密码链 | [记录](issue-fix-archive-2026-08.md#2026-08-07-no2fa-step10-eligibility-timeout-retry) |
+| 2026-08-07 | 重启同一指纹浏览器 Profile 后插件配置恢复为默认值 | Local 成为配置唯一权威来源，旧 Session 快照不再覆盖已保存设置 | [记录](issue-fix-archive-2026-08.md#2026-08-07-persisted-settings-session-override) |
+| 2026-08-08 | 邮箱注册默认进入验证码页后无法在第 3 步创建密码 | 点击官网“使用密码继续”，确认创建后跳过步骤 7、8；无入口时保留免密码流程 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-email-verification-password-switch) |
+| 2026-08-08 | 法语验证码页显示密码入口但第 3 步没有点击 | 识别法语“Continuer avec un mot de passe”及同义文本并复用既有切换流程 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-french-password-switch-label) |
+| 2026-08-08 | 法语密码入口仍可见，但第 3 步瞬间完成并继续取验证码 | 逐字段识别按钮并等待渲染/启用；可见但不可点击时保留会话停止 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-password-switch-accessible-text) |
+| 2026-08-08 | 第 3 步等待 5 秒后仍跳过页面上可见的法语密码入口 | 从嵌套文字叶节点解析父级点击组件；有入口文案却无法定位时禁止静默跳过 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-password-switch-text-leaf) |
+| 2026-08-08 | 文字叶节点修复后第 3 步仍等待 5 秒并误完成 | 规范化隐藏字符、匹配短语包装文本、遍历开放 Shadow DOM，并在延迟点击前重新定位 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-password-switch-deep-dom) |
+| 2026-08-08 | 指纹浏览器中已识别密码入口文案，但第 3 步仍无法解析点击目标 | 扫描所有元素类型，兼容零尺寸操作容器，并输出脱敏结构摘要 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-password-switch-structural-action) |
+| 2026-08-08 | 密码入口已定位但实际为 `/log-in/password`，第 3 步仍报无法点击并停止 | 单独分类已有账号登录入口，不点击或误报创建密码，继续验证码流程 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-login-password-switch-fallback) |
+| 2026-08-08 | 旧第 10 步结果在新会话第 5 步期间回写并提前触发第 7 步 | 全链路复核自动运行会话，拒绝旧节点消息和晚到资格结果；诊断忽略已恢复错误 | [记录](issue-fix-archive-2026-08.md#2026-08-08-auto-run-superseded-session-race) |
+| 2026-08-08 | 验证码页明确显示密码按钮，但第 3 步不点击并原地报完成 | 受控点击官方 `/log-in/password` 入口，等待密码页并继续原生表单提交 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step3-login-password-switch-click) |
+| 2026-08-08 | 步骤 2 首次误报主页无注册入口，第二次重试才显示成功 | 识别法语主页入口，并由 Background 独占首次探测、跳转和提交的最终状态裁决 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step2-first-attempt-recovery-error-race) |
+
 ## 2026-07
 
 | 日期 | 问题 | 修复结论 | 详细记录 |
@@ -45,6 +95,16 @@ git log --oneline -- docs/audit
 | 2026-07-28 | 自定义邮箱验证码未被 OpenAI 接受却被步骤 4 当作成功 | 人工确认后复核权威页面状态；拒绝或未知时保留会话停止 | [记录](issue-fix-archive-2026-07.md#2026-07-28-manual-signup-verification-confirmation) |
 | 2026-07-29 | 步骤 6 最新邮件是登录通知时首次取码即终止并重开整轮 | 识别结构化非验证码状态，在原步骤有限轮询和 Resend | [记录](issue-fix-archive-2026-07.md#2026-07-29-step6-signin-notification-polling) |
 | 2026-07-29 | 步骤 4 从 HTML 取件页连续提交隐藏六位数字并触发次数限制 | 只接受验证提示语绑定的正文码；旧码被拒后禁止回退到干扰数字 | [记录](issue-fix-archive-2026-07.md#2026-07-29-step4-generic-html-decoy-code) |
+| 2026-07-30 | 步骤 3.5 可借用其他标签页 Session 误判登录成功 | 成功绑定当前标签页，页面和 Session 邮箱必须匹配 | [记录](issue-fix-archive-2026-07.md#2026-07-30-step3-5-current-tab-session-identity) |
+| 2026-07-30 | 步骤 3.5 登录失败后自动运行清理现场并换邮箱 | 保留结构化错误并立即停机，不清现场、不换邮箱 | [记录](issue-fix-archive-2026-07.md#2026-07-30-step3-5-failure-session-preservation) |
+| 2026-07-30 | 已有 TOTP 账号经 Free 资格节点后被误记为免 2FA | 保留密码和 TOTP，明确记录为已启用 2FA | [记录](issue-fix-archive-2026-07.md#2026-07-30-existing-totp-free-persistence-semantics) |
+| 2026-07-30 | 步骤 3.5 分格输入日志泄露动态码 | 集中脱敏完整动态码和分格当前值 | [记录](issue-fix-archive-2026-07.md#2026-07-30-step3-5-totp-log-redaction) |
+| 2026-07-30 | 步骤 6 取码耗尽后重开整轮注册 | 取码耗尽保留当前步骤 6 会话并停止，禁止清理后重开 | [记录](issue-fix-archive-2026-07.md#2026-07-30-step6-code-fetch-round-restart) |
+| 2026-07-30 | 步骤 6 直连取件 URL 返回缓存旧邮件 | 为直连请求添加一次性缓存键，重发后重新拉取最新验证码邮件 | [记录](issue-fix-archive-2026-07.md#2026-07-30-step6-direct-mail-cache-bust) |
+| 2026-08-05 | V3 AT/Session TXT 最后一列重新显示难以阅读的 Unix 数字时间戳 | 秒、毫秒和 ISO 来源统一导出为北京时间 `YYYY-MM-DD HH:mm:ss +08:00` | [记录](issue-fix-archive-2026-08.md#2026-08-05-free-export-readable-timestamp) |
+| 2026-08-07 | 指纹浏览器中账号越多、日志越长，自动运行越卡 | 日志改为范围读取；普通状态 patch 不再全量读取 Session 或重复写完整运行态 | [记录](issue-fix-archive-2026-08.md#2026-08-07-fingerprint-browser-state-write-lag) |
+| 2026-08-07 | 设置显示已保存但重载侧栏后又恢复默认值 | 接通保存按钮和统一字段监听；完整恢复回填 Local 中的自动运行配置 | [记录](issue-fix-archive-2026-08.md#2026-08-07-sidepanel-settings-save-and-restore) |
+| 2026-08-08 | 修复设置后设置、邮箱池和账号列表同时显示为空 | 清理 Free 行递归运行状态，轻量化启动/保存消息并自动修复旧数据 | [记录](issue-fix-archive-2026-08.md#2026-08-08-free-results-recursive-state-message-limit) |
 
 ## 新记录规则
 

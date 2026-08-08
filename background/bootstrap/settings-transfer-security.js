@@ -3,16 +3,12 @@
   root.MultiPageSettingsTransferSecurity = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createSettingsTransferSecurity() {
-  const SENSITIVE_KEY = /password|passphrase|authorization|access.?token|refresh.?token|cookie|totp|2fa|api.?key|secret|private.?jwk|proxy.?password|cdkey|cdk|mail.?body|message.?body|raw.?mail|customEmailPool|hotmailAccounts|mail2925Accounts/i;
+  const SENSITIVE_KEY = /password|passphrase|authorization|token|^(?:session|auth.?session|chatgpt.?session)$|cookie|totp|2fa|api.?key|secret|private.?jwk|proxy.?password|cdkey|cdk|mail.?body|message.?body|raw.?mail|customEmailPool|hotmailAccounts|mail2925Accounts/i;
   const SAFE_MEMBERSHIP_ITEM_KEYS = [
     'email',
     'accountIdentifier',
     'status',
     'membershipStatus',
-    'planType',
-    'redeemChannel',
-    'channel',
-    'paymentChannel',
     'checkedAt',
     'updatedAt',
     'source',
@@ -20,8 +16,6 @@
     'errorCode',
     'trialEligibilityStatus',
     'eligibilityStatus',
-    'redeemStatus',
-    'remoteStatus',
     'accountValidityStatus',
     'validityStatus',
     'accountDeactivated',
@@ -30,17 +24,15 @@
   const SAFE_MEMBERSHIP_ROOT_KEYS = [
     'total',
     'completed',
-    'paidCount',
-    'freeCount',
+    'eligibleCount',
+    'ineligibleCount',
+    'unknownCount',
+    'checkingCount',
     'failedCount',
     'startedAt',
     'finishedAt',
     'updatedAt',
     'source',
-    'redeemAutoDeletedCount',
-    'redeemAutoDeletedEmails',
-    'redeemPlusDeletedCountByChannel',
-    'redeemPlusDeletedEmailsByChannel',
     'trialEligibilitySummary',
   ];
 
@@ -85,25 +77,28 @@
         .filter((key) => Object.prototype.hasOwnProperty.call(item, key))
         .map((key) => [key, omitSensitiveFields(item[key])])));
     output.running = false;
-    output.redeeming = false;
     return output;
   }
 
   function buildSafeRuntimeData(runtimeData = {}, helpers = {}) {
-    const membership = helpers.normalizeMembership?.(runtimeData.upiCredentialMembershipCheckResults);
+    const membership = helpers.normalizeMembership?.(
+      runtimeData.freeAccountResults
+    );
     const history = helpers.normalizeHistory?.(runtimeData.accountRunHistory) || [];
     const aliases = helpers.normalizeAlias?.(runtimeData.aliasState) || {};
     return {
       membershipSummary: membership ? {
         total: membership.total,
         completed: membership.completed,
-        paidCount: membership.paidCount,
-        freeCount: membership.freeCount,
+        eligibleCount: membership.eligibleCount,
+        ineligibleCount: membership.ineligibleCount,
+        unknownCount: membership.unknownCount,
+        checkingCount: membership.checkingCount,
         failedCount: membership.failedCount,
         updatedAt: membership.updatedAt,
       } : null,
       ...(membership ? {
-        upiCredentialMembershipCheckResults: buildSafeMembershipResults(membership),
+        freeAccountResults: buildSafeMembershipResults(membership),
       } : {}),
       accountRunHistory: omitSensitiveFields(history),
       aliasSummary: {

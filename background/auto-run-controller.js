@@ -51,6 +51,7 @@
     const retryPolicy = createRetryPolicy({
       AUTO_RUN_MAX_RETRIES_PER_ROUND: deps.AUTO_RUN_MAX_RETRIES_PER_ROUND,
       getErrorMessage: deps.getErrorMessage,
+      isAccountDeactivatedFailure: deps.isAccountDeactivatedFailure,
       isCardHelperTaskEndedFailure: deps.isCardHelperTaskEndedFailure,
       isChatgptSessionReaderNonFreeTrialFailure: deps.isChatgptSessionReaderNonFreeTrialFailure,
       isCloudCheckoutAlreadyPaidFailure: deps.isCloudCheckoutAlreadyPaidFailure,
@@ -60,8 +61,6 @@
       isRestartCurrentAttemptError: deps.isRestartCurrentAttemptError,
       isSignupUserAlreadyExistsFailure: deps.isSignupUserAlreadyExistsFailure,
       isStep4Route405RecoveryLimitFailure: deps.isStep4Route405RecoveryLimitFailure,
-      isUpiRedeemBackendFailure: deps.isUpiRedeemBackendFailure,
-      isUpiRedeemNetworkFailure: deps.isUpiRedeemNetworkFailure,
     });
     const sessionRunner = createSessionRunner({
       ...deps,

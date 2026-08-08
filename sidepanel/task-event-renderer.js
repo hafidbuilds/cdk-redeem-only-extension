@@ -54,6 +54,14 @@
         cancelButton.textContent = '取消';
         actions.appendChild(cancelButton);
       }
+      if (view.canDelete) {
+        const deleteButton = container.ownerDocument.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'btn btn-danger btn-xs';
+        deleteButton.dataset.taskAction = 'delete';
+        deleteButton.textContent = '删除';
+        actions.appendChild(deleteButton);
+      }
       row.appendChild(actions);
       container.appendChild(row);
     });
@@ -61,6 +69,11 @@
 
   function renderEvents(container, task, events = []) {
     if (!container) return;
+    const previousScrollTop = Math.max(0, Number(container.scrollTop) || 0);
+    const previousScrollHeight = Math.max(0, Number(container.scrollHeight) || 0);
+    const clientHeight = Math.max(0, Number(container.clientHeight) || 0);
+    const followLatest = previousScrollHeight <= clientHeight
+      || previousScrollHeight - previousScrollTop - clientHeight <= 32;
     container.replaceChildren();
     container.hidden = false;
     const title = container.ownerDocument.createElement('div');
@@ -85,6 +98,9 @@
       container.appendChild(row);
     });
     if (!events.length) appendText(container, 'account-task-empty', '此任务暂无事件');
+    container.scrollTop = followLatest
+      ? container.scrollHeight
+      : Math.min(previousScrollTop, Math.max(0, container.scrollHeight - clientHeight));
   }
 
   return { renderEvents, renderTasks };

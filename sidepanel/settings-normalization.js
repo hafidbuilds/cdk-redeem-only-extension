@@ -157,7 +157,7 @@
           continue;
         }
         seenEmails.add(email);
-        const accessToken = String(asObject.accessToken || asObject.access_token || asObject.upiRedeemAccessToken || '').trim();
+        const accessToken = String(asObject.accessToken || asObject.access_token || '').trim();
         const accessTokenMasked = String(asObject.accessTokenMasked || '').trim()
           || (accessToken
             ? `${accessToken.slice(0, 8)}****${accessToken.slice(-6)}`

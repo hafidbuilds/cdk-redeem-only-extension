@@ -46,26 +46,5 @@
       "resourceTypes": ["xmlhttprequest"],
       "excludedInitiatorDomains": ["apple.com.cn", "icloud.com.cn"]
     }
-  },
-  {
-    "id": 3,
-    "priority": 2,
-    "action": {
-      "type": "modifyHeaders",
-      "requestHeaders": [
-        {
-          "header": "Origin",
-          "operation": "remove"
-        },
-        {
-          "header": "Referer",
-          "operation": "remove"
-        }
-      ]
-    },
-    "condition": {
-      "urlFilter": "|https://chong.nerver.cc/api/external/",
-      "resourceTypes": ["xmlhttprequest", "other"]
-    }
   }
 ]

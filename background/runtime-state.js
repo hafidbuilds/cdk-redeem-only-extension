@@ -344,6 +344,31 @@
       return next;
     }
 
+    const RUNTIME_PROJECTION_FIELDS = new Set([
+      'flowId',
+      'runId',
+      'activeFlowId',
+      'activeRunId',
+      'currentNodeId',
+      'nodeStatuses',
+      ...RUNTIME_SHARED_FIELDS,
+      ...Object.values(OPENAI_FLOW_FIELD_GROUPS).flat(),
+    ]);
+
+    function statePatchNeedsCurrentState(updates = {}) {
+      if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+        return false;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(updates, 'runtimeState')
+        || Object.prototype.hasOwnProperty.call(updates, 'sharedState')
+        || Object.prototype.hasOwnProperty.call(updates, 'flowState')
+      ) {
+        return true;
+      }
+      return Object.keys(updates).some((key) => RUNTIME_PROJECTION_FIELDS.has(key));
+    }
+
     function buildStateView(state = {}) {
       const runtimeState = ensureRuntimeState(state);
       return {
@@ -363,6 +388,9 @@
 
     function buildSessionStatePatch(currentState = {}, updates = {}) {
       const flattenedUpdates = buildFlattenedUpdates(updates);
+      if (!statePatchNeedsCurrentState(updates)) {
+        return flattenedUpdates;
+      }
       const nextState = {
         ...currentState,
         ...flattenedUpdates,
@@ -389,6 +417,7 @@
       buildSessionStatePatch,
       buildStateView,
       ensureRuntimeState,
+      statePatchNeedsCurrentState,
     };
   }
 

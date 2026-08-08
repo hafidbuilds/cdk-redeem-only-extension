@@ -3,7 +3,6 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createTaskRuntimeModule(root) {
   function createTaskRuntime({ repository, eventStore, lockManager, recoveryPolicy = root.MultiPageTaskRecoveryPolicy } = {}) {
     let bootRecoveryPromise = null;
-    let remoteRecoveryHandler = null;
     const runningOperations = new Map();
 
     function createTaskError(code, message = code) {
@@ -104,10 +103,7 @@
       const current = await repository.get(taskId);
       if (!current) throw createTaskError('TASK_NOT_FOUND');
       const checkpoint = current.checkpoint || {};
-      const hasUnconfirmedSideEffect = checkpoint.remoteRequestSent === true
-        || Boolean(checkpoint.remoteJobId)
-        || checkpoint.externalSideEffectStarted === true
-        || checkpoint.cdkSubmitted === true
+      const hasUnconfirmedSideEffect = checkpoint.externalSideEffectStarted === true
         || (checkpoint.accessTokenRefreshed === true && checkpoint.accessTokenSaved !== true);
       const recoveryDecision = hasUnconfirmedSideEffect ? recoveryPolicy.decideTaskRecovery(current) : null;
       const code = String(recoveryDecision?.errorCode || error?.code || 'TASK_OPERATION_FAILED');
@@ -143,7 +139,7 @@
           await context.assertNotCanceled();
           const result = await operation(context);
           const current = await repository.get(normalizedTaskId);
-          const task = current && ['pending', 'running'].includes(current.status)
+          const task = current && ['pending', 'running', 'cancel_requested'].includes(current.status)
             ? await completeTask(normalizedTaskId, result)
             : current;
           return { taskId: normalizedTaskId, task, result };
@@ -163,61 +159,55 @@
       return executeTask(task.taskId, operation);
     }
 
+    async function resumeTask(taskId, operation, resourceKeys = []) {
+      if (typeof operation !== 'function') throw createTaskError('TASK_OPERATION_REQUIRED');
+      const normalizedTaskId = String(taskId || '').trim();
+      const current = await repository.get(normalizedTaskId);
+      if (!current) throw createTaskError('TASK_NOT_FOUND');
+      if (!['interrupted', 'retry_wait'].includes(current.status) || current.recovery?.canRetry === false) {
+        throw createTaskError('TASK_NOT_RESUMABLE', 'Task cannot be resumed');
+      }
+      await repository.patch(normalizedTaskId, {
+        status: 'pending',
+        cancelRequested: false,
+        errorCode: '',
+        error: '',
+        recovery: {},
+        checkpoint: { locksReleased: false, resumedAt: new Date().toISOString() },
+      });
+      try {
+        await lockManager?.acquire?.(normalizedTaskId, resourceKeys);
+        const running = await repository.patch(normalizedTaskId, {
+          status: 'running',
+          cancelRequested: false,
+          checkpoint: { taskStarted: true, locksReleased: false },
+        });
+        await appendStateEvent(normalizedTaskId, 'TASK_RESUMED', 'Task resumed', {
+          type: running.type,
+        });
+      } catch (error) {
+        await repository.patch(normalizedTaskId, {
+          status: 'interrupted',
+          errorCode: String(error?.code || 'TASK_RESUME_FAILED'),
+          error: String(error?.message || error),
+          checkpoint: { locksReleased: true },
+        });
+        await lockManager?.release?.(normalizedTaskId);
+        throw error;
+      }
+      return executeTask(normalizedTaskId, operation);
+    }
+
     async function requestCancel(taskId) {
       const current = await repository.get(taskId);
       if (!current) throw createTaskError('TASK_NOT_FOUND');
       if (root.MultiPageTaskSchema?.TERMINAL_STATUSES?.has(current.status)) return current;
-      const remotePending = current.checkpoint?.remoteRequestSent === true || Boolean(current.checkpoint?.remoteJobId);
       const task = await repository.patch(taskId, {
-        status: remotePending ? 'waiting_remote' : 'cancel_requested',
+        status: 'cancel_requested',
         cancelRequested: true,
       });
-      await appendStateEvent(taskId, 'TASK_CANCEL_REQUESTED', 'Task cancellation requested', { remotePending });
+      await appendStateEvent(taskId, 'TASK_CANCEL_REQUESTED', 'Task cancellation requested');
       return task;
-    }
-
-    async function resolveRemoteTask(taskId, resolution = {}) {
-      const current = await repository.get(taskId);
-      if (!current) throw createTaskError('TASK_NOT_FOUND');
-      const outcome = String(resolution.outcome || '').trim().toLowerCase();
-      const confirmed = outcome === 'confirmed';
-      const failed = outcome === 'failed';
-      const status = confirmed ? 'succeeded' : (failed ? 'failed' : 'manual_review');
-      const releaseLocks = confirmed || failed;
-      const errorCode = confirmed
-        ? ''
-        : String(resolution.errorCode || (failed ? 'REDEEM_REMOTE_REJECTED' : 'REDEEM_REMOTE_STATUS_UNRESOLVED'));
-      const task = await repository.patch(taskId, {
-        status,
-        errorCode,
-        error: confirmed ? '' : String(resolution.message || ''),
-        result: confirmed ? { ...current.result, ...(resolution.result || {}), remoteConfirmed: true } : current.result,
-        recovery: {
-          action: confirmed ? 'remote_confirmed' : (failed ? 'remote_failed' : 'manual_review'),
-          canRetry: false,
-          canResubmit: failed,
-          releaseLocks,
-          errorCode,
-        },
-        checkpoint: {
-          externalSideEffectStatus: confirmed ? 'confirmed' : (failed ? 'failed' : 'unknown'),
-          remoteRequestSent: !releaseLocks,
-          locksReleased: releaseLocks,
-          remoteResolvedAt: new Date().toISOString(),
-        },
-      });
-      await appendStateEvent(
-        taskId,
-        confirmed ? 'TASK_REMOTE_CONFIRMED' : (failed ? 'TASK_REMOTE_FAILED' : 'TASK_REMOTE_MANUAL_REVIEW'),
-        confirmed ? 'Remote side effect confirmed' : (failed ? 'Remote side effect explicitly failed' : 'Remote side effect requires manual review'),
-        { outcome: confirmed ? 'confirmed' : (failed ? 'failed' : 'manual_review') }
-      );
-      if (releaseLocks) await lockManager?.release?.(taskId);
-      return task;
-    }
-
-    function setRemoteRecoveryHandler(handler) {
-      remoteRecoveryHandler = typeof handler === 'function' ? handler : null;
     }
 
     async function performRecovery() {
@@ -242,21 +232,7 @@
           detail: { canRetry: decision.canRetry, canResubmit: decision.canResubmit },
         });
         if (decision.releaseLocks) await lockManager?.release?.(task.taskId);
-        const recoveredItem = { task: next, decision };
-        if (decision.action === 'query_remote' && remoteRecoveryHandler) {
-          try {
-            const resolution = await remoteRecoveryHandler({ task: next, decision });
-            recoveredItem.resolution = resolution || null;
-            recoveredItem.task = resolution?.task || await repository.get(task.taskId) || next;
-          } catch {
-            recoveredItem.task = await resolveRemoteTask(task.taskId, {
-              outcome: 'manual_review',
-              errorCode: 'REDEEM_REMOTE_RECOVERY_FAILED',
-              message: 'Remote recovery query failed; manual review is required.',
-            });
-          }
-        }
-        recovered.push(recoveredItem);
+        recovered.push({ task: next, decision });
       }
       return recovered;
     }
@@ -279,9 +255,8 @@
       findActiveTask,
       recoverActiveTasks,
       requestCancel,
-      resolveRemoteTask,
+      resumeTask,
       runTask,
-      setRemoteRecoveryHandler,
       startTask,
     };
   }

@@ -22,15 +22,14 @@
       clearStopRequest,
       deleteIcloudAlias,
       deleteUsedIcloudAliases,
-      checkUpiCredentialMembershipBatch = null,
-      checkUpiCredentialMembershipOne = null,
-      checkUpiCredentialMembershipTrialEligibility = null,
-      fillUpiCredentialMembershipFreeAccessTokens = null,
+      checkFreeAccountEligibility = null,
+      fillFreeAccountAccessTokens = null,
+      startFillFreeAccountSessions = null,
+      resumeFillFreeAccountSessions = null,
+      stopFillFreeAccountSessions = null,
+      isFreeAccountSessionFillActive = null,
       exportSettingsBundle,
       fetchGeneratedEmail,
-      cancelUpiRedeemCdkeyJobs = null,
-      refreshUpiRedeemCdkeyStatusesAndSync,
-      retryUpiRedeemCdkeyJobs = null,
       getPendingAutoRunTimerPlan,
       getState,
       getNodeIdsForState,
@@ -65,7 +64,6 @@
       shouldAutoContinueManualNode,
       skipAutoRunCountdown,
       startAutoRunLoop,
-      syncUpiCredentialMembershipResultsAfterCdkeyRefresh,
       validateAutoRunStart,
       validateModeSwitch,
     } = deps;
@@ -76,6 +74,12 @@
 
     const taskTracker = getRootScope().MultiPageTaskRoutes?.createTaskOperationTracker?.({ getNodeIdsForState, getState }) || {};
     const runTrackedTask = taskTracker.runTrackedTask || (async (_type, _payload, operation) => ({ taskId: '', result: await operation(null) }));
+
+    async function ensureSessionFillIdle(actionLabel = '执行当前操作') {
+      if (typeof isFreeAccountSessionFillActive === 'function' && await isFreeAccountSessionFillActive()) {
+        throw new Error(`补充 Session 任务运行中，当前不能${actionLabel}。`);
+      }
+    }
 
     async function handleResetRoute() {
       clearStopRequest();
@@ -275,39 +279,8 @@
       return { ok: true };
     }
 
-    async function handleCheckMembershipBatchRoute(_payload, message) {
-      clearStopRequest();
-      const state = await getState();
-      if (isAutoRunLockedState(state)) {
-        throw new Error('自动流程运行中，当前不能核验 UPI 备份账号会员。');
-      }
-      if (typeof checkUpiCredentialMembershipBatch !== 'function') {
-        throw new Error('UPI 备份账号会员核验能力尚未接入。');
-      }
-      const tracked = await runTrackedTask('verify_membership', message.payload || {}, async (taskContext) => {
-        await taskContext?.checkpoint?.({ nodeId: 'membership-batch-check' });
-        return checkUpiCredentialMembershipBatch(message.payload || {});
-      });
-      return { ok: true, taskId: tracked.taskId, results: tracked.result };
-    }
-
-    async function handleCheckMembershipOneRoute(_payload, message) {
-      clearStopRequest();
-      const state = await getState();
-      if (isAutoRunLockedState(state)) {
-        throw new Error('自动流程运行中，当前不能检测 UPI 备份账号会员。');
-      }
-      if (typeof checkUpiCredentialMembershipOne !== 'function') {
-        throw new Error('UPI 单账号会员检测能力尚未接入。');
-      }
-      const tracked = await runTrackedTask('verify_membership', message.payload || {}, async (taskContext) => {
-        await taskContext?.checkpoint?.({ nodeId: 'membership-account-check' });
-        return checkUpiCredentialMembershipOne(message.payload || {});
-      });
-      return { ok: true, taskId: tracked.taskId, ...tracked.result };
-    }
-
-    async function handleCheckMembershipTrialEligibilityRoute(_payload, message) {
+    async function handleCheckFreeAccountEligibilityRoute(_payload, message) {
+      await ensureSessionFillIdle('复检资格');
       clearStopRequest();
       const payload = message.payload || {};
       const allowAutoRunEmailPoolCheck = payload.source === 'custom-email-pool-trial-eligibility-check'
@@ -317,95 +290,83 @@
           credential?.accessToken
           || credential?.token
           || credential?.access_token
-          || credential?.upiRedeemAccessToken
           || ''
         ).trim());
       const state = await getState();
       if (isAutoRunLockedState(state) && !allowAutoRunEmailPoolCheck) {
-        throw new Error('自动流程运行中，当前不能手动检查 UPI Free 分组试用资格。');
+        throw new Error('自动注册运行中，当前不能手动检查 Free 账号试用资格。');
       }
-      if (typeof checkUpiCredentialMembershipTrialEligibility !== 'function') {
-        throw new Error('UPI Free 分组试用资格手动检查能力尚未接入。');
+      if (typeof checkFreeAccountEligibility !== 'function') {
+        throw new Error('Free 账号试用资格检查能力尚未接入。');
       }
       const operationPayload = {
         ...payload,
         source: payload.source
-          || (message.type === 'CHECK_UPI_CREDENTIAL_MEMBERSHIP_TRIAL_ELIGIBILITY_BATCH'
-            ? 'manual-trial-eligibility-batch'
-            : 'manual-trial-eligibility-check'),
+          || 'manual-trial-eligibility-check',
       };
-      const tracked = await runTrackedTask('verify_membership', operationPayload, async (taskContext) => {
+      const tracked = await runTrackedTask('check_eligibility', operationPayload, async (taskContext) => {
         await taskContext?.checkpoint?.({ nodeId: 'trial-eligibility-check' });
-        return checkUpiCredentialMembershipTrialEligibility(operationPayload);
+        return checkFreeAccountEligibility(operationPayload);
       });
       return { ok: true, taskId: tracked.taskId, ...tracked.result };
     }
 
-    async function handleFillMembershipFreeAccessTokensRoute(_payload, message) {
+    async function handleFillFreeAccountAccessTokensRoute(_payload, message) {
+      await ensureSessionFillIdle('补充 AT');
       clearStopRequest();
       const state = await getState();
       if (isAutoRunLockedState(state)) {
-        throw new Error('自动流程运行中，当前不能补充 UPI Free 分组 AT。');
+        throw new Error('自动注册运行中，当前不能补充 Free 账号 AT。');
       }
-      if (typeof fillUpiCredentialMembershipFreeAccessTokens !== 'function') {
-        throw new Error('UPI Free 分组 AT 补充能力尚未接入。');
+      if (typeof fillFreeAccountAccessTokens !== 'function') {
+        throw new Error('Free 账号 AT 补充能力尚未接入。');
       }
       const tracked = await runTrackedTask('refresh_access_token', message.payload || {}, async (taskContext) => {
         await taskContext?.checkpoint?.({ nodeId: 'fill-access-token', remoteRequestSent: false });
-        return fillUpiCredentialMembershipFreeAccessTokens(message.payload || {});
+        return fillFreeAccountAccessTokens(message.payload || {});
       });
       return { ok: true, taskId: tracked.taskId, ...tracked.result };
     }
 
-    async function handleRefreshCdkeyStatusesRoute(_payload, message) {
+    async function handleStartFillFreeAccountSessionsRoute(payload = {}) {
+      clearStopRequest();
       const state = await getState();
-      const payload = message.payload || {};
-      return await refreshUpiRedeemCdkeyStatusesAndSync(payload, { state });
+      if (isAutoRunLockedState(state)) {
+        throw new Error('自动注册运行中，当前不能补充 Free 账号 Session。');
+      }
+      if (typeof startFillFreeAccountSessions !== 'function') {
+        throw new Error('Free 账号 Session 补充能力尚未接入。');
+      }
+      return { ok: true, ...(await startFillFreeAccountSessions(payload)) };
     }
 
-    async function handleUpdateCdkeyJobsRoute(_payload, message) {
+    async function handleResumeFillFreeAccountSessionsRoute(payload = {}) {
+      clearStopRequest();
       const state = await getState();
-      const isCancel = message.type === 'CANCEL_UPI_REDEEM_CDKEY_JOBS';
-      if (isAutoRunLockedState(state) && !isCancel) {
-        throw new Error('自动流程运行中，当前不能手动重试 CDK 任务。');
+      if (isAutoRunLockedState(state)) {
+        throw new Error('自动注册运行中，当前不能继续补充 Free 账号 Session。');
       }
-      const operator = isCancel ? cancelUpiRedeemCdkeyJobs : retryUpiRedeemCdkeyJobs;
-      if (typeof operator !== 'function') {
-        throw new Error(isCancel ? 'CDK 任务取消能力尚未接入。' : 'CDK 任务重试能力尚未接入。');
+      if (typeof resumeFillFreeAccountSessions !== 'function') {
+        throw new Error('Free 账号 Session 续跑能力尚未接入。');
       }
-      const payload = message.payload || {};
-      const result = await operator({
-        ...state,
-        ...payload,
-      });
-      if (result?.updates) {
-        broadcastDataUpdate(result.updates);
+      return { ok: true, ...(await resumeFillFreeAccountSessions(payload)) };
+    }
+
+    async function handleStopFillFreeAccountSessionsRoute(payload = {}) {
+      if (typeof stopFillFreeAccountSessions !== 'function') {
+        throw new Error('Free 账号 Session 停止能力尚未接入。');
       }
-      const membershipSync = await syncUpiCredentialMembershipResultsAfterCdkeyRefresh(result, {
-        ...state,
-        ...payload,
-      });
-      const updates = {
-        ...(result?.updates || {}),
-        ...(membershipSync?.updates || {}),
-      };
-      if (Object.keys(membershipSync?.updates || {}).length) {
-        broadcastDataUpdate(membershipSync.updates);
-      }
-      return { ok: true, ...result, updates, membershipSync };
+      return { ok: true, ...(await stopFillFreeAccountSessions(payload)) };
     }
 
     const rootScope = getRootScope();
     const routeHandlers = {
       ...(rootScope.MultiPageMembershipRoutes?.createMembershipRoutes?.({
-        checkBatch: handleCheckMembershipBatchRoute,
-        checkOne: handleCheckMembershipOneRoute,
-        checkTrialEligibility: handleCheckMembershipTrialEligibilityRoute,
-        fillFreeAccessTokens: handleFillMembershipFreeAccessTokensRoute,
-      }) || {}),
-      ...(rootScope.MultiPageCdkeyRoutes?.createCdkeyRoutes?.({
-        refreshStatuses: handleRefreshCdkeyStatusesRoute,
-        updateJobs: handleUpdateCdkeyJobsRoute,
+        checkTrialEligibility: handleCheckFreeAccountEligibilityRoute,
+        fillFreeAccessTokens: handleFillFreeAccountAccessTokensRoute,
+        startFillSessions: handleStartFillFreeAccountSessionsRoute,
+        resumeFillSessions: handleResumeFillFreeAccountSessionsRoute,
+        stopFillSessions: handleStopFillFreeAccountSessionsRoute,
       }) || {}),
       ...(rootScope.MultiPageWorkflowRoutes?.createWorkflowRoutes?.({
         autoRun: handleAutoRunRoute,

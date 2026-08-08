@@ -7,7 +7,7 @@
     registrationEmailStateHelpers = null,
     runtimeStateHelpers = null,
     chromeStorageLocal = null,
-    membershipResultsStorageKey = 'upiCredentialMembershipCheckResults',
+    membershipResultsStorageKey = 'freeAccountResults',
     defaultRegistrationEmailState = {
       current: '',
       previous: '',
@@ -93,6 +93,13 @@
       return updates;
     }
 
+    function statePatchNeedsCurrentState(updates = {}) {
+      if (runtimeStateHelpers?.statePatchNeedsCurrentState) {
+        return runtimeStateHelpers.statePatchNeedsCurrentState(updates);
+      }
+      return true;
+    }
+
     function normalizeMembershipResultsTimestamp(results = {}) {
       const timestamp = Date.parse(String(results?.updatedAt || results?.checkedAt || ''));
       return Number.isFinite(timestamp) ? timestamp : 0;
@@ -134,7 +141,7 @@
       if (shouldKeepPersistedMembershipResults(persistedResults, incomingResults)) {
         logger.warn?.(
           logPrefix,
-          'Skipped stale upiCredentialMembershipCheckResults state patch:',
+          'Skipped stale freeAccountResults state patch:',
           JSON.stringify({
             persistedUpdatedAt: persistedResults?.updatedAt || '',
             incomingUpdatedAt: incomingResults?.updatedAt || '',
@@ -145,53 +152,6 @@
         sessionUpdates[membershipResultsStorageKey] = persistedResults;
       }
       return sessionUpdates;
-    }
-
-    function alignUpiRedeemCdkeyAliasStatePatch(patch = {}) {
-      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
-        return patch;
-      }
-
-      const hasOwn = (key) => Object.prototype.hasOwnProperty.call(patch, key);
-      const pickAliasValue = (keys) => {
-        for (const key of keys) {
-          if (hasOwn(key)) {
-            return patch[key];
-          }
-        }
-        return undefined;
-      };
-
-      const cdkeyPoolAliasKeys = [
-        'upiRedeemCdkeyPoolText',
-        'cdkPoolText',
-        'upiRedeemCdkPoolText',
-        'pixRedeemCdkeyPoolText',
-      ];
-      const cdkeyUsageAliasKeys = [
-        'upiRedeemCdkeyUsage',
-        'cdkUsage',
-        'upiRedeemCdkUsage',
-        'pixRedeemCdkeyUsage',
-      ];
-
-      const poolText = pickAliasValue(cdkeyPoolAliasKeys);
-      if (poolText !== undefined) {
-        patch.upiRedeemCdkeyPoolText = poolText;
-        patch.cdkPoolText = poolText;
-        patch.upiRedeemCdkPoolText = poolText;
-        patch.pixRedeemCdkeyPoolText = poolText;
-      }
-
-      const usage = pickAliasValue(cdkeyUsageAliasKeys);
-      if (usage !== undefined) {
-        patch.upiRedeemCdkeyUsage = usage;
-        patch.cdkUsage = usage;
-        patch.upiRedeemCdkUsage = usage;
-        patch.pixRedeemCdkeyUsage = usage;
-      }
-
-      return patch;
     }
 
     function statePatchHasChanges(state = {}, patch = {}) {
@@ -207,11 +167,11 @@
       buildClearedRegistrationEmailStateUpdates,
       buildStateViewWithRuntimeState,
       buildStatePatchWithRuntimeState,
+      statePatchNeedsCurrentState,
       normalizeMembershipResultsTimestamp,
       getMembershipResultsItemCount,
       shouldKeepPersistedMembershipResults,
       protectFreshMembershipResultsInStatePatch,
-      alignUpiRedeemCdkeyAliasStatePatch,
       statePatchHasChanges,
     };
   }

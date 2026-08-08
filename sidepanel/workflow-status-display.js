@@ -23,7 +23,6 @@
         autoRunLabel = '',
         autoRunPhase = '',
         countdown = null,
-        existingTotpLoginDisplayStatus = 'pending',
         nodeIds = [],
         nodeStatuses = {},
         now = Date.now(),
@@ -44,13 +43,6 @@
         return {
           text: `自动已暂停${autoRunLabel}，等待继续`,
           tone: 'paused',
-        };
-      }
-
-      if (existingTotpLoginDisplayStatus === 'running') {
-        return {
-          text: '步骤 3.5：已有账号 2FA 登录运行中...',
-          tone: 'running',
         };
       }
 

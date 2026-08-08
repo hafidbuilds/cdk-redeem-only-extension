@@ -65,10 +65,18 @@ export function isAllowedMarkdownPath(relativePath) {
 }
 
 function listTrackedMarkdown(rootDir) {
-  return execFileSync('git', ['ls-files', '*.md'], { cwd: rootDir, encoding: 'utf8' })
-    .split(/\r?\n/)
-    .map(normalizePath)
-    .filter(Boolean);
+  try {
+    return execFileSync('git', ['ls-files', '*.md'], {
+      cwd: rootDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split(/\r?\n/)
+      .map(normalizePath)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function walkMarkdown(directory, rootDir, results) {
@@ -245,7 +253,7 @@ export function auditDocumentation(rootDir = defaultRoot) {
   try {
     const manifest = JSON.parse(readText(rootDir, 'manifest.json'));
     const changelog = readText(rootDir, 'CHANGELOG.md');
-    const latestVersion = changelog.match(/^## CDK Redeem Only V([^\s]+)\s*$/mu)?.[1] || '';
+    const latestVersion = changelog.match(/^## Free Account Tool V([^\s]+)\s*$/mu)?.[1] || '';
     if (latestVersion !== manifest.version) {
       failures.push(`CHANGELOG latest version ${latestVersion || '(missing)'} does not match manifest ${manifest.version}`);
     }

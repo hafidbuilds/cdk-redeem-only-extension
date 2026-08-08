@@ -202,13 +202,8 @@ const {
   btnToggleUpiInfoHelperPin,
   rowUpiSubscriptionApiBaseUrl,
   inputUpiSubscriptionApiBaseUrl,
-  rowUpiRedeemExternalApiKey,
-  inputUpiRedeemExternalApiKey,
-  btnToggleUpiRedeemExternalApiKey,
-  rowUpiRedeemClientId,
-  inputUpiRedeemClientId,
-  rowUpiRedeemFailedAccountRetryLimit,
-  inputUpiRedeemFailedAccountRetryLimit,
+  rowGcashEligibilityApiToken,
+  inputGcashEligibilityApiToken,
   rowTotpMfaAfterProfileEnabled,
   inputTotpMfaAfterProfileEnabled,
   rowRegistrationFreeRoute,
@@ -219,17 +214,6 @@ const {
   inputUpiCredentialMembershipTotpApiBaseUrl,
   rowUpiCredentialMembershipTotpLookupKey,
   inputUpiCredentialMembershipTotpLookupKey,
-  rowUpiRedeemStopAfterRedeem,
-  selectUpiRedeemAfterMode,
-  inputUpiRedeemStopAfterRedeem,
-  rowUpiRedeemCdkeyPool,
-  inputUpiRedeemCdkeyPool,
-  btnImportCdkPool,
-  btnDeleteAllCdkPool,
-  upiRedeemCdkeyPoolSummary,
-  inputIdealRedeemCdkeyPool,
-  btnImportIdealCdkPool, btnDeleteAllIdealCdkPool, idealRedeemCdkeyPoolSummary,
-  inputPixRedeemCdkeyPool, btnImportPixCdkPool, btnDeleteAllPixCdkPool, pixRedeemCdkeyPoolSummary,
   btnShowUpiCredentialBackups,
   btnExportUpiCredentialBackups,
   btnCheckUpiCredentialMembershipLocal,
@@ -237,12 +221,9 @@ const {
   btnImportUpiCredentialMembershipFreeTxt,
   btnStopUpiCredentialMembershipCheck,
   inputUpiCredentialMembershipTxt,
-  btnExportUpiRedeemSuccessRecords,
-  btnUpiRedeemCdkeyStatusRefresh,
   upiCredentialBackupPreviewWrap,
   upiCredentialBackupPreview,
   upiCredentialMembershipCheckResults,
-  upiRedeemCdkeyStatusList, idealRedeemCdkeyStatusList, pixRedeemCdkeyStatusList,
   rowLegacyPayCountryCode,
   selectLegacyPayCountryCode,
   rowLegacyPayOtp,
@@ -574,7 +555,7 @@ const CHATGPT_SESSION_READER_PROFILE_SETTING_KEYS = Object.freeze([
   'removedContactVerificationPollIntervalSeconds',
 ]);
 const FIXED_PLUS_MODE_ENABLED = true;
-const GUIDE_REPOSITORY_URL = 'https://github.com/kui123456789/cdk-redeem-only-extension';
+const GUIDE_REPOSITORY_URL = 'https://github.com/kui123456789/free-account-tool';
 const SIGNUP_METHOD_EMAIL = 'email';
 const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
 const DEFAULT_ACTIVE_FLOW_ID = 'openai';
@@ -585,8 +566,6 @@ const REGISTRATION_FREE_ROUTE_PASSKEY = 'passkey-free';
 const DEFAULT_REGISTRATION_FREE_ROUTE = REGISTRATION_FREE_ROUTE_FULL_2FA;
 const DEFAULT_SET_GPT_PASSWORD_VERIFICATION_WAIT_SECONDS = 10;
 const SET_GPT_PASSWORD_VERIFICATION_WAIT_MAX_SECONDS = 300;
-const DEFAULT_UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT = 3;
-const UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT_MAX = 20;
 const DEFAULT_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS = 10;
 const SIGNUP_VERIFICATION_CODE_WAIT_MAX_SECONDS = 300;
 
@@ -598,7 +577,6 @@ const appState = window.SidepanelAppState.createSidepanelAppState({
       currentPlusPaymentMethod: undefined,
       currentPlusAccountAccessStrategy: undefined,
       currentSignupMethod: undefined,
-      currentUpiRedeemStopAfterRedeem: undefined,
       currentTotpMfaAfterProfileEnabled: undefined,
       currentRegistrationFreeRoute: undefined,
       localCpaJsonAuthDirExpanded: undefined,
@@ -631,7 +609,6 @@ const appState = window.SidepanelAppState.createSidepanelAppState({
       customEmailPoolEntriesState: undefined,
       lastLocalHelperStartupAlertAt: undefined,
       customEmailPoolManager: undefined,
-      cdkPoolManager: undefined,
       accountRunHistoryRefreshTimer: undefined,
       flowCapabilityRegistry: undefined,
 });
@@ -642,6 +619,7 @@ with (appState.createScope()) {
   function buildSettingsControllerScopeValues() {
     return {
       btnSaveSettings,
+      settingsCard,
       collectSettingsPayload,
       applySettingsState,
       getCustomEmailPoolBackupEntries: () => customEmailPoolStorage.readEntriesBackup?.(normalizeCustomEmailPoolEntryObjects) || [],
@@ -681,7 +659,6 @@ with (appState.createScope()) {
       getExportTargetForPanelMode,
       getSelectedRegistrationFreeRoute,
       getSelectedTotpMfaAfterProfileEnabled,
-      getSelectedUpiRedeemStopAfterRedeem,
       icloudSummary,
       inputAccountRunHistoryHelperBaseUrl,
       inputAutoDelayEnabled,
@@ -745,11 +722,8 @@ with (appState.createScope()) {
       inputTotpMfaAfterProfileEnabled,
       inputUpiCredentialMembershipTotpApiBaseUrl,
       inputUpiCredentialMembershipTotpLookupKey,
-      inputUpiRedeemClientId,
-      inputUpiRedeemExternalApiKey,
-      inputUpiRedeemFailedAccountRetryLimit,
-      inputUpiRedeemStopAfterRedeem,
       inputUpiSubscriptionApiBaseUrl,
+      inputGcashEligibilityApiToken,
       inputYydsMailApiKey,
       inputYydsMailBaseUrl,
       inputYydsMailDomain,
@@ -785,7 +759,6 @@ with (appState.createScope()) {
       normalizeRemovedContactVerificationUrlValue,
       normalizeSignupMethod,
       normalizeUpiInfoOtpChannelValue,
-      normalizeUpiRedeemFailedAccountRetryLimit,
       openConfirmModal,
       openCustomVerificationConfirmDialog,
       openLegacyPayOtpInputDialog,
@@ -807,7 +780,6 @@ with (appState.createScope()) {
       resolveStepDefinitionCapabilityState,
       restoreCustomEmailPoolEntriesFromState,
       scheduleAccountRunHistoryRefresh,
-      scheduleUpiRedeemCdkeyStatusAutoRefresh,
       selectAccountAccessStrategy,
       selectIcloudFetchMode,
       selectIcloudForwardMailProvider,
@@ -840,10 +812,7 @@ with (appState.createScope()) {
       syncCustomEmailPoolEntriesFromMembershipResults,
       syncStepDefinitionsForMode,
       syncTotpMfaAfterProfileStepDefinitions,
-      syncUpiRedeemAfterModeControls,
-      syncUpiRedeemAfterModeStepDefinitions,
       updateAccountRunHistorySettingsUI,
-      updateAllUpiRedeemCdkeyPoolSummaries,
       updateAutoDelayInputState,
       updateButtonStates,
       updateChatgptSessionReaderConversionModeUi,
@@ -866,11 +835,20 @@ with (appState.createScope()) {
     [CHATGPT_SESSION_READER_MODE_US_PP]: null,
     [CHATGPT_SESSION_READER_MODE_JP_PP]: null,
   };
+  function createManualSkippableNodeSet(nodeIds = []) {
+    const factory = window.SidepanelWorkflowButtonState?.createSkippableNodeSet;
+    if (typeof factory === 'function') {
+      return factory(nodeIds);
+    }
+    return new Set((Array.isArray(nodeIds) ? nodeIds : []).filter((nodeId) => (
+      !['check-trial-eligibility', 'persist-no-2fa-free'].includes(String(nodeId || '').trim())
+    )));
+  }
+
   currentPlusModeEnabled = false;
   currentPlusPaymentMethod = DEFAULT_PLUS_PAYMENT_METHOD;
   currentPlusAccountAccessStrategy = PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
   currentSignupMethod = DEFAULT_SIGNUP_METHOD;
-  currentUpiRedeemStopAfterRedeem = true;
   currentTotpMfaAfterProfileEnabled = DEFAULT_TOTP_MFA_AFTER_PROFILE_ENABLED;
   currentRegistrationFreeRoute = DEFAULT_REGISTRATION_FREE_ROUTE;
   localCpaJsonAuthDirExpanded = false;
@@ -878,7 +856,6 @@ with (appState.createScope()) {
     plusPaymentMethod: currentPlusPaymentMethod,
     plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
     signupMethod: currentSignupMethod,
-    upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
     totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
     registrationFreeRoute: currentRegistrationFreeRoute,
   });
@@ -886,7 +863,6 @@ with (appState.createScope()) {
     plusPaymentMethod: currentPlusPaymentMethod,
     plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
     signupMethod: currentSignupMethod,
-    upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
     totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
     registrationFreeRoute: currentRegistrationFreeRoute,
   });
@@ -894,8 +870,11 @@ with (appState.createScope()) {
   STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
   SKIPPABLE_STEPS = new Set(STEP_IDS);
   NODE_IDS = workflowNodes.map((node) => String(node.nodeId || '').trim()).filter(Boolean);
-  NODE_DEFAULT_STATUSES = Object.fromEntries(NODE_IDS.map((nodeId) => [nodeId, 'pending']));
-  SKIPPABLE_NODES = new Set(NODE_IDS);
+  NODE_DEFAULT_STATUSES = Object.fromEntries(workflowNodes.map((node) => [
+    String(node.nodeId || '').trim(),
+    String(node.defaultStatus || 'pending').trim(),
+  ]).filter(([nodeId]) => Boolean(nodeId)));
+  SKIPPABLE_NODES = createManualSkippableNodeSet(NODE_IDS);
   const INDEPENDENT_EXECUTE_NODES = new Set(['enable-totp-mfa', 'enable-passkey']);
   const AUTO_DELAY_MIN_MINUTES = 1;
   const AUTO_DELAY_MAX_MINUTES = 1440;
@@ -988,18 +967,21 @@ with (appState.createScope()) {
       { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网', sourceId: 'chatgpt', driverId: '', command: 'open-chatgpt' },
       { id: 2, order: 20, key: 'submit-signup-email', title: '注册并输入邮箱', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'submit-signup-email' },
       { id: 3, order: 30, key: 'fill-password', title: '填写密码并继续', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'fill-password' },
-      { id: 4, order: 40, key: 'fetch-signup-code', title: '获取注册验证码', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'submit-verification-code', mailRuleId: 'openai-signup-code' },
-      { id: 5, order: 50, key: 'fill-profile', title: '填写姓名和生日', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'fill-profile' },
-      { id: 6, order: 60, key: 'set-gpt-password', title: '设置 GPT 密码', sourceId: 'openai-auth', driverId: '', command: 'set-gpt-password' },
-      { id: 7, order: 70, key: 'enable-totp-mfa', title: '开通 2FA 并检测资格', sourceId: 'chatgpt', driverId: '', command: 'enable-totp-mfa' },
+      { id: 4, order: 40, key: 'existing-totp-login', title: '已有账号 2FA 登录', sourceId: 'openai-auth', driverId: '', command: 'existing-totp-login', applicability: 'conditional' },
+      { id: 5, order: 50, key: 'fetch-signup-code', title: '获取注册验证码', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'submit-verification-code', mailRuleId: 'openai-signup-code' },
+      { id: 6, order: 60, key: 'fill-profile', title: '填写姓名和生日', sourceId: 'openai-auth', driverId: 'content/signup-page', command: 'fill-profile' },
+      { id: 7, order: 70, key: 'fetch-gpt-password-code', title: '收取设置密码验证码', sourceId: 'openai-auth', driverId: '', command: 'fetch-gpt-password-code' },
+      { id: 8, order: 80, key: 'set-gpt-password', title: '设置 GPT 密码', sourceId: 'openai-auth', driverId: '', command: 'set-gpt-password' },
+      { id: 9, order: 90, key: 'enable-totp-mfa', title: '设置或校验 2FA', sourceId: 'chatgpt', driverId: '', command: 'enable-totp-mfa' },
     ];
     const no2faSteps = [
-      ...full2faSteps.filter((step) => Number(step.id) <= 5),
-      { id: 6, order: 60, key: 'persist-no-2fa-free', title: '免 2FA 检测资格并进入 Free', sourceId: 'chatgpt', driverId: '', command: 'persist-no-2fa-free' },
+      ...full2faSteps.filter((step) => Number(step.id) <= 6),
+      ...full2faSteps.filter((step) => [7, 8].includes(Number(step.id))).map((step) => ({ ...step, command: '', applicability: 'route-skipped', defaultStatus: 'skipped', ui: { disabled: true, statusText: '当前路线跳过' } })),
+      { id: 9, order: 90, key: 'persist-no-2fa-free', title: '保存 Free 账号', sourceId: 'chatgpt', driverId: '', command: 'persist-no-2fa-free' },
     ];
     const passkeySteps = [
-      ...full2faSteps.filter((step) => Number(step.id) <= 6),
-      { id: 7, order: 70, key: 'enable-passkey', title: '开通 Passkey 并检测资格', sourceId: 'chatgpt', driverId: '', command: 'enable-passkey' },
+      ...full2faSteps.filter((step) => Number(step.id) <= 8),
+      { id: 9, order: 90, key: 'enable-passkey', title: '设置 Passkey', sourceId: 'chatgpt', driverId: '', command: 'enable-passkey' },
     ];
     const normalizeRoute = (value = '') => {
       const route = String(value || '').trim().toLowerCase();
@@ -1029,13 +1011,15 @@ with (appState.createScope()) {
         nodeType: 'task',
         sourceId: String(step.sourceId || ''),
         driverId: String(step.driverId || ''),
-        executeKey: String(step.key || '').trim(),
-        command: String(step.command || step.key || '').trim(),
+        executeKey: String(step.executeKey ?? step.command ?? step.key ?? '').trim(),
+        command: String(step.command ?? step.key ?? '').trim(),
         mailRuleId: String(step.mailRuleId || '').trim(),
+        applicability: String(step.applicability || 'required').trim(),
+        defaultStatus: String(step.defaultStatus || 'pending').trim(),
         next: steps[index + 1]?.key ? [String(steps[index + 1].key)] : [],
         retryPolicy: {},
         recoveryPolicy: {},
-        ui: {},
+        ui: step.ui && typeof step.ui === 'object' ? { ...step.ui } : {},
       })).filter((node) => node.nodeId);
     };
     return { getSteps, getNodes };
@@ -1082,12 +1066,6 @@ with (appState.createScope()) {
     const rawSignupMethod = typeof options === 'string'
       ? currentSignupMethod
       : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
-    const upiRedeemStopAfterRedeem = typeof options === 'string'
-      ? currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemStopAfterRedeem ?? currentUpiRedeemStopAfterRedeem);
-    const upiRedeemContinueAfterRedeem = typeof options === 'string'
-      ? !currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemContinueAfterRedeem ?? !upiRedeemStopAfterRedeem);
     const totpMfaAfterProfileEnabled = typeof options === 'string'
       ? currentTotpMfaAfterProfileEnabled
       : Boolean(options.totpMfaAfterProfileEnabled ?? currentTotpMfaAfterProfileEnabled);
@@ -1102,8 +1080,6 @@ with (appState.createScope()) {
       plusModeEnabled,
       plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
       signupMethod: normalizeSignupMethod(rawSignupMethod),
-      upiRedeemStopAfterRedeem,
-      upiRedeemContinueAfterRedeem,
       totpMfaAfterProfileEnabled,
       registrationFreeRoute,
     };
@@ -1141,12 +1117,6 @@ with (appState.createScope()) {
     const rawSignupMethod = typeof options === 'string'
       ? currentSignupMethod
       : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
-    const upiRedeemStopAfterRedeem = typeof options === 'string'
-      ? currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemStopAfterRedeem ?? currentUpiRedeemStopAfterRedeem);
-    const upiRedeemContinueAfterRedeem = typeof options === 'string'
-      ? !currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemContinueAfterRedeem ?? !upiRedeemStopAfterRedeem);
     const totpMfaAfterProfileEnabled = typeof options === 'string'
       ? currentTotpMfaAfterProfileEnabled
       : Boolean(options.totpMfaAfterProfileEnabled ?? currentTotpMfaAfterProfileEnabled);
@@ -1161,8 +1131,6 @@ with (appState.createScope()) {
       plusModeEnabled,
       plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
       signupMethod: normalizeSignupMethod(rawSignupMethod),
-      upiRedeemStopAfterRedeem,
-      upiRedeemContinueAfterRedeem,
       totpMfaAfterProfileEnabled,
       registrationFreeRoute,
     };
@@ -1238,8 +1206,6 @@ with (appState.createScope()) {
       plusPaymentMethod: normalizePlusPaymentMethod(options.plusPaymentMethod || currentPlusPaymentMethod),
       plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(options.plusAccountAccessStrategy || currentPlusAccountAccessStrategy),
       signupMethod: normalizeSignupMethod(options.signupMethod || currentSignupMethod),
-      upiRedeemStopAfterRedeem: options.upiRedeemStopAfterRedeem ?? currentUpiRedeemStopAfterRedeem,
-      upiRedeemContinueAfterRedeem: options.upiRedeemContinueAfterRedeem ?? !currentUpiRedeemStopAfterRedeem,
       totpMfaAfterProfileEnabled: options.totpMfaAfterProfileEnabled ?? currentTotpMfaAfterProfileEnabled,
       registrationFreeRoute: normalizeRegistrationFreeRoute(options.registrationFreeRoute ?? currentRegistrationFreeRoute),
     };
@@ -1272,8 +1238,11 @@ with (appState.createScope()) {
     STEP_DEFAULT_STATUSES = Object.fromEntries(STEP_IDS.map((stepId) => [stepId, 'pending']));
     SKIPPABLE_STEPS = new Set(STEP_IDS);
     NODE_IDS = workflowNodes.map((node) => String(node.nodeId || '').trim()).filter(Boolean);
-    NODE_DEFAULT_STATUSES = Object.fromEntries(NODE_IDS.map((nodeId) => [nodeId, 'pending']));
-    SKIPPABLE_NODES = new Set(NODE_IDS);
+    NODE_DEFAULT_STATUSES = Object.fromEntries(workflowNodes.map((node) => [
+      String(node.nodeId || '').trim(),
+      String(node.defaultStatus || 'pending').trim(),
+    ]).filter(([nodeId]) => Boolean(nodeId)));
+    SKIPPABLE_NODES = createManualSkippableNodeSet(NODE_IDS);
     return true;
   }
 
@@ -1294,12 +1263,6 @@ with (appState.createScope()) {
     const rawSignupMethod = typeof options === 'string'
       ? currentSignupMethod
       : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
-    const upiRedeemStopAfterRedeem = typeof options === 'string'
-      ? currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemStopAfterRedeem ?? currentUpiRedeemStopAfterRedeem);
-    const upiRedeemContinueAfterRedeem = typeof options === 'string'
-      ? !currentUpiRedeemStopAfterRedeem
-      : Boolean(options.upiRedeemContinueAfterRedeem ?? !upiRedeemStopAfterRedeem);
     const totpMfaAfterProfileEnabled = typeof options === 'string'
       ? currentTotpMfaAfterProfileEnabled
       : Boolean(options.totpMfaAfterProfileEnabled ?? currentTotpMfaAfterProfileEnabled);
@@ -1312,7 +1275,6 @@ with (appState.createScope()) {
     currentPlusPaymentMethod = normalizePlusPaymentMethod(rawPaymentMethod);
     currentPlusAccountAccessStrategy = normalizeAccountAccessStrategySafe(rawAccountAccessStrategy);
     currentSignupMethod = normalizeSignupMethod(rawSignupMethod);
-    currentUpiRedeemStopAfterRedeem = upiRedeemStopAfterRedeem;
     currentTotpMfaAfterProfileEnabled = totpMfaAfterProfileEnabled;
     currentRegistrationFreeRoute = registrationFreeRoute;
     stepDefinitions = getStepDefinitionsForMode(currentPlusModeEnabled, {
@@ -1321,8 +1283,6 @@ with (appState.createScope()) {
       plusPaymentMethod: currentPlusPaymentMethod,
       plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
       signupMethod: currentSignupMethod,
-      upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
-      upiRedeemContinueAfterRedeem,
       totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
       registrationFreeRoute: currentRegistrationFreeRoute,
       removedPaymentWorkerEnabled: currentRemovedPaymentWorkerEnabled,
@@ -1334,8 +1294,6 @@ with (appState.createScope()) {
         plusPaymentMethod: currentPlusPaymentMethod,
         plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
         signupMethod: currentSignupMethod,
-        upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
-        upiRedeemContinueAfterRedeem,
         totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
         registrationFreeRoute: currentRegistrationFreeRoute,
         removedPaymentWorkerEnabled: currentRemovedPaymentWorkerEnabled,
@@ -1357,10 +1315,13 @@ with (appState.createScope()) {
       NODE_IDS = nextWorkflowNodes.map((node) => String(node.nodeId || '').trim()).filter(Boolean);
     }
     if (typeof NODE_DEFAULT_STATUSES !== 'undefined') {
-      NODE_DEFAULT_STATUSES = Object.fromEntries((typeof NODE_IDS !== 'undefined' ? NODE_IDS : []).map((nodeId) => [nodeId, 'pending']));
+      NODE_DEFAULT_STATUSES = Object.fromEntries(nextWorkflowNodes.map((node) => [
+        String(node.nodeId || '').trim(),
+        String(node.defaultStatus || 'pending').trim(),
+      ]).filter(([nodeId]) => Boolean(nodeId)));
     }
     if (typeof SKIPPABLE_NODES !== 'undefined') {
-      SKIPPABLE_NODES = new Set(typeof NODE_IDS !== 'undefined' ? NODE_IDS : []);
+      SKIPPABLE_NODES = createManualSkippableNodeSet(typeof NODE_IDS !== 'undefined' ? NODE_IDS : []);
     }
     ensureWorkflowDefinitionsReady({
       ...options,
@@ -1368,8 +1329,6 @@ with (appState.createScope()) {
       plusPaymentMethod: currentPlusPaymentMethod,
       plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
       signupMethod: currentSignupMethod,
-      upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
-      upiRedeemContinueAfterRedeem,
       totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
       registrationFreeRoute: currentRegistrationFreeRoute,
     });
@@ -1577,8 +1536,13 @@ with (appState.createScope()) {
   currentAutoRun = autoRunStateModel.getAutoRunState();
   const workflowButtonStateManager = window.SidepanelWorkflowButtonState.createWorkflowButtonStateManager({
     getNodeIds: () => NODE_IDS,
+    getNodeDefinition: (nodeId) => workflowNodes.find((node) => node.nodeId === nodeId) || null,
     getIndependentExecuteNodes: () => INDEPENDENT_EXECUTE_NODES,
     getSkippableNodes: () => SKIPPABLE_NODES,
+    isConditionalNodeRequired: (nodeId) => (
+      nodeId === 'existing-totp-login'
+      && latestState?.existingTotpLoginRequired === true
+    ),
     isDoneStatus: (status) => isDoneStatus(status),
   });
   const workflowStatusDisplayManager = window.SidepanelWorkflowStatusDisplay.createWorkflowStatusDisplayManager({
@@ -1648,11 +1612,6 @@ with (appState.createScope()) {
       inputUpiCredentialMembershipTxt,
       inputUpiCredentialMembershipTotpApiBaseUrl,
       inputUpiCredentialMembershipTotpLookupKey,
-      inputUpiRedeemExternalApiKey,
-      inputUpiRedeemClientId,
-      inputUpiRedeemFailedAccountRetryLimit,
-      inputUpiRedeemCdkeyPool, inputIdealRedeemCdkeyPool, inputPixRedeemCdkeyPool,
-      btnExportUpiRedeemSuccessRecords,
       upiCredentialBackupPreviewWrap,
       upiCredentialBackupPreview,
       upiCredentialMembershipCheckResults,
@@ -1662,8 +1621,7 @@ with (appState.createScope()) {
     },
     helpers: {
       downloadTextFile,
-      escapeHtml, openRedeemChannelChoiceDialog, openConfirmModal,
-      refreshUpiRedeemCdkeyStatuses: (...args) => refreshUpiRedeemCdkeyStatuses(...args),
+      escapeHtml, openConfirmModal,
       showToast,
     },
     runtime: {
@@ -2155,7 +2113,6 @@ with (appState.createScope()) {
       getCurrentRegistrationFreeRoute: () => currentRegistrationFreeRoute,
       getCurrentSignupMethod: () => currentSignupMethod,
       getCurrentTotpMfaAfterProfileEnabled: () => currentTotpMfaAfterProfileEnabled,
-      getCurrentUpiRedeemStopAfterRedeem: () => currentUpiRedeemStopAfterRedeem,
       getNodeIdByStepForCurrentMode,
       getNodeIds: () => NODE_IDS,
       getNodeStatuses: (state) => getNodeStatuses(state),
@@ -2275,8 +2232,6 @@ with (appState.createScope()) {
   }
   
   function openActionModal({ title, message, messageHtml, actions, option, alert, buildResult }) { return actionModalService?.openActionModal?.({ title, message, messageHtml, actions, option, alert, buildResult }) || Promise.resolve(null); }
-  function openRedeemChannelChoiceDialog(options = {}) { return actionModalService?.openRedeemChannelChoiceDialog?.(options) || Promise.resolve(null); }
-  
   function openAutoStartChoiceDialog(startStep, options = {}) {
     return actionModalService?.openAutoStartChoiceDialog?.(startStep, options) || Promise.resolve(null);
   }
@@ -2685,7 +2640,6 @@ with (appState.createScope()) {
   function isDoneStatus(status) {
     return status === 'completed' || status === 'manual_completed' || status === 'skipped';
   }
-  
   function escapeCssValue(value = '') {
     const raw = String(value || '');
     if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -2693,11 +2647,9 @@ with (appState.createScope()) {
     }
     return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
-  
   function getNodeStatuses(state = latestState) {
     return normalizeNodeStatusesForCurrentWorkflow(state?.nodeStatuses || {});
   }
-  
   function getStepStatuses(state = latestState) {
     const merged = { ...STEP_DEFAULT_STATUSES };
     if (typeof getNodeStatuses === 'function') {
@@ -2711,7 +2663,6 @@ with (appState.createScope()) {
     }
     return Object.fromEntries(STEP_IDS.map((stepId) => [stepId, merged[stepId] || 'pending']));
   }
-  
   function getFirstUnfinishedNode(state = latestState) {
     const statuses = getNodeStatuses(state);
     for (const nodeId of NODE_IDS) {
@@ -2721,41 +2672,34 @@ with (appState.createScope()) {
     }
     return '';
   }
-  
   function getFirstUnfinishedStep(state = latestState) {
     const nodeId = getFirstUnfinishedNode(state);
     return nodeId ? getStepIdByNodeIdForCurrentMode(nodeId) : null;
   }
-  
   function getRunningNodes(state = latestState) {
     const statuses = getNodeStatuses(state);
     return Object.entries(statuses)
       .filter(([, status]) => status === 'running')
       .map(([nodeId]) => nodeId);
   }
-  
   function getRunningSteps(state = latestState) {
     return getRunningNodes(state)
       .map((nodeId) => getStepIdByNodeIdForCurrentMode(nodeId))
       .filter((step) => Number.isInteger(step) && step > 0)
       .sort((a, b) => a - b);
   }
-  
   function hasSavedProgress(state = latestState) {
     const statuses = getNodeStatuses(state);
     return Object.values(statuses).some((status) => status !== 'pending');
   }
-  
   function isContributionModeSwitchBlocked(state = latestState) {
     const statuses = getStepStatuses(state);
     const anyRunning = Object.values(statuses).some((status) => status === 'running');
     return anyRunning || isAutoRunLockedPhase() || isAutoRunPausedPhase() || isAutoRunScheduledPhase();
   }
-  
   function shouldOfferAutoModeChoice(state = latestState) {
     return hasSavedProgress(state) && getFirstUnfinishedStep(state) !== null;
   }
-  
   function syncLatestState(nextState) {
     const mergedNodeStatuses = nextState?.nodeStatuses
       ? normalizeNodeStatusesForCurrentWorkflow({
@@ -2763,7 +2707,6 @@ with (appState.createScope()) {
         ...nextState.nodeStatuses,
       })
       : getNodeStatuses(latestState);
-  
     latestState = normalizeChatgptSessionReaderStateForUi({
       ...(latestState || {}),
       ...(nextState || {}),
@@ -2772,11 +2715,9 @@ with (appState.createScope()) {
       legacyOverrideSource: nextState || {},
     });
     syncLocalChatgptSessionReaderDraftFromState(latestState);
-    if (nextState?.upiCredentialMembershipCheckResults !== undefined || nextState?.accountRecordsV2 !== undefined) syncCustomEmailPoolEntriesFromMembershipResults(latestState.upiCredentialMembershipCheckResults);
-  
+    if (nextState?.freeAccountResults !== undefined || nextState?.accountRecordsV2 !== undefined) syncCustomEmailPoolEntriesFromMembershipResults(latestState.freeAccountResults);
     renderAccountRecords(latestState);
   }
-  
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
       '&': '&amp;',
@@ -2786,29 +2727,27 @@ with (appState.createScope()) {
       "'": '&#39;',
     }[char] || char));
   }
-  
   function normalizeNodeStatusesForCurrentWorkflow(statuses = {}) {
     const source = statuses && typeof statuses === 'object' ? statuses : {};
     const merged = { ...NODE_DEFAULT_STATUSES, ...source };
     return Object.fromEntries(NODE_IDS.map((nodeId) => [nodeId, merged[nodeId] || 'pending']));
   }
-  
   function initializeManualStepActions() {
     document.querySelectorAll('.step-row').forEach((row) => {
       if (row.dataset.displayOnly === 'true') return;
+      if (row.dataset.routeSkipped === 'true') return;
       if (row.querySelector('.step-actions')) {
         return;
       }
       const step = Number(row.dataset.step);
       const nodeId = String(row.dataset.nodeId || getNodeIdByStepForCurrentMode(step) || '').trim();
+      if (!SKIPPABLE_NODES.has(nodeId)) return;
       const statusEl = row.querySelector('.step-status');
       if (!statusEl) {
         return;
       }
-  
       const actions = document.createElement('div');
       actions.className = 'step-actions';
-  
       const manualBtn = document.createElement('button');
       manualBtn.type = 'button';
       manualBtn.className = 'step-manual-btn';
@@ -2825,85 +2764,66 @@ with (appState.createScope()) {
           showToast(err?.message || String(err || '跳过节点失败'), 'error');
         }
       });
-  
       statusEl.parentNode.replaceChild(actions, statusEl);
       actions.appendChild(manualBtn);
       actions.appendChild(statusEl);
     });
   }
-  
   function renderStepsList() {
     workflowController.renderStepsList();
   }
-  
   function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOrOptions = {}, maybeOptions = {}) {
     workflowController.syncStepDefinitionsForMode(plusModeEnabled, plusPaymentMethodOrOptions, maybeOptions);
   }
-  
   function renderSingleNodeStatus(nodeId, status) {
     workflowController.renderSingleNodeStatus(nodeId, status);
   }
-  
   function renderSingleStepStatus(step, status) {
     workflowController.renderSingleStepStatus(step, status);
   }
-  
   function renderStepStatuses(state = latestState) {
     workflowController.renderStepStatuses(state);
   }
-  
   function updateProgressCounter() {
     workflowController.updateProgressCounter();
   }
-  
   function arePreviousNodesReadyForManualExecute(nodeId = '', statuses = getNodeStatuses()) {
     return workflowController.arePreviousNodesReadyForManualExecute(nodeId, statuses);
   }
-  
   function canExecuteNodeWithoutPreviousNode(nodeId = '', statuses = getNodeStatuses()) {
     return workflowController.canExecuteNodeWithoutPreviousNode(nodeId, statuses);
   }
-  
   function updateButtonStates() {
     workflowController.updateButtonStates();
   }
-  
   function updateNodeUI(nodeId, status) {
     workflowController.updateNodeUI(nodeId, status);
   }
-  
   function updateStepUI(step, status) {
     workflowController.updateStepUI(step, status);
   }
-
   function updateStopButtonState(active) {
     if (btnStop) {
       btnStop.disabled = !active;
     }
   }
-  
   function updateStatusDisplay(state = latestState) {
     workflowController.updateStatusDisplay(state);
   }
-  
   function appendLog(entry = {}) {
     logPanelManager.appendLog(entry);
   }
-  
   function syncPasswordField(state = latestState) {
     if (inputPassword) {
       inputPassword.value = state?.customPassword || state?.password || '';
     }
   }
-  
   function syncPasswordToggleLabel() {
     sidepanelUiHelpers?.syncPasswordVisibilityToggle?.(btnTogglePassword);
   }
-  
   function syncVpsUrlToggleLabel() {
     sidepanelUiHelpers?.syncPasswordVisibilityToggle?.(btnToggleVpsUrl);
   }
-  
   function syncVpsPasswordToggleLabel() {
     sidepanelUiHelpers?.syncPasswordVisibilityToggle?.(btnToggleVpsPassword);
   }
@@ -2935,8 +2855,6 @@ with (appState.createScope()) {
       plusPaymentMethod: normalizedState?.plusPaymentMethod,
       plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
       signupMethod: stepDefinitionState.signupMethod,
-      upiRedeemStopAfterRedeem: true,
-      upiRedeemContinueAfterRedeem: false,
       totpMfaAfterProfileEnabled: normalizedState?.totpMfaAfterProfileEnabled !== false,
       registrationFreeRoute: normalizeRegistrationFreeRoute(normalizedState?.registrationFreeRoute),
     });
@@ -2956,18 +2874,6 @@ with (appState.createScope()) {
     if (selectPlusPaymentMethod) {
       selectPlusPaymentMethod.value = normalizePlusPaymentMethod(normalizedState.plusPaymentMethod);
     }
-    if (inputUpiRedeemExternalApiKey) {
-      inputUpiRedeemExternalApiKey.value = String(normalizedState.upiRedeemExternalApiKey ?? normalizedState.pixRedeemExternalApiKey ?? '').trim();
-    }
-    if (inputUpiRedeemClientId) {
-      inputUpiRedeemClientId.value = String(normalizedState.upiRedeemClientId ?? normalizedState.pixRedeemClientId ?? '').trim();
-    }
-    if (inputUpiRedeemFailedAccountRetryLimit) {
-      inputUpiRedeemFailedAccountRetryLimit.value = String(normalizeUpiRedeemFailedAccountRetryLimit(
-        normalizedState.upiRedeemFailedAccountRetryLimit,
-        DEFAULT_UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT
-      ));
-    }
     if (inputTotpMfaAfterProfileEnabled) {
       inputTotpMfaAfterProfileEnabled.checked = normalizedState.totpMfaAfterProfileEnabled !== false;
     }
@@ -2983,11 +2889,47 @@ with (appState.createScope()) {
     if (inputUpiSubscriptionApiBaseUrl) {
       inputUpiSubscriptionApiBaseUrl.value = String(normalizedState.upiSubscriptionApiBaseUrl || 'https://cha.nerver.cc').trim();
     }
+    if (inputGcashEligibilityApiToken) {
+      inputGcashEligibilityApiToken.value = String(normalizedState.gcashEligibilityApiToken || '').trim();
+    }
     setSharedVerificationCodeWaitInputs(
       normalizedState.setGptPasswordVerificationWaitSeconds ?? normalizedState.signupVerificationCodeWaitSeconds,
       DEFAULT_SET_GPT_PASSWORD_VERIFICATION_WAIT_SECONDS
     );
-    syncUpiRedeemAfterModeControls((normalizedState.upiRedeemContinueAfterRedeem ?? normalizedState.pixRedeemContinueAfterRedeem) === true ? false : true);
+    if (inputAutoSkipFailures) {
+      inputAutoSkipFailures.checked = true;
+    }
+    if (inputAutoRunRetryNonFreeTrial) {
+      inputAutoRunRetryNonFreeTrial.checked = Boolean(normalizedState.autoRunRetryNonFreeTrial);
+    }
+    if (inputAutoRunRetryLegacyWalletCallback) {
+      inputAutoRunRetryLegacyWalletCallback.checked = Boolean(normalizedState.autoRunRetryLegacyWalletCallback);
+    }
+    if (inputAutoRunRetryShortLinkError) {
+      inputAutoRunRetryShortLinkError.checked = Boolean(normalizedState.autoRunRetryShortLinkError);
+    }
+    if (inputStep6CookieCleanupEnabled) {
+      inputStep6CookieCleanupEnabled.checked = Boolean(normalizedState.step6CookieCleanupEnabled);
+    }
+    if (inputAutoDelayEnabled) {
+      inputAutoDelayEnabled.checked = Boolean(normalizedState.autoRunDelayEnabled);
+    }
+    if (inputAutoDelayMinutes) {
+      inputAutoDelayMinutes.value = String(normalizeAutoDelayMinutes(normalizedState.autoRunDelayMinutes));
+    }
+    if (inputAutoSkipFailuresThreadIntervalMinutes) {
+      inputAutoSkipFailuresThreadIntervalMinutes.value = String(
+        normalizeAutoRunThreadIntervalMinutes(normalizedState.autoRunFallbackThreadIntervalMinutes)
+      );
+    }
+    if (inputAutoStepDelaySeconds) {
+      inputAutoStepDelaySeconds.value = formatAutoStepDelayInputValue(normalizedState.autoStepDelaySeconds);
+    }
+    if (inputOAuthFlowTimeoutEnabled) {
+      inputOAuthFlowTimeoutEnabled.checked = Boolean(normalizedState.oauthFlowTimeoutEnabled);
+    }
+    updateAutoDelayInputState();
+    updateFallbackThreadIntervalInputState();
     if (inputVpsUrl) {
       inputVpsUrl.value = normalizedState.vpsUrl || '';
     }
@@ -3130,14 +3072,6 @@ with (appState.createScope()) {
     applyChatgptSessionReaderProfileToInputs(normalizedState, {
       mode: normalizedState.chatgptSessionReaderMode,
     });
-    if (!shouldPreserveFocusedUpiRedeemCdkeyPoolEdit('upi') && inputUpiRedeemCdkeyPool) {
-      inputUpiRedeemCdkeyPool.value = '';
-    }
-    if (!shouldPreserveFocusedUpiRedeemCdkeyPoolEdit('ideal') && inputIdealRedeemCdkeyPool) {
-      inputIdealRedeemCdkeyPool.value = '';
-    }
-    if (!shouldPreserveFocusedUpiRedeemCdkeyPoolEdit('pix') && inputPixRedeemCdkeyPool) inputPixRedeemCdkeyPool.value = '';
-    updateAllUpiRedeemCdkeyPoolSummaries(normalizedState);
     renderStepStatuses(latestState);
     updatePanelModeUI();
     updatePlusModeUI();
@@ -3346,7 +3280,7 @@ with (appState.createScope()) {
   async function initializeReleaseInfo() {
     try {
       const manifest = chrome.runtime.getManifest?.() || {};
-      const versionLabel = manifest.version_name || (manifest.version ? `CDK Redeem Only V${manifest.version}` : 'GitHub');
+      const versionLabel = manifest.version_name || (manifest.version ? `Free Account Tool V${manifest.version}` : 'GitHub');
       if (extensionUpdateStatus) {
         extensionUpdateStatus.textContent = versionLabel;
         extensionUpdateStatus.classList.add('is-version-label');
@@ -3445,9 +3379,9 @@ with (appState.createScope()) {
         setEntries: (entries, options = {}) => setCustomEmailPoolEntriesState(entries, options),
         getCredentialForEmail: (email) => {
           const normalizedEmail = String(email || '').trim().toLowerCase();
-          const items = Array.isArray(latestState?.upiCredentialMembershipCheckResults?.items) ? latestState.upiCredentialMembershipCheckResults.items : [];
+          const items = Array.isArray(latestState?.freeAccountResults?.items) ? latestState.freeAccountResults.items : [];
           const matches = items.filter((item) => String(item?.email || '').trim().toLowerCase() === normalizedEmail);
-          const scoreCredential = (item = {}) => { const trialStatus = String(item.trialEligibilityStatus || item.trialEligibility || item.eligibilityStatus || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); const token = String(item.accessToken || item.token || item.access_token || item.upiRedeemAccessToken || '').trim(); const checkedAt = Date.parse(String(item.trialEligibilityCheckedAt || item.checkedAt || item.updatedAt || item.accessTokenUpdatedAt || item.recordedAt || '').trim()) || 0; return (trialStatus === 'eligible' ? 1000000 : 0) + (String(item.status || item.planType || '').trim().toLowerCase() === 'free' ? 100000 : 0) + (token ? 10000 : 0) + Math.min(9999, Math.max(0, Math.floor(checkedAt / 1000000000))); };
+          const scoreCredential = (item = {}) => { const trialStatus = String(item.trialEligibilityStatus || item.trialEligibility || item.eligibilityStatus || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); const token = String(item.accessToken || item.token || item.access_token || '').trim(); const checkedAt = Date.parse(String(item.trialEligibilityCheckedAt || item.checkedAt || item.updatedAt || item.accessTokenUpdatedAt || item.recordedAt || '').trim()) || 0; return (trialStatus === 'eligible' ? 1000000 : 0) + (String(item.status || item.planType || '').trim().toLowerCase() === 'free' ? 100000 : 0) + (token ? 10000 : 0) + Math.min(9999, Math.max(0, Math.floor(checkedAt / 1000000000))); };
           return matches.reduce((best, item) => (scoreCredential(item) > scoreCredential(best) ? item : best), {});
         },
         getCurrentEmail: () => String(latestState?.selectedCustomEmailPoolEmail || (((latestState?.autoRunning || latestState?.autoRunPhase === 'running' || latestState?.autoRunPhase === 'waiting_step') ? latestState?.email : inputEmail?.value) || latestState?.email || inputEmail?.value || '')).trim().toLowerCase(), isAutoRunning: () => Boolean(latestState?.autoRunning || latestState?.autoRunPhase === 'running' || latestState?.autoRunPhase === 'waiting_step'),
@@ -3477,9 +3411,9 @@ with (appState.createScope()) {
         },
         checkTrialEligibility: async (entry = {}) => {
           const email = String(entry.email || '').trim().toLowerCase();
-          const accessToken = String(entry.accessToken || entry.token || entry.access_token || entry.upiRedeemAccessToken || '').trim();
+          const accessToken = String(entry.accessToken || entry.token || entry.access_token || '').trim();
           const response = await chrome.runtime.sendMessage({
-            type: 'CHECK_UPI_CREDENTIAL_MEMBERSHIP_TRIAL_ELIGIBILITY',
+            type: 'CHECK_FREE_ACCOUNT_ELIGIBILITY',
             source: 'sidepanel',
             payload: {
               source: 'custom-email-pool-trial-eligibility-check',
@@ -3501,7 +3435,7 @@ with (appState.createScope()) {
           }
           if (response?.results) {
             syncLatestState({
-              upiCredentialMembershipCheckResults: response.results,
+              freeAccountResults: response.results,
             });
           }
           return response || {};
@@ -3538,33 +3472,6 @@ with (appState.createScope()) {
     return { valid: true, message: '' };
   }
   
-  cdkPoolManager = null;
-  
-  function getCdkPoolManager() {
-    if (cdkPoolManager) {
-      return cdkPoolManager;
-    }
-    cdkPoolManager = window.SidepanelCdkPoolManager?.createCdkPoolManager?.({
-      dom: {
-        btnUpiRedeemCdkeyStatusRefresh,
-        btnImportCdkPool,
-        btnDeleteAllCdkPool,
-        btnImportIdealCdkPool, btnDeleteAllIdealCdkPool, btnImportPixCdkPool, btnDeleteAllPixCdkPool,
-        inputUpiRedeemCdkeyPool, inputIdealRedeemCdkeyPool, inputPixRedeemCdkeyPool,
-      },
-      helpers: {
-        showToast,
-        importCdkPoolFromTextarea,
-        deleteAllUpiRedeemCdkeys,
-        refreshAllUpiRedeemCdkeyStatuses,
-      },
-    }) || null;
-    return cdkPoolManager;
-  }
-  
-  function bindCdkPoolEvents() {
-    getCdkPoolManager()?.bindEvents?.();
-  }
   
   async function maybeTakeoverAutoRun(actionLabel) {
     if (!isAutoRunPausedPhase()) {
@@ -3590,6 +3497,9 @@ with (appState.createScope()) {
     const normalizedNodeId = String(nodeId || '').trim();
     if (!normalizedNodeId) {
       throw new Error('缺少要跳过的节点。');
+    }
+    if (!SKIPPABLE_NODES.has(normalizedNodeId)) {
+      throw new Error('最终账号保存节点不能跳过。');
     }
     if (!(await maybeTakeoverAutoRun(`跳过节点 ${normalizedNodeId}`))) {
       return;
@@ -3676,118 +3586,11 @@ with (appState.createScope()) {
     return PLUS_PAYMENT_METHOD_UPI;
   }
   
-  const cdkPoolStateHelpers = window.SidepanelCdkPoolState.createCdkPoolStateHelpers();
-  const {
-    normalizeUpiRedeemCdkeyPoolTextValue,
-    parseUpiRedeemCdkeyPoolTextValue,
-    normalizeUpiRedeemSubscriptionActiveValue,
-    normalizeUpiRedeemSubscriptionPlanType,
-    normalizeUpiRedeemJobCapabilityValue,
-    normalizeUpiRedeemCdkeyUsageValue,
-    normalizeRedeemChannel,
-    getRedeemChannelLabel,
-    getStoredCdkPoolText,
-    getStoredCdkUsage,
-    buildCdkPoolStatePatch,
-    getUpiRedeemRemoteStatusLabel,
-    isUpiRedeemDuplicateCdkeyMessage,
-    normalizeUpiRedeemRemoteStatusValue,
-    isRetryableUpiRedeemRemoteStatus,
-    isUpiRedeemRemoteActiveStatus,
-    isUpiRedeemCdkeySelectableForRedeem,
-    getUpiRedeemRemoteStatusClass,
-    canCancelUpiRedeemCdkeyJob,
-    canRetryUpiRedeemCdkeyJob,
-    getUpiRedeemSubscriptionPlanLabel,
-  } = cdkPoolStateHelpers;
-  
-  const upiRedeemCdkController = window.SidepanelUpiRedeemCdkController.createUpiRedeemCdkController({
-    cdkPoolStateHelpers,
-    dom: {
-      document,
-      window,
-      rowUpiRedeemCdkeyPool,
-      inputUpiRedeemCdkeyPool,
-      btnImportCdkPool,
-      btnDeleteAllCdkPool,
-      upiRedeemCdkeyPoolSummary,
-      inputIdealRedeemCdkeyPool,
-      btnImportIdealCdkPool, btnDeleteAllIdealCdkPool, idealRedeemCdkeyPoolSummary,
-      inputPixRedeemCdkeyPool, btnImportPixCdkPool, btnDeleteAllPixCdkPool, pixRedeemCdkeyPoolSummary,
-      inputUpiRedeemExternalApiKey,
-      inputUpiRedeemClientId,
-      inputPlusModeEnabled,
-      inputUpiRedeemFailedAccountRetryLimit,
-      btnUpiRedeemCdkeyStatusRefresh,
-      upiRedeemCdkeyStatusList, idealRedeemCdkeyStatusList, pixRedeemCdkeyStatusList,
-    },
-    state: {
-      getLatestState: () => latestState,
-      syncLatestState,
-      getAccountRecordsManager: () => getAccountRecordsManager(),
-    },
-    helpers: {
-      showToast,
-      openConfirmModal,
-      renderAccountRecords,
-      markSettingsDirty: (...args) => markSettingsDirty(...args),
-      saveSettings: (...args) => saveSettings(...args),
-      normalizeUpiRedeemFailedAccountRetryLimit,
-      getSelectedPlusPaymentMethod: () => getSelectedPlusPaymentMethod(),
-      isAutoRunLockedPhase,
-      isAutoRunPausedPhase,
-      isAutoRunScheduledPhase,
-    },
-    constants: {
-      PLUS_PAYMENT_METHOD_UPI,
-      UPI_REDEEM_CDKEY_STATUS_AUTO_REFRESH_MS: 5000,
-    },
-    runtime: {
-      sendMessage: (message) => chrome.runtime.sendMessage(message),
-    },
-  });
-  const {
-    shouldPreserveFocusedUpiRedeemCdkeyPoolEdit,
-    importCdkPoolFromTextarea,
-    deleteAllUpiRedeemCdkeys,
-    refreshUpiRedeemCdkeyStatuses,
-    refreshAllUpiRedeemCdkeyStatuses,
-    scheduleUpiRedeemCdkeyStatusAutoRefresh,
-    clearUpiRedeemCdkeyStatusAutoRefresh,
-    updateUpiRedeemCdkeyPoolSummary,
-    updateAllUpiRedeemCdkeyPoolSummaries,
-  } = upiRedeemCdkController;
-  
   function getSelectedPlusPaymentMethod(state = latestState) {
     const selected = typeof selectPlusPaymentMethod !== 'undefined' && selectPlusPaymentMethod
       ? selectPlusPaymentMethod.value
       : state?.plusPaymentMethod;
     return normalizePlusPaymentMethod(selected || DEFAULT_PLUS_PAYMENT_METHOD);
-  }
-  
-  function normalizeUpiRedeemAfterMode(value = '') {
-    return String(value || '').trim().toLowerCase() === 'continue' ? 'continue' : 'stop';
-  }
-  
-  function syncUpiRedeemAfterModeControls(stopAfterRedeem = true) {
-    const stop = stopAfterRedeem !== false;
-    if (typeof selectUpiRedeemAfterMode !== 'undefined' && selectUpiRedeemAfterMode) {
-      selectUpiRedeemAfterMode.value = stop ? 'stop' : 'continue';
-    }
-    if (typeof inputUpiRedeemStopAfterRedeem !== 'undefined' && inputUpiRedeemStopAfterRedeem) {
-      inputUpiRedeemStopAfterRedeem.checked = stop;
-    }
-    return stop;
-  }
-  
-  function getSelectedUpiRedeemStopAfterRedeem(state = latestState) {
-    if (typeof selectUpiRedeemAfterMode !== 'undefined' && selectUpiRedeemAfterMode) {
-      return normalizeUpiRedeemAfterMode(selectUpiRedeemAfterMode.value) !== 'continue';
-    }
-    if (typeof inputUpiRedeemStopAfterRedeem !== 'undefined' && inputUpiRedeemStopAfterRedeem) {
-      return Boolean(inputUpiRedeemStopAfterRedeem.checked);
-    }
-    return (state?.upiRedeemContinueAfterRedeem ?? state?.pixRedeemContinueAfterRedeem) === true ? false : true;
   }
   
   function getSelectedTotpMfaAfterProfileEnabled(state = latestState) {
@@ -3829,22 +3632,6 @@ with (appState.createScope()) {
       return fallbackValue;
     }
     return Math.max(0, Math.min(SET_GPT_PASSWORD_VERIFICATION_WAIT_MAX_SECONDS, numeric));
-  }
-  
-  function normalizeUpiRedeemFailedAccountRetryLimit(value, fallback = DEFAULT_UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT) {
-    const rawValue = String(value ?? '').trim();
-    const fallbackNumber = Number.parseInt(String(fallback ?? '').trim(), 10);
-    const fallbackValue = Number.isFinite(fallbackNumber)
-      ? Math.max(0, Math.min(UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT_MAX, fallbackNumber))
-      : DEFAULT_UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT;
-    if (!rawValue) {
-      return fallbackValue;
-    }
-    const numeric = Number.parseInt(rawValue, 10);
-    if (!Number.isFinite(numeric)) {
-      return fallbackValue;
-    }
-    return Math.max(0, Math.min(UPI_REDEEM_FAILED_ACCOUNT_RETRY_LIMIT_MAX, numeric));
   }
   
   function normalizeSignupVerificationCodeWaitSeconds(value, fallback = DEFAULT_SIGNUP_VERIFICATION_CODE_WAIT_SECONDS) {
@@ -3896,33 +3683,12 @@ with (appState.createScope()) {
     }
   }
   
-  function syncUpiRedeemAfterModeStepDefinitions() {
-    syncUpiRedeemAfterModeControls(true);
-    const stepDefinitionState = typeof resolveStepDefinitionCapabilityState === 'function'
-      ? resolveStepDefinitionCapabilityState({
-        ...(latestState || {}),
-        plusModeEnabled: Boolean(inputPlusModeEnabled?.checked),
-        signupMethod: getSelectedSignupMethod(),
-      }, {
-        signupMethod: getSelectedSignupMethod(),
-      })
-      : {
-        plusModeEnabled: Boolean(inputPlusModeEnabled?.checked),
-        signupMethod: getSelectedSignupMethod(),
-      };
-    syncStepDefinitionsForMode(stepDefinitionState.plusModeEnabled, {
-      render: true,
-      plusPaymentMethod: getSelectedPlusPaymentMethod(),
-      signupMethod: stepDefinitionState.signupMethod,
-      plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-      upiRedeemStopAfterRedeem: true,
-      upiRedeemContinueAfterRedeem: false,
-      totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
-      registrationFreeRoute: getSelectedRegistrationFreeRoute(latestState),
-    });
-  }
-  
   function syncTotpMfaAfterProfileStepDefinitions() {
+    const previousRegistrationFreeRoute = normalizeRegistrationFreeRoute(
+      latestState?.registrationFreeRoute ?? currentRegistrationFreeRoute
+    );
+    const nextRegistrationFreeRoute = getSelectedRegistrationFreeRoute(latestState);
+    const registrationFreeRouteChanged = previousRegistrationFreeRoute !== nextRegistrationFreeRoute;
     const stepDefinitionState = typeof resolveStepDefinitionCapabilityState === 'function'
       ? resolveStepDefinitionCapabilityState({
         ...(latestState || {}),
@@ -3940,11 +3706,18 @@ with (appState.createScope()) {
       plusPaymentMethod: getSelectedPlusPaymentMethod(),
       signupMethod: stepDefinitionState.signupMethod,
       plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-      upiRedeemStopAfterRedeem: true,
-      upiRedeemContinueAfterRedeem: false,
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
-      registrationFreeRoute: getSelectedRegistrationFreeRoute(latestState),
+      registrationFreeRoute: nextRegistrationFreeRoute,
     });
+    if (registrationFreeRouteChanged) {
+      syncLatestState({
+        registrationFreeRoute: nextRegistrationFreeRoute,
+        currentNodeId: '',
+        nodeStatuses: { ...NODE_DEFAULT_STATUSES },
+      });
+      renderStepStatuses(latestState);
+      updateStatusDisplay(latestState);
+    }
   }
   
   
@@ -4352,7 +4125,7 @@ with (appState.createScope()) {
       .toLowerCase()
       .replace(/[^a-z0-9._-]+/g, '-')
       .replace(/-{2,}/g, '-')
-      .replace(/^[-._]+|[-._]+$/g, '') || 'cdk-redeem';
+      .replace(/^[-._]+|[-._]+$/g, '') || 'free-account-tool';
   }
   
   function normalizeOutlookEmailPlusAliasMaxPerMailbox(value) {
@@ -4411,7 +4184,7 @@ with (appState.createScope()) {
     }
   }
 
-  function syncCustomEmailPoolEntriesFromMembershipResults(results = latestState?.upiCredentialMembershipCheckResults) {
+  function syncCustomEmailPoolEntriesFromMembershipResults(results = latestState?.freeAccountResults) {
     const syncer = window.SidepanelCustomEmailPoolMembershipSync?.createCustomEmailPoolMembershipSync?.({
       normalizeEntries: normalizeCustomEmailPoolEntryObjects,
       normalizeTrialEligibilityStatus: normalizeCustomEmailPoolTrialEligibilityStatus,
@@ -4861,12 +4634,7 @@ with (appState.createScope()) {
       : ((value = '') => String(value || '').trim().toLowerCase() || 'openai');
     const normalizeOutlookEmailPlusCallerIdPrefixInput = typeof normalizeOutlookEmailPlusCallerIdPrefixValue === 'function'
       ? normalizeOutlookEmailPlusCallerIdPrefixValue
-      : ((value = '') => String(value || '').trim().toLowerCase() || 'cdk-redeem');
-    const cdkPoolTextForSave = getStoredCdkPoolText(latestState, 'upi');
-    const cdkUsageForSave = getStoredCdkUsage(latestState, 'upi');
-    const idealCdkPoolTextForSave = getStoredCdkPoolText(latestState, 'ideal');
-    const idealCdkUsageForSave = getStoredCdkUsage(latestState, 'ideal');
-    const pixCdkPoolTextForSave = getStoredCdkPoolText(latestState, 'pix'), pixCdkUsageForSave = getStoredCdkUsage(latestState, 'pix');
+      : ((value = '') => String(value || '').trim().toLowerCase() || 'free-account-tool');
     const contributionModeEnabled = Boolean(latestState?.contributionMode);
     const icloudFetchModeRawValue = typeof selectIcloudFetchMode !== 'undefined'
       ? String(selectIcloudFetchMode?.value || '')
@@ -5074,29 +4842,12 @@ with (appState.createScope()) {
       chatgptSessionReaderMode: selectedChatgptSessionReaderMode,
       chatgptSessionReaderProfiles: nextChatgptSessionReaderProfiles,
       upiSubscriptionApiBaseUrl: String(inputUpiSubscriptionApiBaseUrl?.value || '').trim(),
-      upiRedeemExternalApiKey: String(inputUpiRedeemExternalApiKey?.value || '').trim(),
-      upiRedeemClientId: String(inputUpiRedeemClientId?.value || '').trim(),
-      upiRedeemFailedAccountRetryLimit: normalizeUpiRedeemFailedAccountRetryLimit(
-        inputUpiRedeemFailedAccountRetryLimit?.value,
-        latestState?.upiRedeemFailedAccountRetryLimit
-      ),
-      upiRedeemStopAfterRedeem: true,
-      upiRedeemContinueAfterRedeem: false,
+      gcashEligibilityApiToken: String(inputGcashEligibilityApiToken?.value || '').trim(),
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
       registrationFreeRoute: getSelectedRegistrationFreeRoute(latestState),
       upiCredentialMembershipCheckTotpApiBaseUrl: String(inputUpiCredentialMembershipTotpApiBaseUrl?.value || '').trim(),
       upiCredentialMembershipCheckTotpLookupKey: String(inputUpiCredentialMembershipTotpLookupKey?.value || '').trim(),
       setGptPasswordVerificationWaitSeconds: resolveSharedVerificationCodeWaitSeconds(latestState),
-      cdkPoolText: cdkPoolTextForSave,
-      upiRedeemCdkPoolText: cdkPoolTextForSave,
-      upiRedeemCdkeyPoolText: cdkPoolTextForSave,
-      pixRedeemCdkeyPoolText: cdkPoolTextForSave,
-      idealRedeemCdkeyPoolText: idealCdkPoolTextForSave, pixChannelRedeemCdkeyPoolText: pixCdkPoolTextForSave,
-      cdkUsage: cdkUsageForSave,
-      upiRedeemCdkUsage: cdkUsageForSave,
-      upiRedeemCdkeyUsage: cdkUsageForSave,
-      pixRedeemCdkeyUsage: cdkUsageForSave,
-      idealRedeemCdkeyUsage: idealCdkUsageForSave, pixChannelRedeemCdkeyUsage: pixCdkUsageForSave,
       legacyWalletEmail: String(currentLegacyWalletAccount?.email || latestState?.legacyWalletEmail || '').trim(),
       legacyWalletPassword: String(currentLegacyWalletAccount?.password || latestState?.legacyWalletPassword || ''),
       currentLegacyWalletAccountId: String(latestState?.currentLegacyWalletAccountId || '').trim(),
@@ -5575,7 +5326,6 @@ with (appState.createScope()) {
       plusPaymentMethod: getSelectedPlusPaymentMethod(latestState),
       plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
       signupMethod: SIGNUP_METHOD_EMAIL,
-      upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
     });
   }
@@ -5651,7 +5401,7 @@ with (appState.createScope()) {
       plusPaymentMethodCaption.textContent = selectedMethod === upiInfoValue
         ? 'UPI_INFO 订阅链路'
         : selectedMethod === upiValue
-        ? 'UPI 资格检测与手动 CDK 兑换链路'
+        ? 'Free 资格检测链路'
         : selectedMethod === legacyPayValue
         ? 'LegacyPay 印尼订阅链路'
         : 'LegacyWallet 订阅链路';
@@ -5696,29 +5446,18 @@ with (appState.createScope()) {
     });
     [
       typeof rowUpiSubscriptionApiBaseUrl !== 'undefined' ? rowUpiSubscriptionApiBaseUrl : null,
-      typeof rowUpiRedeemExternalApiKey !== 'undefined' ? rowUpiRedeemExternalApiKey : null,
-      typeof rowUpiRedeemClientId !== 'undefined' ? rowUpiRedeemClientId : null,
-      typeof rowUpiRedeemFailedAccountRetryLimit !== 'undefined' ? rowUpiRedeemFailedAccountRetryLimit : null,
+      typeof rowGcashEligibilityApiToken !== 'undefined' ? rowGcashEligibilityApiToken : null,
       typeof rowTotpMfaAfterProfileEnabled !== 'undefined' ? rowTotpMfaAfterProfileEnabled : null,
       typeof rowRegistrationFreeRoute !== 'undefined' ? rowRegistrationFreeRoute : null,
       typeof rowSetGptPasswordVerificationWaitSeconds !== 'undefined' ? rowSetGptPasswordVerificationWaitSeconds : null,
       typeof rowUpiCredentialMembershipTotpApiBaseUrl !== 'undefined' ? rowUpiCredentialMembershipTotpApiBaseUrl : null,
       typeof rowUpiCredentialMembershipTotpLookupKey !== 'undefined' ? rowUpiCredentialMembershipTotpLookupKey : null,
-      typeof rowUpiRedeemCdkeyPool !== 'undefined' ? rowUpiRedeemCdkeyPool : null,
     ].forEach((row) => {
       if (!row) {
         return;
       }
       row.style.display = upiRowsVisible ? '' : 'none';
     });
-    if (typeof rowUpiRedeemStopAfterRedeem !== 'undefined' && rowUpiRedeemStopAfterRedeem) {
-      rowUpiRedeemStopAfterRedeem.style.display = 'none';
-    }
-    if (typeof selectUpiRedeemAfterMode !== 'undefined' && selectUpiRedeemAfterMode) {
-      selectUpiRedeemAfterMode.value = 'stop';
-    }
-    updateAllUpiRedeemCdkeyPoolSummaries(latestState);
-    scheduleUpiRedeemCdkeyStatusAutoRefresh({ immediate: upiRowsVisible });
     [
       typeof rowUpiInfoHelperCountryCode !== 'undefined' ? rowUpiInfoHelperCountryCode : null,
       typeof rowUpiInfoHelperOtpChannel !== 'undefined' ? rowUpiInfoHelperOtpChannel : null,
@@ -5754,11 +5493,9 @@ with (appState.createScope()) {
     settingsCard.classList.toggle('is-locked', locked);
     settingsCard.toggleAttribute('inert', false);
     Array.from(settingsCard.children).forEach((child) => {
-      const keepInteractive = child?.id === 'row-custom-email-pool'
-        || child?.id === 'row-upi-redeem-cdkey-pool';
+      const keepInteractive = child?.id === 'row-custom-email-pool';
       child.toggleAttribute('inert', Boolean(locked && !keepInteractive));
     });
-    updateAllUpiRedeemCdkeyPoolSummaries(latestState, { skipRender: true });
   }
   
   async function setRuntimeEmailState(email) {
@@ -6061,8 +5798,10 @@ const {
   persistCustomEmailPoolSettings,
   persistCustomPasswordInput,
   saveSettings,
+  bindEvents: bindSettingsEvents,
   persistCurrentSettingsForAction,
 } = settingsController;
+bindSettingsEvents();
 const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettingsFieldBindings({
   scheduleSettingsSave,
 });
@@ -6240,7 +5979,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
       render: true,
       signupMethod: stepDefinitionState.signupMethod,
       plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-      upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
     });
     validateRemovedContactContactConfig();
@@ -6280,7 +6018,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
       render: true,
       signupMethod: stepDefinitionState.signupMethod,
       plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-      upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
     });
     validateRemovedContactContactConfig();
@@ -6339,24 +6076,18 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
     }
   });
   
-  bindCdkPoolEvents();
-  
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      clearUpiRedeemCdkeyStatusAutoRefresh();
       flushDirtySettingsBeforePanelUnload();
       return;
     }
-    scheduleUpiRedeemCdkeyStatusAutoRefresh({ immediate: true });
   });
   
   window.addEventListener('pagehide', () => {
-    clearUpiRedeemCdkeyStatusAutoRefresh();
     flushDirtySettingsBeforePanelUnload();
   });
   
   window.addEventListener('beforeunload', () => {
-    clearUpiRedeemCdkeyStatusAutoRefresh();
     flushDirtySettingsBeforePanelUnload();
   });
   
@@ -6379,7 +6110,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
       plusPaymentMethod: selectPlusPaymentMethod.value,
       signupMethod: stepDefinitionState.signupMethod,
       plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-      upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
       totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
     });
     validateRemovedContactContactConfig();
@@ -6394,38 +6124,17 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
     selectUpiInfoHelperOtpChannel,
     inputUpiInfoHelperPin,
     inputUpiSubscriptionApiBaseUrl,
-    inputUpiRedeemExternalApiKey,
-    inputUpiRedeemClientId,
-    inputUpiRedeemFailedAccountRetryLimit,
+    inputGcashEligibilityApiToken,
     inputTotpMfaAfterProfileEnabled,
     selectRegistrationFreeRoute,
     inputSetGptPasswordVerificationWaitSeconds,
     inputUpiCredentialMembershipTotpApiBaseUrl,
     inputUpiCredentialMembershipTotpLookupKey,
-    selectUpiRedeemAfterMode,
-    inputUpiRedeemStopAfterRedeem,
     selectLegacyPayCountryCode,
     inputLegacyPayOtp,
     inputLegacyPayPin,
-    inputIdealRedeemCdkeyPool, inputPixRedeemCdkeyPool,
   ].forEach((input) => {
     input?.addEventListener('input', () => {
-      if (input === inputUpiRedeemCdkeyPool || input === inputIdealRedeemCdkeyPool || input === inputPixRedeemCdkeyPool) {
-        updateUpiRedeemCdkeyPoolSummary(latestState, {
-          channel: input === inputIdealRedeemCdkeyPool ? 'ideal' : (input === inputPixRedeemCdkeyPool ? 'pix' : 'upi'),
-        });
-      }
-      if (
-        input === inputUpiRedeemExternalApiKey
-        || input === inputUpiRedeemClientId
-        || input === inputUpiRedeemCdkeyPool
-        || input === inputIdealRedeemCdkeyPool || input === inputPixRedeemCdkeyPool
-      ) {
-        scheduleUpiRedeemCdkeyStatusAutoRefresh({ immediate: true });
-      }
-      if (input === selectUpiRedeemAfterMode || input === inputUpiRedeemStopAfterRedeem) {
-        syncUpiRedeemAfterModeStepDefinitions();
-      }
       if (input === inputTotpMfaAfterProfileEnabled) {
         syncTotpMfaAfterProfileStepDefinitions();
       }
@@ -6439,9 +6148,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
       scheduleSettingsAutoSave();
     });
     input?.addEventListener('change', () => {
-      if (input === selectUpiRedeemAfterMode || input === inputUpiRedeemStopAfterRedeem) {
-        syncUpiRedeemAfterModeStepDefinitions();
-      }
       if (input === inputTotpMfaAfterProfileEnabled) {
         syncTotpMfaAfterProfileStepDefinitions();
       }
@@ -6450,14 +6156,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
       }
       if (input === selectUpiInfoHelperOtpChannel) {
         updatePlusModeUI();
-      }
-      if (
-        input === inputUpiRedeemExternalApiKey
-        || input === inputUpiRedeemClientId
-        || input === inputUpiRedeemCdkeyPool
-        || input === inputIdealRedeemCdkeyPool || input === inputPixRedeemCdkeyPool
-      ) {
-        scheduleUpiRedeemCdkeyStatusAutoRefresh({ immediate: true });
       }
       markSettingsDirty(true);
       saveSettings({ silent: true }).catch(() => { });
@@ -6611,7 +6309,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
         plusPaymentMethod: currentPlusPaymentMethod,
         plusAccountAccessStrategy: nextExportSettings.plusAccountAccessStrategy,
         signupMethod: currentSignupMethod,
-        upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
         totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
       });
       updatePanelModeUI();
@@ -6663,7 +6360,6 @@ const settingsFieldBindings = window.SidepanelSettingsFieldBindings.createSettin
         plusPaymentMethod: currentPlusPaymentMethod,
         plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
         signupMethod: stepDefinitionState.signupMethod,
-        upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
         totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
       });
       updateSignupMethodUI();
@@ -7781,7 +7477,6 @@ runtimeMessageController.start();
     plusPaymentMethod: currentPlusPaymentMethod,
     plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
     signupMethod: currentSignupMethod,
-    upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
     totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
     registrationFreeRoute: currentRegistrationFreeRoute,
   });
@@ -7795,7 +7490,6 @@ runtimeMessageController.start();
       plusPaymentMethod: currentPlusPaymentMethod,
       plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
       signupMethod: currentSignupMethod,
-      upiRedeemStopAfterRedeem: currentUpiRedeemStopAfterRedeem,
       totpMfaAfterProfileEnabled: currentTotpMfaAfterProfileEnabled,
       registrationFreeRoute: currentRegistrationFreeRoute,
     });

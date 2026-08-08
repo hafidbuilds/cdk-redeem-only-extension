@@ -40,7 +40,6 @@
         credential.accessToken
         || credential.token
         || credential.access_token
-        || credential.upiRedeemAccessToken
         || ''
       ).trim();
     }

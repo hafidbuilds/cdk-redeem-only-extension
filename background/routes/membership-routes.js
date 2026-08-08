@@ -12,27 +12,28 @@
 
   function createMembershipRoutes(deps = {}) {
     const {
-      checkBatch,
-      checkOne,
       checkTrialEligibility,
       fillFreeAccessTokens,
+      startFillSessions,
+      resumeFillSessions,
+      stopFillSessions,
     } = deps;
 
     return {
-      CHECK_UPI_CREDENTIAL_MEMBERSHIP_BATCH: (payload, message, sender) => (
-        requireHandler(checkBatch, 'checkBatch')(payload, message, sender)
-      ),
-      CHECK_UPI_CREDENTIAL_MEMBERSHIP_ONE: (payload, message, sender) => (
-        requireHandler(checkOne, 'checkOne')(payload, message, sender)
-      ),
-      CHECK_UPI_CREDENTIAL_MEMBERSHIP_TRIAL_ELIGIBILITY: (payload, message, sender) => (
+      CHECK_FREE_ACCOUNT_ELIGIBILITY: (payload, message, sender) => (
         requireHandler(checkTrialEligibility, 'checkTrialEligibility')(payload, message, sender)
       ),
-      CHECK_UPI_CREDENTIAL_MEMBERSHIP_TRIAL_ELIGIBILITY_BATCH: (payload, message, sender) => (
-        requireHandler(checkTrialEligibility, 'checkTrialEligibility')(payload, message, sender)
-      ),
-      FILL_UPI_CREDENTIAL_MEMBERSHIP_FREE_ACCESS_TOKENS: (payload, message, sender) => (
+      FILL_FREE_ACCOUNT_ACCESS_TOKENS: (payload, message, sender) => (
         requireHandler(fillFreeAccessTokens, 'fillFreeAccessTokens')(payload, message, sender)
+      ),
+      START_FILL_FREE_ACCOUNT_SESSIONS: (payload, message, sender) => (
+        requireHandler(startFillSessions, 'startFillSessions')(payload, message, sender)
+      ),
+      RESUME_FREE_ACCOUNT_SESSION_FILL: (payload, message, sender) => (
+        requireHandler(resumeFillSessions, 'resumeFillSessions')(payload, message, sender)
+      ),
+      STOP_FREE_ACCOUNT_SESSION_FILL: (payload, message, sender) => (
+        requireHandler(stopFillSessions, 'stopFillSessions')(payload, message, sender)
       ),
     };
   }

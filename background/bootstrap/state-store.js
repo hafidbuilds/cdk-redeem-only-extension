@@ -1,7 +1,6 @@
 (function attachBackgroundStateStore(globalScope) {
   function createBackgroundStateStore(deps = {}) {
     const {
-      alignUpiRedeemCdkeyAliasStatePatch = (patch) => patch || {},
       accountRecordsStorageKey = 'accountRecordsV2',
       buildStatePatchWithRuntimeState = (_currentState, updates) => updates || {},
       buildStateViewWithRuntimeState = (state) => state || {},
@@ -11,13 +10,26 @@
       getPersistedAliasState = async () => ({}),
       getPersistedSettings = async () => ({}),
       logPrefix = '[MultiPage]',
-      membershipResultsStorageKey = 'upiCredentialMembershipCheckResults',
+      membershipResultsStorageKey = 'freeAccountResults',
+      migrateStateView = null,
       normalizeBooleanMap = (value) => value || {},
       normalizeIcloudAliasCacheList = (value) => Array.isArray(value) ? value : [],
       normalizePersistentSettingValue = (_key, value) => value,
+      persistentSettingKeys = [],
       protectFreshMembershipResultsInStatePatch = async () => {},
       setPersistentSettings = async () => {},
+      statePatchNeedsCurrentState = () => true,
     } = deps;
+    const persistentSettingKeySet = new Set(
+      (Array.isArray(persistentSettingKeys) ? persistentSettingKeys : [])
+        .map((key) => String(key || '').trim())
+        .filter(Boolean)
+    );
+    const customEmailPoolSessionCompatKeys = new Set([
+      'customEmailPoolEntries',
+      'customEmailPool',
+      'selectedCustomEmailPoolEmail',
+    ]);
 
     function hasNonEmptyArray(value) {
       return Array.isArray(value) && value.length > 0;
@@ -103,6 +115,35 @@
       return merged;
     }
 
+    function omitPersistentSettings(source = {}, options = {}) {
+      const { preserveCustomEmailPoolCompat = false } = options;
+      const next = { ...(source || {}) };
+      for (const key of persistentSettingKeySet) {
+        if (preserveCustomEmailPoolCompat && customEmailPoolSessionCompatKeys.has(key)) {
+          continue;
+        }
+        delete next[key];
+      }
+      return next;
+    }
+
+    function sanitizeSessionPatch(patch = {}) {
+      const next = omitPersistentSettings(patch);
+      delete next[membershipResultsStorageKey];
+      delete next[accountRecordsStorageKey];
+      return next;
+    }
+
+    function pickPersistentSettingsPatch(source = {}) {
+      const patch = {};
+      for (const key of persistentSettingKeySet) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          patch[key] = source[key];
+        }
+      }
+      return patch;
+    }
+
     async function getState() {
       const [state, persistedSettings, persistedAliasState, accountRunHistory, persistedAccountState] = await Promise.all([
         chromeApi.storage.session.get(null),
@@ -112,17 +153,32 @@
         chromeApi.storage.local.get([membershipResultsStorageKey, accountRecordsStorageKey]).catch(() => ({})),
       ]);
       const persistedCredentialMembershipCheckResults = persistedAccountState?.[membershipResultsStorageKey]
-        || defaultState.upiCredentialMembershipCheckResults;
-      const sessionState = protectPersistedCustomEmailPoolOnReload(state, persistedSettings);
-      return buildStateViewWithRuntimeState({
+        || defaultState.freeAccountResults;
+      const protectedSessionState = protectPersistedCustomEmailPoolOnReload(state, persistedSettings);
+      const sessionState = omitPersistentSettings(protectedSessionState, {
+        preserveCustomEmailPoolCompat: true,
+      });
+      const stateView = buildStateViewWithRuntimeState({
         ...defaultState,
         ...persistedSettings,
         ...persistedAliasState,
         ...sessionState,
-        upiCredentialMembershipCheckResults: persistedCredentialMembershipCheckResults,
+        freeAccountResults: persistedCredentialMembershipCheckResults,
         accountRecordsV2: persistedAccountState?.[accountRecordsStorageKey] || defaultState.accountRecordsV2,
         accountRunHistory,
       });
+      if (typeof migrateStateView !== 'function') {
+        return stateView;
+      }
+      const migrationPatch = migrateStateView(stateView, { sessionState: state || {} });
+      if (!migrationPatch || typeof migrationPatch !== 'object' || Array.isArray(migrationPatch) || !Object.keys(migrationPatch).length) {
+        return stateView;
+      }
+      const safeMigrationPatch = sanitizeSessionPatch(migrationPatch);
+      if (Object.keys(safeMigrationPatch).length > 0) {
+        await chromeApi.storage.session.set(safeMigrationPatch);
+      }
+      return buildStateViewWithRuntimeState({ ...stateView, ...migrationPatch });
     }
 
     async function initializeSessionStorageAccess() {
@@ -136,21 +192,42 @@
       } catch (err) {
         console.warn(logPrefix, 'Failed to enable storage.session for content scripts:', err?.message || err);
       }
+      try {
+        await chromeApi.storage?.session?.remove?.([membershipResultsStorageKey, accountRecordsStorageKey]);
+      } catch (err) {
+        console.warn(logPrefix, 'Failed to remove canonical local data from storage.session:', err?.message || err);
+      }
     }
 
     async function setState(updates) {
-      console.log(logPrefix, 'storage.set:', JSON.stringify(updates).slice(0, 200));
       if (Object.keys(updates || {}).length <= 0) {
         return;
       }
 
-      const currentSessionState = await chromeApi.storage.session.get(null);
-      const sessionUpdates = alignUpiRedeemCdkeyAliasStatePatch(buildStatePatchWithRuntimeState({
+      const currentSessionState = statePatchNeedsCurrentState(updates)
+        ? await chromeApi.storage.session.get(null)
+        : {};
+      const sessionUpdates = buildStatePatchWithRuntimeState({
         ...defaultState,
         ...currentSessionState,
-      }, updates));
+      }, updates);
       await protectFreshMembershipResultsInStatePatch(sessionUpdates);
-      await chromeApi.storage.session.set(sessionUpdates);
+
+      const persistentSettingsPatch = pickPersistentSettingsPatch(sessionUpdates);
+      if (Object.keys(persistentSettingsPatch).length > 0) {
+        await setPersistentSettings(persistentSettingsPatch);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(sessionUpdates, membershipResultsStorageKey)) {
+        await chromeApi.storage.local.set({
+          [membershipResultsStorageKey]: sessionUpdates[membershipResultsStorageKey],
+        });
+      }
+
+      const safeSessionUpdates = sanitizeSessionPatch(sessionUpdates);
+      if (Object.keys(safeSessionUpdates).length > 0) {
+        await chromeApi.storage.session.set(safeSessionUpdates);
+      }
 
       const persistentAliasUpdates = {};
       if (Object.prototype.hasOwnProperty.call(sessionUpdates, 'manualAliasUsage')) {
@@ -169,45 +246,12 @@
         await chromeApi.storage.local.set(persistentAliasUpdates);
       }
 
-      if (Object.prototype.hasOwnProperty.call(sessionUpdates, 'upiRedeemCdkeyUsage')) {
-        await chromeApi.storage.local.set({
-          upiRedeemCdkeyUsage: normalizePersistentSettingValue(
-            'upiRedeemCdkeyUsage',
-            sessionUpdates.upiRedeemCdkeyUsage
-          ),
-        });
-      }
-      if (Object.prototype.hasOwnProperty.call(sessionUpdates, 'idealRedeemCdkeyUsage')) {
-        await chromeApi.storage.local.set({
-          idealRedeemCdkeyUsage: normalizePersistentSettingValue(
-            'idealRedeemCdkeyUsage',
-            sessionUpdates.idealRedeemCdkeyUsage
-          ),
-        });
-      }
-      if (Object.prototype.hasOwnProperty.call(sessionUpdates, 'pixChannelRedeemCdkeyUsage')) {
-        await chromeApi.storage.local.set({
-          pixChannelRedeemCdkeyUsage: normalizePersistentSettingValue(
-            'pixChannelRedeemCdkeyUsage',
-            sessionUpdates.pixChannelRedeemCdkeyUsage
-          ),
-        });
-      }
-      if (Object.prototype.hasOwnProperty.call(sessionUpdates, membershipResultsStorageKey)) {
-        await chromeApi.storage.local.set({
-          [membershipResultsStorageKey]: sessionUpdates[membershipResultsStorageKey],
-        });
-      }
-      if (Object.prototype.hasOwnProperty.call(sessionUpdates, 'upiRedeemClientId')) {
-        await setPersistentSettings({
-          upiRedeemClientId: sessionUpdates.upiRedeemClientId,
-        });
-      }
     }
 
     return {
       getState,
       initializeSessionStorageAccess,
+      sanitizeSessionPatch,
       setState,
     };
   }

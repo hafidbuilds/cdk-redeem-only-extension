@@ -11,3 +11,10 @@ test('navigation recognizes current OpenAI signup password and verification rout
   assert.equal(navigation.isSignupEmailVerificationPageUrl('https://auth.openai.com/u/email-verification'), true);
   assert.equal(navigation.isSignupEmailVerificationPageUrl('https://accounts.openai.com/email-verification?state=abc'), true);
 });
+
+test('navigation never treats ChatGPT authentication routes as logged-in destinations', () => {
+  assert.equal(navigation.isLikelyLoggedInChatgptHomeUrl('https://chatgpt.com/'), true);
+  assert.equal(navigation.isLikelyLoggedInChatgptHomeUrl('https://chatgpt.com/auth/login'), false);
+  assert.equal(navigation.isLikelyLoggedInChatgptHomeUrl('https://chatgpt.com/create-account/start'), false);
+  assert.equal(navigation.isLikelyLoggedInChatgptHomeUrl('https://chatgpt.com/login'), false);
+});

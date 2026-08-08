@@ -27,6 +27,7 @@
       getAutoRunRoundSnapshotReason,
       getAutoRunRoundSnapshotStatus,
       getAutoRunStatusPayload,
+      getDefaultNodeStatusesForState,
       getErrorMessage,
       getFirstUnfinishedNodeId,
       getMaxAttemptsForRound,
@@ -55,39 +56,15 @@
       waitForRunningNodesToFinish,
       chrome,
     } = deps;
-
-    function getRunningWorkflowNodes(state = {}) {
-      if (typeof getRunningNodeIds === 'function') {
-        return getRunningNodeIds(state.nodeStatuses || {}, state);
-      }
-      return [];
-    }
-
-    function getFirstUnfinishedWorkflowNode(state = {}) {
-      if (typeof getFirstUnfinishedNodeId === 'function') {
-        return getFirstUnfinishedNodeId(state.nodeStatuses || {}, state);
-      }
-      return null;
-    }
-
-    function hasSavedWorkflowProgress(state = {}) {
-      if (typeof hasSavedNodeProgress === 'function') {
-        return hasSavedNodeProgress(state.nodeStatuses || {}, state);
-      }
-      return false;
-    }
-
-    async function waitForRunningWorkflowNodesToFinish(payload = {}) {
-      if (typeof waitForRunningNodesToFinish === 'function') {
-        return waitForRunningNodesToFinish(payload);
-      }
-      return getState();
-    }
-
-    async function runAutoSequenceFromWorkflowNode(startNodeId, context = {}) {
-      if (typeof runAutoSequenceFromNode === 'function') {
-        return runAutoSequenceFromNode(startNodeId, context);
-      }
+    const replacementModule = globalThis.MultiPageBackgroundAccountDeactivationReplacement ||
+      (typeof require === 'function' ? require('./account-deactivation-replacement.js') : null);
+    const replaceDeactivatedAccount = replacementModule?.createAccountDeactivationReplacementHandler?.(deps);
+    const getRunningWorkflowNodes = (state = {}) => typeof getRunningNodeIds === 'function' ? getRunningNodeIds(state.nodeStatuses || {}, state) : [];
+    const getFirstUnfinishedWorkflowNode = (state = {}) => typeof getFirstUnfinishedNodeId === 'function' ? getFirstUnfinishedNodeId(state.nodeStatuses || {}, state) : null;
+    const hasSavedWorkflowProgress = (state = {}) => typeof hasSavedNodeProgress === 'function' ? hasSavedNodeProgress(state.nodeStatuses || {}, state) : false;
+    const waitForRunningWorkflowNodesToFinish = (payload = {}) => typeof waitForRunningNodesToFinish === 'function' ? waitForRunningNodesToFinish(payload) : getState();
+    function runAutoSequenceFromWorkflowNode(startNodeId, context = {}) {
+      if (typeof runAutoSequenceFromNode === 'function') return runAutoSequenceFromNode(startNodeId, context);
       throw new Error('自动运行节点执行器未接入。');
     }
 
@@ -102,9 +79,7 @@
         return false;
       }
 
-      const fallbackThreadIntervalMinutes = normalizeAutoRunFallbackThreadIntervalMinutes(
-        (await getState()).autoRunFallbackThreadIntervalMinutes
-      );
+      const fallbackThreadIntervalMinutes = normalizeAutoRunFallbackThreadIntervalMinutes((await getState()).autoRunFallbackThreadIntervalMinutes);
       if (fallbackThreadIntervalMinutes <= 0) {
         return false;
       }
@@ -145,9 +120,7 @@
         autoRunRetryLegacyWalletCallback = false,
         roundSummaries = [],
       } = options;
-      const fallbackThreadIntervalMinutes = normalizeAutoRunFallbackThreadIntervalMinutes(
-        (await getState()).autoRunFallbackThreadIntervalMinutes
-      );
+      const fallbackThreadIntervalMinutes = normalizeAutoRunFallbackThreadIntervalMinutes((await getState()).autoRunFallbackThreadIntervalMinutes);
       if (fallbackThreadIntervalMinutes <= 0) {
         return false;
       }
@@ -194,6 +167,11 @@
       } else {
         sessionId = createAutoRunSessionId();
       }
+      const isCurrentSession = () => Number(runtime.get().autoRunSessionId) === sessionId;
+      const isSupersededSessionError = (error) => (
+        error?.code === 'AUTO_RUN_SESSION_SUPERSEDED'
+        || !isCurrentSession()
+      );
 
       clearStopRequest();
       runtime.set({
@@ -248,6 +226,7 @@
       }
 
       let successfulRuns = roundSummaries.filter((item) => item.status === 'success').length;
+      let accountReplacementPending = false;
       const initialState = await getState();
       const initialPhase = continueCurrentOnFirstAttempt && getRunningWorkflowNodes(initialState).length
         ? 'waiting_step'
@@ -277,6 +256,8 @@
         const resumingCurrentRound = continueCurrentOnFirstAttempt && targetRun === resumeCurrentRun;
         let attemptRun = resumingCurrentRound ? resumeAttemptRun : 1;
         let reuseExistingProgress = resumingCurrentRound;
+        let deactivatedReplacementCount = 0;
+        const deactivatedAccountEmails = new Set();
         const maxAttemptsForRound = getMaxAttemptsForRound({
           attemptRun,
           autoRunSkipFailures,
@@ -372,16 +353,6 @@
               hostedCheckoutVerificationResendMaxAttempts: prevState.hostedCheckoutVerificationResendMaxAttempts,
               hostedCheckoutVerificationPollAttempts: prevState.hostedCheckoutVerificationPollAttempts,
               hostedCheckoutVerificationPollIntervalSeconds: prevState.hostedCheckoutVerificationPollIntervalSeconds,
-              upiRedeemExternalApiKey: prevState.upiRedeemExternalApiKey,
-              upiRedeemClientId: prevState.upiRedeemClientId,
-              upiRedeemStopAfterRedeem: prevState.upiRedeemStopAfterRedeem,
-              upiRedeemContinueAfterRedeem: prevState.upiRedeemContinueAfterRedeem,
-              cdkPoolText: prevState.cdkPoolText,
-              upiRedeemCdkPoolText: prevState.upiRedeemCdkPoolText,
-              upiRedeemCdkeyPoolText: prevState.upiRedeemCdkeyPoolText,
-              cdkUsage: prevState.cdkUsage,
-              upiRedeemCdkUsage: prevState.upiRedeemCdkUsage,
-              upiRedeemCdkeyUsage: prevState.upiRedeemCdkeyUsage,
               legacyWalletEmail: prevState.legacyWalletEmail,
               legacyWalletPassword: prevState.legacyWalletPassword,
               legacyWalletAccounts: prevState.legacyWalletAccounts,
@@ -393,6 +364,7 @@
               autoRunDelayEnabled: prevState.autoRunDelayEnabled,
               autoRunDelayMinutes: prevState.autoRunDelayMinutes,
               autoStepDelaySeconds: prevState.autoStepDelaySeconds,
+              registrationFreeRoute: prevState.registrationFreeRoute,
               signupMethod: prevState.signupMethod,
               mailProvider: prevState.mailProvider,
               emailGenerator: prevState.emailGenerator,
@@ -418,8 +390,10 @@
               ...getAutoRunStatusPayload('running', { currentRun: targetRun, totalRuns, attemptRun, sessionId }),
             };
             await resetState();
-            await setState(keepSettings);
-            chrome.runtime.sendMessage({ type: 'AUTO_RUN_RESET' }).catch(() => {});
+            const resetStateWithSettings = { ...(await getState()), ...keepSettings };
+            const routeNodeStatuses = getDefaultNodeStatusesForState?.(resetStateWithSettings);
+            await setState({ ...keepSettings, ...(routeNodeStatuses ? { currentNodeId: '', nodeStatuses: routeNodeStatuses } : {}) });
+            chrome.runtime.sendMessage({ type: 'AUTO_RUN_RESET', payload: { registrationFreeRoute: resetStateWithSettings.registrationFreeRoute, currentNodeId: '', nodeStatuses: routeNodeStatuses || resetStateWithSettings.nodeStatuses || {} } }).catch(() => {});
             await sleepWithStop(500);
           } else {
             await setState({
@@ -438,12 +412,15 @@
 
           if (forceFreshTabsNextRun) {
             await addLog(
-              attemptRun > 1
+              accountReplacementPending
+                ? `封禁账号已跳过，当前继续第 ${targetRun}/${totalRuns} 轮并使用下一个账号。`
+                : attemptRun > 1
                 ? `上一次尝试已放弃，当前继续第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试。`
                 : `上一轮已结束，当前开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试。`,
               'warn'
             );
             forceFreshTabsNextRun = false;
+            accountReplacementPending = false;
           }
 
           const appendRoundRecordIfNeeded = async (status, reason = '', errorLike = null) => {
@@ -543,7 +520,12 @@
               totalRuns,
               attemptRuns: attemptRun,
               continued: useExistingProgress,
+              autoRunSessionId: sessionId,
             });
+
+            if (!isCurrentSession()) {
+              return;
+            }
 
             roundSummary.status = 'success';
             roundSummary.finalFailureReason = '';
@@ -552,6 +534,9 @@
             await addLog(`=== 第 ${targetRun}/${totalRuns} 轮完成（第 ${attemptRun} 次尝试成功）===`, 'ok');
             break;
           } catch (error) {
+            if (isSupersededSessionError(error)) {
+              return;
+            }
             if (isStopError(error)) {
               await handleStopForCurrentAttempt(error);
               break;
@@ -574,6 +559,24 @@
             roundSummary.failureReasons.push(reason);
             await persistRoundSummaries();
 
+            if (failureAction.code === 'replace_account_deactivated') {
+              const replacement = await replaceDeactivatedAccount({
+                error, targetRun, totalRuns, attemptRun, sessionId,
+                replacementCount: deactivatedReplacementCount,
+                seenEmails: deactivatedAccountEmails,
+                markRoundFailed,
+              });
+              deactivatedReplacementCount = replacement.replacementCount;
+              if (replacement.shouldStop) {
+                stoppedEarly = true;
+                break;
+              }
+              forceFreshTabsNextRun = true;
+              accountReplacementPending = true;
+              reuseExistingProgress = false;
+              continue;
+            }
+
             if (failureAction.code === 'fail_custom_email_pool_empty') {
               await markRoundFailed(reason, error);
               cancelPendingCommands('自定义邮箱池没有可用邮箱。');
@@ -588,57 +591,31 @@
               });
               break;
             }
-            if (['fail_session_frame_unavailable', 'fail_signup_password_submit_uncertain'].includes(failureAction.code)) {
+            if (['fail_session_frame_unavailable', 'fail_signup_password_submit_uncertain', 'fail_signup_existing_totp_login', 'fail_preserve_signup_session'].includes(failureAction.code)) {
               const emailSubmitUnknown = error?.code === 'SIGNUP_EMAIL_SUBMIT_UNCERTAIN';
+              const existingTotpLoginFailed = failureAction.code === 'fail_signup_existing_totp_login';
               await markRoundFailed(reason, error);
-              cancelPendingCommands(emailSubmitUnknown ? '邮箱提交后的页面状态未知，已保留当前注册现场并停止自动运行。' : (failureAction.code === 'fail_signup_password_submit_uncertain' ? '密码提交结果未知，已保留当前注册现场并停止自动运行。' : '当前账号的认证现场无法安全继续，已保留进度并停止自动运行。'));
+              cancelPendingCommands(emailSubmitUnknown
+                ? '邮箱提交后的页面状态未知，已保留当前注册现场并停止自动运行。'
+                : existingTotpLoginFailed ? '步骤 4 未能安全确认 2FA 登录，已保留当前认证现场并停止自动运行。'
+                  : failureAction.code === 'fail_signup_password_submit_uncertain' ? '密码提交结果未知，已保留当前注册现场并停止自动运行。'
+                    : '当前账号的认证现场无法安全继续，已保留进度并停止自动运行。');
               await broadcastStopToContentScripts();
               await addLog(emailSubmitUnknown
                 ? `第 ${targetRun}/${totalRuns} 轮邮箱已提交，但后续认证页面状态仍未知，自动运行已停止。请保持当前认证页面打开并检查页面；系统不会清理 Cookie、切换邮箱或重新提交邮箱。`
-                : failureAction.code === 'fail_signup_password_submit_uncertain' ? `第 ${targetRun}/${totalRuns} 轮注册密码提交后的页面状态仍未知，自动运行已停止。请保持当前认证页面打开，并从密码或验证码步骤继续；系统不会清理 Cookie、切换邮箱或重新注册。`
+                : existingTotpLoginFailed ? `第 ${targetRun}/${totalRuns} 轮步骤 4 未能安全确认当前账号的 2FA 登录，自动运行已停止。请保持当前认证页面打开；系统不会清理 Cookie、切换邮箱或重新注册。`
+                  : failureAction.code === 'fail_signup_password_submit_uncertain' ? `第 ${targetRun}/${totalRuns} 轮注册密码提交后的页面状态仍未知，自动运行已停止。请保持当前认证页面打开，并从密码或验证码步骤继续；系统不会清理 Cookie、切换邮箱或重新注册。`
                 : `第 ${targetRun}/${totalRuns} 轮账号创建已完成，但当前认证现场无法安全继续；自动运行已停止，不会清理 Cookie、换邮箱或重新注册。请保持当前 ChatGPT 页面打开，重新执行步骤 6 或继续当前进度。`, 'error');
               stoppedEarly = true;
-              await broadcastAutoRunStatus('stopped', {
-                currentRun: targetRun,
-                totalRuns,
-                attemptRun,
-                sessionId: 0,
-              });
+              await broadcastAutoRunStatus('stopped', { currentRun: targetRun, totalRuns, attemptRun, sessionId: 0 });
               break;
             }
-
             if (failureAction.code === 'retry_plus_non_free_trial') {
               const retryIndex = attemptRun;
               await addLog(`第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试没有 Plus 免费试用资格：${reason}`, 'warn');
               const retryResult = await performRetryWait(
                 `无试用套餐自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后换新邮箱，开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试（第 ${retryIndex}/${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试）。`,
                 '当前尝试因无免费试用资格已放弃。'
-              );
-              if (retryResult === 'retry') {
-                continue;
-              }
-              break;
-            }
-
-            if (failureAction.code === 'retry_upi_redeem_backend_failure') {
-              const retryIndex = attemptRun;
-              await addLog(`第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试 UPI 后端返回 CDK 兑换失败：${reason}`, 'warn');
-              const retryResult = await performRetryWait(
-                `UPI 兑换失败自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后换新邮箱，开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试（第 ${retryIndex}/${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试）。`,
-                '当前尝试因 CDK 兑换失败已放弃。'
-              );
-              if (retryResult === 'retry') {
-                continue;
-              }
-              break;
-            }
-
-            if (failureAction.code === 'retry_upi_redeem_network_failure') {
-              const retryIndex = attemptRun;
-              await addLog(`第 ${targetRun}/${totalRuns} 轮第 ${attemptRun} 次尝试 UPI 接口网络异常：${reason}`, 'warn');
-              const retryResult = await performRetryWait(
-                `UPI 接口网络异常自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后重开当前轮，开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试（第 ${retryIndex}/${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试）。`,
-                '当前尝试因 UPI 接口网络异常已放弃。'
               );
               if (retryResult === 'retry') {
                 continue;
@@ -718,49 +695,6 @@
               break;
             }
 
-            if (failureAction.code === 'fail_upi_redeem_backend_failure') {
-              await markRoundFailed(reason, error);
-              cancelPendingCommands('当前轮因 CDK 兑换失败已终止。');
-              await broadcastStopToContentScripts();
-              if (!autoRunSkipFailures) {
-                await addLog(
-                  `第 ${targetRun}/${totalRuns} 轮 UPI 后端返回 CDK 兑换失败，已达到自动重试上限，当前自动运行将停止。`,
-                  'warn'
-                );
-                stoppedEarly = true;
-                await broadcastAutoRunStatus('stopped', {
-                  currentRun: targetRun,
-                  totalRuns,
-                  attemptRun,
-                  sessionId: 0,
-                });
-                break;
-              }
-              await addLog(`第 ${targetRun}/${totalRuns} 轮 UPI 后端返回 CDK 兑换失败，本轮将直接失败并跳过剩余重试。`, 'warn');
-              await addLog(
-                targetRun < totalRuns
-                  ? `第 ${targetRun}/${totalRuns} 轮因 CDK 兑换失败提前结束，自动流程将继续下一轮。`
-                  : `第 ${targetRun}/${totalRuns} 轮因 CDK 兑换失败提前结束，已无后续轮次，本次自动运行结束。`,
-                'warn'
-              );
-              forceFreshTabsNextRun = true;
-              break;
-            }
-
-            if (failureAction.code === 'fail_upi_redeem_network_failure') {
-              await markRoundFailed(reason, error);
-              cancelPendingCommands('当前轮因 UPI 接口网络异常已达到重试上限。');
-              await broadcastStopToContentScripts();
-              await addLog(`第 ${targetRun}/${totalRuns} 轮 UPI 接口网络异常已重试 ${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次仍失败，本轮将切换下一轮：${reason}`, 'warn');
-              await addLog(
-                targetRun < totalRuns
-                  ? `第 ${targetRun}/${totalRuns} 轮因 UPI 接口网络异常提前结束，自动流程将继续下一轮。`
-                  : `第 ${targetRun}/${totalRuns} 轮因 UPI 接口网络异常提前结束，已无后续轮次，本次自动运行结束。`,
-                'warn'
-              );
-              forceFreshTabsNextRun = true;
-              break;
-            }
 
             if (failureAction.code === 'fail_card_helper_task_ended') {
               await markRoundFailed(reason, error);
@@ -1006,6 +940,10 @@
 
         await saveRoundLogSnapshotIfNeeded({ stoppedEarly, parkedByTimer });
 
+        if (!isCurrentSession()) {
+          return;
+        }
+
         if (stoppedEarly || parkedByTimer) {
           break;
         }
@@ -1038,8 +976,15 @@
       }
 
       if (parkedByTimer) {
+        if (!isCurrentSession()) {
+          return;
+        }
         runtime.set({ autoRunActive: false });
         clearStopRequest();
+        return;
+      }
+
+      if (!isCurrentSession()) {
         return;
       }
 
@@ -1066,6 +1011,9 @@
           attemptRun: finalRuntime.autoRunAttemptRun,
           sessionId: 0,
         });
+      }
+      if (!isCurrentSession()) {
+        return;
       }
       runtime.set({ autoRunActive: false, autoRunSessionId: 0 });
       const afterRuntime = runtime.get();

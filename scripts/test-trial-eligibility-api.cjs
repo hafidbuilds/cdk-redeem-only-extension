@@ -10,6 +10,52 @@ const {
   buildTrialEligibilityEmailMismatchReason,
 } = require('../shared/trial-eligibility-api.js');
 
+test('GCash eligible response enters Free', () => {
+  const decision = normalizeTrialEligibilityApiItem({
+    gcash_pm_eligible: true,
+    gcash_pm_eligible_reason: 'eligible',
+  });
+
+  assert.equal(isTrialEligibilityEligibleDecision(decision), true);
+  assert.equal(decision.trialEligibilityStatus, 'eligible');
+  assert.equal(decision.trialEligibilityReasonCode, 'eligible');
+});
+
+test('GCash unavailable payment method is account ineligible', () => {
+  const decision = normalizeTrialEligibilityApiItem({
+    gcash_pm_eligible: false,
+    gcash_pm_eligible_reason: 'pm-unavailable',
+  });
+
+  assert.equal(isTrialEligibilityAccountIneligibleDecision(decision), true);
+  assert.equal(decision.trialEligibilityStatus, 'ineligible');
+  assert.equal(decision.trialEligibilityReasonCode, 'pm-unavailable');
+});
+
+test('GCash proxy-required is a configuration failure, not account ineligibility', () => {
+  const decision = normalizeTrialEligibilityApiItem({
+    gcash_pm_eligible: false,
+    gcash_pm_eligible_reason: 'proxy-required',
+  });
+
+  assert.equal(decision.trialEligibilityStatus, 'failed');
+  assert.equal(isTrialEligibilityAccountIneligibleDecision(decision), false);
+  assert.equal(decision.trialEligibilityRetryable, false);
+  assert.equal(decision.trialEligibilityReasonCode, 'proxy-required');
+});
+
+test('GCash transient service reason is retryable and not account ineligibility', () => {
+  const decision = normalizeTrialEligibilityApiItem({
+    gcashPmEligible: false,
+    gcashPmEligibleReason: 'rate-limited',
+  });
+
+  assert.equal(decision.trialEligibilityStatus, 'failed');
+  assert.equal(isTrialEligibilityAccountIneligibleDecision(decision), false);
+  assert.equal(decision.trialEligibilityRetryable, true);
+  assert.equal(decision.trialEligibilityTransientFailure, true);
+});
+
 test('eligible coupon enters Free even when UPI channel is denied', () => {
   const decision = normalizeTrialEligibilityApiItem({
     token_ok: true,

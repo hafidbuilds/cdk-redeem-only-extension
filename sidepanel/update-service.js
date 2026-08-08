@@ -9,6 +9,7 @@
   const FETCH_TIMEOUT_MS = 8000;
   const MAX_RELEASES = 10;
   const MAX_NOTES_PER_RELEASE = 5;
+  const VERSION_FAMILY_FREE = 'free';
   const VERSION_FAMILY_CDK = 'cdk';
   const VERSION_FAMILY_ULTRA = 'ultra';
   const VERSION_FAMILY_PRO = 'pro';
@@ -16,6 +17,9 @@
 
   function getVersionFamily(version, fallbackFamily = VERSION_FAMILY_LEGACY) {
     const trimmed = String(version || '').trim();
+    if (/^free\s+account\s+tool/i.test(trimmed)) {
+      return VERSION_FAMILY_FREE;
+    }
     if (/^(?:cdk\s*redeem\s*only|cdk|gujumpgate|flowpilot)/i.test(trimmed)) {
       return VERSION_FAMILY_CDK;
     }
@@ -32,7 +36,7 @@
   }
 
   function stripVersionPrefix(version) {
-    return String(version || '').trim().replace(/^(?:(?:cdk\s*redeem\s*only|cdk|gujumpgate|flowpilot|ultra|pro)\s*v?|v)\s*/i, '');
+    return String(version || '').trim().replace(/^(?:(?:free\s+account\s+tool|cdk\s*redeem\s*only|cdk|gujumpgate|flowpilot|ultra|pro)\s*v?|v)\s*/i, '');
   }
 
   function extractVersionCore(version) {
@@ -67,6 +71,9 @@
   }
 
   function getVersionFamilyPrefix(family) {
+    if (family === VERSION_FAMILY_FREE) {
+      return 'Free Account Tool V';
+    }
     if (family === VERSION_FAMILY_CDK) {
       return 'CDK Redeem Only V';
     }
@@ -80,6 +87,9 @@
   }
 
   function getVersionFamilyRank(family) {
+    if (family === VERSION_FAMILY_FREE) {
+      return 5;
+    }
     if (family === VERSION_FAMILY_CDK) {
       return 4;
     }
@@ -402,17 +412,17 @@
       return rawVersionName;
     }
 
-    const versionName = formatDisplayVersion(rawVersionName, VERSION_FAMILY_CDK);
+    const versionName = formatDisplayVersion(rawVersionName, VERSION_FAMILY_FREE);
     if (versionName) {
       return versionName;
     }
 
     const versionCore = extractVersionCore(manifest?.version || '');
-    return versionCore ? `CDK Redeem Only V${versionCore}` : '';
+    return versionCore ? `Free Account Tool V${versionCore}` : '';
   }
 
   async function getReleaseSnapshot(options = {}) {
-    const localVersion = getLocalVersionLabel(chrome.runtime.getManifest()) || 'CDK Redeem Only V0.0';
+    const localVersion = getLocalVersionLabel(chrome.runtime.getManifest()) || 'Free Account Tool V0.0';
 
     try {
       const releases = await loadReleases(options);

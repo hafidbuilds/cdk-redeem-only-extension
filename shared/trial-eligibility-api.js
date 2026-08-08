@@ -119,7 +119,18 @@
   }
 
   function isTransientFailureReason(reason = '') {
-    return /^(?:fetch-error|http-error|unknown-coupon-state)$/i.test(normalizeString(reason));
+    return /^(?:fetch-error|http-error|server-error|rate-limited|unknown-coupon-state)$/i.test(normalizeString(reason));
+  }
+
+  function readOwnString(source = {}, keys = []) {
+    for (const key of keys) {
+      if (hasOwn(source, key)) return normalizeString(source[key]);
+    }
+    return '';
+  }
+
+  function isGcashConfigurationFailureReason(reason = '') {
+    return /^(?:proxy-required|unauthorized)$/i.test(normalizeString(reason));
   }
 
   function normalizeChannelStatus(source = {}, channel = 'upi') {
@@ -159,7 +170,9 @@
 
   function normalizeTrialEligibilityApiItem(item = {}) {
     const source = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
-    const reasonCode = normalizeString(source.reason).toLowerCase();
+    const gcashEligible = readOwnBoolean(source, ['gcash_pm_eligible', 'gcashPmEligible']);
+    const gcashReason = readOwnString(source, ['gcash_pm_eligible_reason', 'gcashPmEligibleReason']);
+    const reasonCode = normalizeString(gcashReason || source.reason).toLowerCase();
     const tokenOk = readOwnBoolean(source, ['token_ok', 'tokenOk']);
     const eligible = readOwnBoolean(source, ['eligible']);
     const upi = normalizeChannelStatus(source, 'upi');
@@ -197,6 +210,48 @@
         trialEligibilityReasonCode: reasonCode && !/^\[object\b/i.test(reasonCode) ? reasonCode : 'html-response',
         trialEligibilityTransientFailure: true,
         trialEligibilityRetryable: true,
+      };
+    }
+
+    if (gcashEligible.present || gcashReason) {
+      if (isGcashConfigurationFailureReason(reasonCode)) {
+        return {
+          ...base,
+          trialEligibilityStatus: 'failed',
+          trialEligibilityReason: reasonCode === 'proxy-required'
+            ? 'GCash 资格服务配置异常：服务端未配置可用代理（proxy-required）。'
+            : 'GCash 资格服务授权失败（unauthorized），请检查资格 API 授权令牌。',
+          trialEligibilityRetryable: false,
+        };
+      }
+      if (isTransientFailureReason(reasonCode)) {
+        return {
+          ...base,
+          trialEligibilityStatus: 'failed',
+          trialEligibilityReason: pickExplicitMessage(source, `GCash 资格服务暂时不可用：${reasonCode || 'unknown-error'}。`),
+          trialEligibilityTransientFailure: true,
+          trialEligibilityRetryable: true,
+        };
+      }
+      if (!gcashEligible.present) {
+        return {
+          ...base,
+          trialEligibilityStatus: 'failed',
+          trialEligibilityReason: pickExplicitMessage(source, 'GCash 资格接口返回不完整：缺少 gcash_pm_eligible。'),
+          trialEligibilityRetryable: true,
+        };
+      }
+      if (!gcashEligible.value) {
+        return {
+          ...base,
+          trialEligibilityStatus: 'ineligible',
+          trialEligibilityReason: pickExplicitMessage(source, gcashReason || '账号没有 GCash 资格。'),
+        };
+      }
+      return {
+        ...base,
+        trialEligibilityStatus: 'eligible',
+        trialEligibilityReason: pickExplicitMessage(source, '账号具有 GCash 资格。'),
       };
     }
 

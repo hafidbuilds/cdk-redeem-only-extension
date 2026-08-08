@@ -44,7 +44,7 @@ function createScopedHandler(scopeValues) {
   });
 }
 
-test('runtime display-status updates rerender the conditional 2FA row and top status', () => {
+test('runtime data updates ignore the removed display-only 2FA status field', () => {
   const calls = [];
   const handler = createScopedHandler({
     renderStepStatuses: (state) => calls.push(['steps', state.existingTotpLoginDisplayStatus]),
@@ -58,10 +58,10 @@ test('runtime display-status updates rerender the conditional 2FA row and top st
     payload: { existingTotpLoginDisplayStatus: 'running' },
   });
 
-  assert.deepEqual(calls, [['steps', 'running'], ['status', 'running']]);
+  assert.deepEqual(calls, []);
 });
 
-test('runtime membership result updates also refresh custom email pool', () => {
+test('runtime Free result updates also refresh custom email pool', () => {
   const calls = [];
   const membershipResults = {
     items: [{
@@ -91,7 +91,7 @@ test('runtime membership result updates also refresh custom email pool', () => {
 
   handler.handleDataUpdated({
     payload: {
-      upiCredentialMembershipCheckResults: membershipResults,
+      freeAccountResults: membershipResults,
     },
   });
 

@@ -31,7 +31,7 @@
       }
       return {
         flowId,
-        workflowVersion: 1,
+        workflowVersion: 3,
         nodes: [],
         nodeIds: [],
       };
@@ -78,7 +78,10 @@
     }
 
     function buildDefaultNodeStatuses(state = {}) {
-      return Object.fromEntries(getNodeIdsForState(state).map((nodeId) => [nodeId, 'pending']));
+      return Object.fromEntries(getNodesForState(state).map((node) => [
+        node.nodeId,
+        normalizeNodeStatus(node.defaultStatus || 'pending'),
+      ]));
     }
 
     function normalizeNodeStatuses(statuses = {}, state = {}) {

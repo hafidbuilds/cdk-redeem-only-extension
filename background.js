@@ -3,6 +3,7 @@
 importScripts(
   'shared/source-registry.js',
   'shared/flow-capabilities.js',
+  'shared/free-account-results.js',
   'shared/account-record-schema.js',
   'shared/account-compatibility-adapter.js',
   'shared/sensitive-data-redactor.js',
@@ -29,7 +30,6 @@ importScripts(
   'background/account-repository.js',
   'background/account-lifecycle-service.js',
   'background/task-repository.js',
-  'background/external-effect-ledger.js',
   'background/task-event-store.js',
   'background/task-lock-manager.js',
   'background/task-recovery-policy.js',
@@ -39,6 +39,7 @@ importScripts(
   'background/bootstrap/settings-transfer.js',
   'background/runtime/remote-operation-policy.js',
   'background/bootstrap/legacy-cleanup.js',
+  'background/bootstrap/free-account-v3-migration.js',
   'background/bootstrap/auto-run-session.js',
   'background/bootstrap/auto-run-timer-plan.js',
   'background/bootstrap/auto-run-status.js',
@@ -46,50 +47,28 @@ importScripts(
   'background/bootstrap/content-script-registry.js',
   'background/bootstrap/runtime-listeners.js',
   'background/bootstrap/signup-executor-registry.js',
-  'shared/redeem-channel-state.js',
-  'background/membership/redeem-attempt-history.js',
-  'background/redeem/redeem-cdkey-usage.js',
-  'background/redeem/upi-redeem-api-client.js',
-  'background/membership/redeem-status-sync.js',
-  'background/router/redeem-refresh-service.js',
   'background/router/node-protocol-service.js',
   'background/router/payment-session-service.js',
   'background/router/core-routes.js',
   'background/router/message-dispatcher.js',
-  'background/membership/access-token-refresh.js',
   'background/membership/login-session-executor.js',
   'background/passkey-login-core.js',
   'background/passkey-api-login-executor.js',
   'shared/trial-eligibility-api.js',
+  'background/free-account-service.js',
+  'background/free-account-session-fill-task.js',
   'background/email/provider-registry.js',
   'background/generated-email-helpers.js',
   'background/signup-flow-helpers.js',
   'background/mail-rule-registry.js',
   'flows/openai/mail-rules.js',
   'background/routes/membership-routes.js',
-  'background/routes/cdkey-routes.js',
   'background/routes/workflow-routes.js',
   'background/routes/settings-routes.js',
   'background/routes/account-record-routes.js',
   'background/routes/task-routes.js',
   'background/routes/email-pool-routes.js',
   'background/message-router.js',
-  'shared/membership-credential-format.js',
-  'background/membership/result-state.js',
-  'background/membership/results-store.js',
-  'background/membership/trial-eligibility-service.js',
-  'background/membership/membership-result-sync.js',
-  'background/membership/access-token-supplement-service.js',
-  'background/membership/access-token-refresh-service.js',
-  'background/membership/free-pool-service.js',
-  'background/membership/redeem-candidate-service.js',
-  'background/membership/credential-pool-service.js',
-  'background/membership/import-export-service.js',
-  'background/membership/credential-backup-format.js',
-  'background/membership/plus-verification-service.js',
-  'background/membership/failed-redeem-retry-service.js',
-  'background/membership/redeem-service.js',
-  'background/upi-credential-membership-checker.js',
   'background/verification/assurivo-time.js',
   'background/verification/verification-keywords.js',
   'background/verification/code-extractor.js',
@@ -101,6 +80,7 @@ importScripts(
   'background/auto-run/summary-builder.js',
   'background/auto-run/log-snapshot.js',
   'background/auto-run/retry-policy.js',
+  'background/auto-run/account-deactivation-replacement.js',
   'background/auto-run/session-runner.js',
   'background/auto-run-controller.js',
   'background/tab-runtime.js',
@@ -112,21 +92,14 @@ importScripts(
   'background/steps/open-chatgpt.js',
   'background/steps/submit-signup-email.js',
   'background/steps/fill-password.js',
+  'background/steps/existing-totp-login.js',
   'background/steps/fetch-signup-code.js',
   'background/steps/fill-profile.js',
   'background/steps/wait-registration-success.js',
   'background/steps/set-gpt-password.js',
   'background/steps/enable-totp-mfa.js',
   'background/steps/enable-passkey.js',
-  'background/steps/upi-redeem/session-material.js',
-  'background/steps/upi-redeem/free-entry-cleanup.js',
-  'background/steps/upi-redeem/free-entry.js',
-  'background/steps/upi-redeem/submission-response.js',
-  'background/steps/upi-redeem/effect-guard.js',
-  'background/steps/upi-redeem/channel-submission.js',
-  'background/steps/upi-redeem/status-polling.js',
-  'background/steps/upi-redeem/finalize.js',
-  'background/steps/upi-redeem.js',
+  'background/steps/check-trial-eligibility.js',
   'background/steps/no-2fa-free-route.js',
   'data/names.js',
   'hotmail-utils.js',
@@ -155,7 +128,6 @@ const {
   PLUS_UPI_STEP_DEFINITIONS,
   NO_2FA_FREE_STEP_DEFINITIONS,
   PASSKEY_FREE_STEP_DEFINITIONS,
-  PLUS_UPI_REDEEM_ONLY_STEP_DEFINITIONS,
   LOCAL_CPA_JSON_NO_RT_STEP_DEFINITIONS,
   PLUS_STEP_DEFINITIONS,
   ALL_STEP_DEFINITIONS,
@@ -369,7 +341,7 @@ const {
   getMembershipResultsItemCount,
   shouldKeepPersistedMembershipResults,
   protectFreshMembershipResultsInStatePatch,
-  alignUpiRedeemCdkeyAliasStatePatch,
+  statePatchNeedsCurrentState,
   statePatchHasChanges,
 } = statePatchHelpers;
 
@@ -536,7 +508,8 @@ const PERSISTENT_ALIAS_STATE_KEYS = [
 ];
 const ACCOUNT_RUN_HISTORY_STORAGE_KEY = 'accountRunHistory';
 const UPI_ACCOUNT_CREDENTIAL_BACKUPS_STORAGE_KEY = 'upiAccountCredentialBackups';
-const UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY = 'upiCredentialMembershipCheckResults';
+const FREE_ACCOUNT_RESULTS_STORAGE_KEY = self.MultiPageFreeAccountResults.STORAGE_KEY;
+const UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY = FREE_ACCOUNT_RESULTS_STORAGE_KEY;
 const ACCOUNT_RECORDS_STORAGE_KEY = self.MultiPageAccountRepository.ACCOUNT_RECORDS_STORAGE_KEY;
 const SIGNUP_METHOD_EMAIL = 'email';
 const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
@@ -705,8 +678,6 @@ function setupDeclarativeNetRequestRules() {
 
 const {
   PERSISTED_SETTING_DEFAULTS,
-  LEGACY_UPI_REDEEM_SETTING_KEY_MAP,
-  LEGACY_UPI_REDEEM_SETTING_KEYS,
   SETTINGS_EXPORT_SCHEMA_VERSION,
 } = self.MultiPageBackgroundSettingsDefaults.create({
   BUILTIN_CHATGPT_SESSION_READER_CLOUD_CONVERSION_API_KEY,
@@ -758,13 +729,13 @@ const SETTINGS_EXPORT_FILENAME_PREFIX = 'multipage-settings';
 const STEP6_REGISTRATION_SUCCESS_WAIT_MS = 4000;
 
 const DEFAULT_STATE = {
+  workflowVersion: self.MultiPageStepDefinitions?.WORKFLOW_VERSION || 3,
   flowId: DEFAULT_ACTIVE_FLOW_ID,
   runId: '',
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
   activeRunId: '',
   currentNodeId: '',
   nodeStatuses: { ...DEFAULT_NODE_STATUSES },
-  existingTotpLoginDisplayStatus: 'pending',
   runtimeState: runtimeStateHelpers?.buildDefaultRuntimeState?.() || null,
   ...CONTRIBUTION_RUNTIME_DEFAULTS,
   oauthUrl: null, // 运行时抓取到的 OAuth 地址，不要手动预填。
@@ -804,7 +775,8 @@ const DEFAULT_STATE = {
   sourceLastUrls: {}, // 各来源页面最近一次打开的地址记录。
   logs: [], // 侧边栏展示的运行日志。
   ...PERSISTED_SETTING_DEFAULTS, // 合并 chrome.storage.local 中持久化保存的用户配置。
-  upiCredentialMembershipCheckResults: {
+  freeAccountResults: {
+    schemaVersion: 3,
     items: [],
     running: false,
     startedAt: '',
@@ -814,8 +786,10 @@ const DEFAULT_STATE = {
     source: '',
     total: 0,
     completed: 0,
-    paidCount: 0,
-    freeCount: 0,
+    eligibleCount: 0,
+    ineligibleCount: 0,
+    unknownCount: 0,
+    checkingCount: 0,
     failedCount: 0,
   },
   luckmailApiKey: '',
@@ -1516,67 +1490,6 @@ async function markCurrentRegistrationAccountRegistrationBlocked(state = {}, opt
   };
 }
 
-async function markCurrentRegistrationAccountTrialIneligible(state = {}, options = {}) {
-  const providedState = state && typeof state === 'object' ? state : {};
-  const currentState = await getState();
-  const latestState = {
-    ...providedState,
-    ...(currentState && typeof currentState === 'object' ? currentState : {}),
-  };
-  const email = String(
-    options.email
-    || latestState.email
-    || latestState.registrationEmailState?.current
-    || latestState.step8VerificationTargetEmail
-    || latestState.selectedCustomEmailPoolEmail
-    || ''
-  ).trim().toLowerCase();
-  const reason = String(options.reason || '账号无试用资格').trim();
-  const checkedAt = String(options.checkedAt || new Date().toISOString()).trim();
-
-  const result = await markCustomEmailPoolEntryTrialEligibility(latestState, {
-    email,
-    status: 'ineligible',
-    reason,
-    reasonCode: String(options.reasonCode || 'UPI_TRIAL_INELIGIBLE').trim(),
-    checkedAt,
-    accessToken: String(options.accessToken || latestState.accessToken || latestState.upiRedeemAccessToken || '').trim(),
-    accessTokenUpdatedAt: String(options.accessTokenUpdatedAt || checkedAt || '').trim(),
-    logPrefix: `${String(options.logPrefix || '第 7 步').trim()}：自定义邮箱池`,
-    level: options.level || 'warn',
-  });
-
-  if (result?.updated) {
-    await clearCurrentRegistrationEmailRuntimeState(latestState, {
-      reason: 'trial_ineligible',
-      reasonLabel: '无试用资格',
-    });
-  }
-
-  return {
-    updated: Boolean(result?.updated),
-    email,
-    reason,
-    checkedAt,
-  };
-}
-
-const registrationAccountStateRegistry = self.MultiPageRegistrationAccountState?.createRegistrationAccountState?.({
-  markCurrentRegistrationAccountRegistrationBlocked,
-  markCurrentRegistrationAccountUsed,
-  markCurrentRegistrationAccountTrialIneligible,
-  recordStep7AccountCheckpoint: typeof recordStep7AccountCheckpoint === 'function'
-    ? recordStep7AccountCheckpoint
-    : undefined,
-}) || {
-  markCurrentRegistrationAccountRegistrationBlocked,
-  markCurrentRegistrationAccountUsed,
-  markCurrentRegistrationAccountTrialIneligible,
-  recordStep7AccountCheckpoint: typeof recordStep7AccountCheckpoint === 'function'
-    ? recordStep7AccountCheckpoint
-    : undefined,
-};
-
 async function markCurrentRegistrationAccountUnavailable(state = {}, options = {}) {
   const providedState = state && typeof state === 'object' ? state : {};
   const currentState = await getState();
@@ -1677,7 +1590,7 @@ async function markCurrentRegistrationAccountUnavailable(state = {}, options = {
   });
   updated = Boolean(outlookEmailPlusResult?.handled) || updated;
 
-  if (typeof customEmailPoolStateRegistry.markCurrentCustomEmailPoolEntryUsed === 'function') {
+  if (options.skipCustomEmailPool !== true && typeof customEmailPoolStateRegistry.markCurrentCustomEmailPoolEntryUsed === 'function') {
     const result = await customEmailPoolStateRegistry.markCurrentCustomEmailPoolEntryUsed(latestState, {
       logPrefix: `${reasonPrefix}：自定义邮箱池`,
       level: options.level || 'warn',
@@ -2221,14 +2134,6 @@ function normalizePersistentSettingValue(key, value) {
       return PLUS_PAYMENT_METHOD_UPI;
     case 'plusAccountAccessStrategy':
       return normalizePlusAccountAccessStrategy(value);
-    case 'upiRedeemApiBaseUrl':
-      return String(value || '')
-        .trim()
-        .replace(/#.*$/g, '')
-        .replace(/\/api\/external\/cdkey-redeems\/status$/i, '')
-        .replace(/\/api\/external\/cdkey-redeems$/i, '')
-        .replace(/\/api\/?$/i, '')
-        .replace(/\/+$/g, '');
     case 'upiSubscriptionApiBaseUrl':
       return String(value || PERSISTED_SETTING_DEFAULTS.upiSubscriptionApiBaseUrl)
         .trim()
@@ -2237,12 +2142,8 @@ function normalizePersistentSettingValue(key, value) {
         .replace(/\/api\/v1\/totp\/(?:enable|lookup)$/i, '')
         .replace(/\/api$/i, '')
         .replace(/\/+$/g, '') || PERSISTED_SETTING_DEFAULTS.upiSubscriptionApiBaseUrl;
-    case 'upiRedeemExternalApiKey':
-    case 'upiRedeemClientId':
     case 'upiCredentialMembershipCheckTotpLookupKey':
       return String(value || '').trim();
-    case 'upiRedeemStopAfterRedeem':
-    case 'upiRedeemContinueAfterRedeem':
     case 'totpMfaAfterProfileEnabled':
     case 'autoRunSkipFailures':
       return true;
@@ -2272,101 +2173,6 @@ function normalizePersistentSettingValue(key, value) {
       const numeric = Number.parseInt(String(value ?? '').trim(), 10);
       return Number.isFinite(numeric) ? Math.max(0, Math.min(300, numeric)) : PERSISTED_SETTING_DEFAULTS[key];
     }
-    case 'upiRedeemCdkeyPoolText':
-    case 'idealRedeemCdkeyPoolText':
-    case 'pixChannelRedeemCdkeyPoolText': {
-      const seen = new Set();
-      return String(value || '')
-        .replace(/\r/g, '')
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => {
-          if (!line || seen.has(line)) return false;
-          seen.add(line);
-          return true;
-        })
-        .join('\n');
-    }
-    case 'upiRedeemCdkeyUsage':
-    case 'idealRedeemCdkeyUsage':
-    case 'pixChannelRedeemCdkeyUsage':
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-      return Object.fromEntries(Object.entries(value).map(([rawKey, usage]) => {
-        const item = usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : {};
-        const normalizedEmail = String(
-          item.email
-          || item.accountEmail
-          || item.credentialEmail
-          || item.targetEmail
-          || item.redeemEmail
-          || ''
-        ).trim().toLowerCase();
-        const normalizedItem = {
-          usedAt: Math.max(0, Number(item.usedAt) || 0),
-          lastAttemptAt: Math.max(0, Number(item.lastAttemptAt) || 0),
-          lastError: String(item.lastError || '').trim(),
-          enabled: item.enabled !== false,
-          email: normalizedEmail,
-          accountEmail: String(item.accountEmail || normalizedEmail || '').trim().toLowerCase(),
-          credentialEmail: String(item.credentialEmail || normalizedEmail || '').trim().toLowerCase(),
-          targetEmail: String(item.targetEmail || normalizedEmail || '').trim().toLowerCase(),
-          accessTokenMasked: String(item.accessTokenMasked || '').trim(),
-          accessTokenUpdatedAt: Math.max(0, Number(item.accessTokenUpdatedAt) || Number(item.tokenUpdatedAt) || 0),
-          lastFailedEmail: String(item.lastFailedEmail || '').trim().toLowerCase(),
-          lastFailedAt: Math.max(0, Number(item.lastFailedAt) || 0),
-          lastFailedReason: String(item.lastFailedReason || '').trim(),
-          releasedEmail: String(item.releasedEmail || item.approveBlockedEmail || '').trim().toLowerCase(),
-          releaseReason: String(item.releaseReason || '').trim(),
-          releasedAt: Math.max(0, Number(item.releasedAt) || 0),
-          remoteStatus: String(item.remoteStatus || '').trim(),
-          remoteMessage: String(item.remoteMessage || '').trim(),
-          remoteCheckedAt: Math.max(0, Number(item.remoteCheckedAt) || 0),
-          canCancel: normalizePersistentBooleanFlag(item.canCancel ?? item.can_cancel),
-          canRetry: normalizePersistentBooleanFlag(item.canRetry ?? item.can_retry),
-          canReuseToken: normalizePersistentBooleanFlag(item.canReuseToken ?? item.can_reuse_token),
-          hasAccessToken: normalizePersistentBooleanFlag(item.hasAccessToken ?? item.has_access_token),
-          retryCount: Math.max(0, Number(item.retryCount) || 0),
-          lastRetryAt: Math.max(0, Number(item.lastRetryAt) || 0),
-          retrying: item.retrying === true,
-          retryError: String(item.retryError || '').trim(),
-        };
-        const normalizeAttemptHistory = self.MultiPageRedeemAttemptHistory?.normalizeRedeemAttemptHistory;
-        if (typeof normalizeAttemptHistory === 'function') {
-          const newestSubmittedAt = (Array.isArray(item.redeemAttemptHistory) ? item.redeemAttemptHistory : [])
-            .reduce((latest, attempt) => Math.max(latest, Number(attempt?.submittedAt) || 0), 0);
-          normalizedItem.redeemAttemptHistory = normalizeAttemptHistory(item.redeemAttemptHistory, {
-            nowMs: Math.max(Date.now(), normalizedItem.lastAttemptAt, newestSubmittedAt),
-          });
-        }
-        const recoveredFromEmail = String(item.recoveredFromEmail || '').trim().toLowerCase();
-        if (recoveredFromEmail) {
-          normalizedItem.recoveredFromEmail = recoveredFromEmail;
-        }
-        const recoveredAccessTokenFingerprint = String(item.recoveredAccessTokenFingerprint || '').trim();
-        if (recoveredAccessTokenFingerprint) {
-          normalizedItem.recoveredAccessTokenFingerprint = recoveredAccessTokenFingerprint;
-        }
-        const recoveredAt = Math.max(0, Number(item.recoveredAt) || 0);
-        if (recoveredAt) {
-          normalizedItem.recoveredAt = recoveredAt;
-        }
-        if (item.subscriptionActive === true || item.subscriptionActive === false) {
-          normalizedItem.subscriptionActive = Boolean(item.subscriptionActive);
-        }
-        const subscriptionPlanType = String(item.subscriptionPlanType || item.subscription_plan_type || '').trim();
-        if (subscriptionPlanType) {
-          normalizedItem.subscriptionPlanType = subscriptionPlanType;
-        }
-        const subscriptionCheckedAt = Math.max(0, Number(item.subscriptionCheckedAt) || 0);
-        if (subscriptionCheckedAt) {
-          normalizedItem.subscriptionCheckedAt = subscriptionCheckedAt;
-        }
-        const subscriptionReason = String(item.subscriptionReason || '').trim();
-        if (subscriptionReason) {
-          normalizedItem.subscriptionReason = subscriptionReason;
-        }
-        return [String(rawKey || '').trim(), normalizedItem];
-      }).filter(([normalizedKey]) => Boolean(normalizedKey)));
     case 'autoRunFallbackThreadIntervalMinutes':
       return normalizeAutoRunFallbackThreadIntervalMinutes(value);
     case 'autoRunDelayMinutes':
@@ -2534,43 +2340,6 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
       normalizedInput.verificationResendCount = legacyVerificationResendCount;
     }
   }
-  if (normalizedInput.upiRedeemCdkeyPoolText === undefined) {
-    for (const legacyPoolKey of ['cdkPoolText', 'upiRedeemCdkPoolText', 'pixRedeemCdkeyPoolText']) {
-      if (normalizedInput[legacyPoolKey] !== undefined) {
-        normalizedInput.upiRedeemCdkeyPoolText = normalizedInput[legacyPoolKey];
-        break;
-      }
-    }
-  }
-  if (normalizedInput.upiRedeemCdkeyUsage === undefined) {
-    for (const legacyUsageKey of ['cdkUsage', 'upiRedeemCdkUsage', 'pixRedeemCdkeyUsage']) {
-      if (normalizedInput[legacyUsageKey] !== undefined) {
-        normalizedInput.upiRedeemCdkeyUsage = normalizedInput[legacyUsageKey];
-        break;
-      }
-    }
-  }
-  if (normalizedInput.idealRedeemCdkeyPoolText === undefined) {
-    for (const legacyIdealPoolKey of ['idealCdkPoolText', 'idealRedeemCdkPoolText']) {
-      if (normalizedInput[legacyIdealPoolKey] !== undefined) {
-        normalizedInput.idealRedeemCdkeyPoolText = normalizedInput[legacyIdealPoolKey];
-        break;
-      }
-    }
-  }
-  if (normalizedInput.idealRedeemCdkeyUsage === undefined) {
-    for (const legacyIdealUsageKey of ['idealCdkUsage', 'idealRedeemCdkUsage']) {
-      if (normalizedInput[legacyIdealUsageKey] !== undefined) {
-        normalizedInput.idealRedeemCdkeyUsage = normalizedInput[legacyIdealUsageKey];
-        break;
-      }
-    }
-  }
-  for (const [nextKey, legacyKey] of Object.entries(LEGACY_UPI_REDEEM_SETTING_KEY_MAP)) {
-    if (normalizedInput[nextKey] === undefined && normalizedInput[legacyKey] !== undefined) {
-      normalizedInput[nextKey] = normalizedInput[legacyKey];
-    }
-  }
   if (normalizedInput.plusPaymentMethod === 'pix') {
     normalizedInput.plusPaymentMethod = PLUS_PAYMENT_METHOD_UPI;
   }
@@ -2638,7 +2407,6 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
 async function getPersistedSettings() {
   const stored = await chrome.storage.local.get([
     ...PERSISTED_SETTING_KEYS,
-    ...LEGACY_UPI_REDEEM_SETTING_KEYS,
     ...LEGACY_AUTO_STEP_DELAY_KEYS,
     ...LEGACY_VERIFICATION_RESEND_COUNT_KEYS,
     AUTO_STEP_DELAY_DEFAULT_MIGRATION_KEY,
@@ -2655,7 +2423,7 @@ async function getPersistedSettings() {
       console.warn(LOG_PREFIX, 'Failed to migrate auto step delay default:', err?.message || err);
     });
   }
-  return alignUpiRedeemCdkeyAliasStatePatch(buildPersistentSettingsPayload(stored, { fillDefaults: true }));
+  return buildPersistentSettingsPayload(stored, { fillDefaults: true });
 }
 
 async function getPersistedAliasState() {
@@ -2685,7 +2453,6 @@ async function getPersistedAliasState() {
 
 const backgroundStateStore = self.MultiPageBackgroundStateStore.createBackgroundStateStore({
   accountRecordsStorageKey: ACCOUNT_RECORDS_STORAGE_KEY,
-  alignUpiRedeemCdkeyAliasStatePatch,
   buildStatePatchWithRuntimeState,
   buildStateViewWithRuntimeState,
   chrome,
@@ -2695,11 +2462,24 @@ const backgroundStateStore = self.MultiPageBackgroundStateStore.createBackground
   getPersistedSettings,
   logPrefix: LOG_PREFIX,
   membershipResultsStorageKey: UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY,
+  migrateStateView: (state, context = {}) => {
+    const storedVersion = Math.max(0, Math.floor(Number(context?.sessionState?.workflowVersion) || 0));
+    const currentVersion = self.MultiPageStepDefinitions?.WORKFLOW_VERSION || 3;
+    if (storedVersion >= currentVersion || typeof self.MultiPageStepDefinitions?.migrateWorkflowState !== 'function') {
+      return null;
+    }
+    return self.MultiPageStepDefinitions.migrateWorkflowState({
+      ...state,
+      workflowVersion: storedVersion,
+    });
+  },
   normalizeBooleanMap,
   normalizeIcloudAliasCacheList,
   normalizePersistentSettingValue,
+  persistentSettingKeys: PERSISTED_SETTING_KEYS,
   protectFreshMembershipResultsInStatePatch,
   setPersistentSettings,
+  statePatchNeedsCurrentState,
 });
 
 async function getState() {
@@ -2722,9 +2502,22 @@ const accountLifecycleService = self.MultiPageAccountLifecycleService.createAcco
 });
 self.MultiPageRuntimeAccountRepository = accountRepository;
 self.MultiPageRuntimeAccountLifecycleService = accountLifecycleService;
+const registrationAccountStateRegistry = self.MultiPageRegistrationAccountState.createRegistrationAccountState({
+  accountLifecycleService,
+  accountRepository,
+  addLog,
+  broadcastDataUpdate,
+  customEmailPoolStateRegistry,
+  getState,
+  markCurrentRegistrationAccountRegistrationBlocked,
+  markCurrentRegistrationAccountUnavailable,
+  markCurrentRegistrationAccountUsed,
+  recordStep7AccountCheckpoint: typeof recordStep7AccountCheckpoint === 'function'
+    ? recordStep7AccountCheckpoint
+    : undefined,
+});
 
 const taskRepository = self.MultiPageTaskRepository.createTaskRepository({ chromeApi: chrome });
-const externalEffectLedger = self.MultiPageExternalEffectLedger.createExternalEffectLedger({ chromeApi: chrome });
 const taskEventStore = self.MultiPageTaskEventStore.createTaskEventStore({ chromeApi: chrome });
 const taskLockManager = self.MultiPageTaskLockManager.createTaskLockManager({ repository: taskRepository });
 const taskRuntime = self.MultiPageTaskRuntime.createTaskRuntime({
@@ -2733,7 +2526,6 @@ const taskRuntime = self.MultiPageTaskRuntime.createTaskRuntime({
   lockManager: taskLockManager,
 });
 self.MultiPageRuntimeTaskRepository = taskRepository;
-self.MultiPageRuntimeExternalEffectLedger = externalEffectLedger;
 self.MultiPageRuntimeTaskEventStore = taskEventStore;
 self.MultiPageRuntimeTaskLockManager = taskLockManager;
 self.MultiPageRuntimeTaskRuntime = taskRuntime;
@@ -2742,9 +2534,23 @@ const backgroundLegacyCleanup = self.MultiPageBackgroundLegacyCleanup.createBack
   chrome,
   logPrefix: LOG_PREFIX,
 });
+const freeAccountV3Migration = self.MultiPageFreeAccountV3Migration.createFreeAccountV3Migration({
+  chrome,
+  resultsApi: self.MultiPageFreeAccountResults,
+  logger: console,
+});
 
 async function purgeFormerNetworkResidue(reason = 'startup') {
   return backgroundLegacyCleanup.purgeFormerNetworkResidue(reason);
+}
+
+async function migrateFreeAccountV3(reason = 'startup') {
+  const result = await freeAccountV3Migration.migrate(reason);
+  if (result?.results) {
+    await chrome.storage.session.remove([UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY]).catch(() => {});
+    broadcastDataUpdate({ freeAccountResults: result.results });
+  }
+  return result;
 }
 
 async function setState(updates) {
@@ -2794,6 +2600,7 @@ function getSettingsTransferManager() {
       ensureManualInteractionAllowed,
       getState,
       synchronizeAccountReadModel,
+      workflowDefinitions: self.MultiPageStepDefinitions,
     });
   }
   return settingsTransferManager;
@@ -2865,10 +2672,7 @@ function scheduleAccountReadModelSync(payload = {}) {
   const relevantKeys = new Set([
     'customEmailPoolEntries',
     'accountRunHistory',
-    'upiCredentialMembershipCheckResults',
-    'upiRedeemCdkeyUsage',
-    'idealRedeemCdkeyUsage',
-    'pixChannelRedeemCdkeyUsage',
+    'freeAccountResults',
   ]);
   if (!Object.keys(payload || {}).some((key) => relevantKeys.has(key)) || accountReadModelSyncPending) return;
   accountReadModelSyncPending = true;
@@ -3558,8 +3362,10 @@ async function resetState() {
     getPersistedAliasState(),
     chrome.storage.local.get([UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY]).catch(() => ({})),
   ]);
-  const persistedCredentialMembershipCheckResults = credentialMembershipCheckState?.[UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY]
-    || DEFAULT_STATE.upiCredentialMembershipCheckResults;
+  const persistedCredentialMembershipCheckResults = self.MultiPageFreeAccountResults.normalizeResults(
+    credentialMembershipCheckState?.[UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS_STORAGE_KEY]
+      || DEFAULT_STATE.freeAccountResults
+  );
   const contributionModeState = buildContributionModeState(Boolean(prev.contributionMode), persistedSettings, prev);
   const preservedLogs = Array.isArray(prev.logs)
     ? prev.logs.slice(-499)
@@ -3573,7 +3379,7 @@ async function resetState() {
     nodeId: 'reset',
   });
   await chrome.storage.session.clear();
-  const resetPayload = buildStatePatchWithRuntimeState({}, {
+  const resetStateView = {
     ...DEFAULT_STATE,
     ...persistedSettings,
     ...persistedAliasState,
@@ -3594,13 +3400,20 @@ async function resetState() {
     currentLuckmailPurchase: null,
     currentLuckmailMailCursor: null,
     preferredIcloudHost: prev.preferredIcloudHost || '',
-    upiCredentialMembershipCheckResults: persistedCredentialMembershipCheckResults,
+    freeAccountResults: persistedCredentialMembershipCheckResults,
     automationWindowId: Number.isInteger(Number(prev.automationWindowId))
       && Number(prev.automationWindowId) >= 0
       ? Number(prev.automationWindowId)
       : null,
-  });
-  await chrome.storage.session.set(resetPayload);
+  };
+  const resetPayload = backgroundStateStore.sanitizeSessionPatch(buildStatePatchWithRuntimeState({}, {
+    ...resetStateView,
+    workflowVersion: self.MultiPageStepDefinitions?.WORKFLOW_VERSION || 3,
+    currentNodeId: '',
+    nodeStatuses: self.MultiPageStepDefinitions?.getDefaultNodeStatuses?.(resetStateView)
+      || { ...DEFAULT_NODE_STATUSES },
+  }));
+  await chrome.storage.session.set(backgroundStateStore.sanitizeSessionPatch(resetPayload));
 }
 
 /**
@@ -7698,7 +7511,7 @@ async function fetchIcloudHideMyEmail(options = {}) {
           : {}),
         hme: generatedAlias,
         label: getIcloudAliasLabel(),
-        note: 'Generated through UPI Redeem Only',
+        note: 'Generated through Free Account Tool',
       };
 
       let alias = '';
@@ -8052,28 +7865,17 @@ async function resolveCurrentSessionExportTabs() {
 }
 
 async function readChatGptSessionFromTabForExport(tab) {
-  if (!tab?.id) {
-    throw new Error('未找到可读取 SESSION 的标签页。');
-  }
+  if (!tab?.id) throw new Error('未找到可读取 SESSION 的标签页。');
   const [{ result } = {}] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: async () => {
       const response = await fetch('/api/auth/session', { credentials: 'include' });
       const session = await response.json().catch(() => ({}));
-      return {
-        ok: response.ok,
-        status: response.status,
-        session,
-        accessToken: String(session?.accessToken || '').trim(),
-      };
+      return { ok: response.ok, status: response.status, session, accessToken: String(session?.accessToken || '').trim() };
     },
   });
-  if (!result?.ok && !result?.accessToken) {
-    throw new Error(`当前页面未返回可用 SESSION（HTTP ${result?.status || 'unknown'}）。`);
-  }
-  if (!result?.accessToken) {
-    throw new Error('当前 SESSION 中没有 accessToken，请确认 ChatGPT / OpenAI 页面已登录。');
-  }
+  if (!result?.ok && !result?.accessToken) throw new Error(`当前页面未返回可用 SESSION（HTTP ${result?.status || 'unknown'}）。`);
+  if (!result?.accessToken) throw new Error('当前 SESSION 中没有 accessToken，请确认 ChatGPT / OpenAI 页面已登录。');
   return {
     tabId: tab.id,
     url: tab.url || '',
@@ -8082,11 +7884,15 @@ async function readChatGptSessionFromTabForExport(tab) {
   };
 }
 
+async function readChatGptSessionForTotpRecovery(tabId) {
+  const normalizedTabId = Number(tabId);
+  if (!Number.isInteger(normalizedTabId)) throw new Error('步骤 4 缺少可读取 Session 的标签页。');
+  return readChatGptSessionFromTabForExport(await chrome.tabs.get(normalizedTabId));
+}
+
 async function readCurrentChatGptSessionForExport() {
   const createReader = self.MultiPageBackgroundSessionExportReader?.createSessionExportReader;
-  if (typeof createReader !== 'function') {
-    throw new Error('ChatGPT SESSION 读取恢复模块未加载。');
-  }
+  if (typeof createReader !== 'function') throw new Error('ChatGPT SESSION 读取恢复模块未加载。');
   const reader = createReader({
     resolveTabs: resolveCurrentSessionExportTabs,
     pickPreferredTab: pickPreferredSessionExportTab,
@@ -8095,28 +7901,19 @@ async function readCurrentChatGptSessionForExport() {
     sleep: sleepWithStop,
     maxAttempts: 3,
     retryDelayMs: 750,
-    onRetry: ({ nextAttempt, maxAttempts }) => addLog(
-      `读取 ChatGPT SESSION/AT 时页面主 Frame 已切换，正在重新定位当前标签页后重试（${nextAttempt}/${maxAttempts}）。`,
-      'warn',
-      { step: 6, stepKey: 'persist-no-2fa-free' }
-    ),
+    onRetry: ({ nextAttempt, maxAttempts }) => addLog(`读取 ChatGPT SESSION/AT 时页面主 Frame 已切换，正在重新定位当前标签页后重试（${nextAttempt}/${maxAttempts}）。`, 'warn', { step: 6, stepKey: 'persist-no-2fa-free' }),
   });
   return reader.readCurrentSession();
 }
 
 async function resolveSignupExistingTotpCredential(email, state = {}) {
   const normalizedEmail = normalizeCredentialBackupEmail(email);
-  if (!normalizedEmail) {
-    return null;
-  }
-
+  if (!normalizedEmail) return null;
   const [canonicalRecord, backups] = await Promise.all([
     accountRepository?.getAccount?.(normalizedEmail).catch(() => null),
     getUpiAccountCredentialBackups().catch(() => ({})),
   ]);
-  const membershipItems = Array.isArray(state?.upiCredentialMembershipCheckResults?.items)
-    ? state.upiCredentialMembershipCheckResults.items
-    : [];
+  const membershipItems = Array.isArray(state?.freeAccountResults?.items) ? state.freeAccountResults.items : [];
   const runtimeAccounts = Array.isArray(state?.accounts) ? state.accounts : [];
   const candidates = [
     canonicalRecord,
@@ -8124,22 +7921,13 @@ async function resolveSignupExistingTotpCredential(email, state = {}) {
     ...membershipItems.filter((item) => normalizeCredentialBackupEmail(item?.email) === normalizedEmail),
     ...runtimeAccounts.filter((item) => normalizeCredentialBackupEmail(item?.email) === normalizedEmail),
   ].filter(Boolean);
-
+  let password = '';
+  let secret = '';
   for (const candidate of candidates) {
-    const secret = normalizeCredentialBackupText(
-      candidate?.credentials?.totpSecret
-      || candidate?.totpMfaSecret
-      || candidate?.totpSecret
-      || candidate?.twoFactorSecret
-    ).replace(/\s+/g, '').toUpperCase();
-    if (secret) {
-      return {
-        email: normalizedEmail,
-        totpMfaSecret: secret,
-      };
-    }
+    if (!password) password = normalizeCredentialBackupText(candidate?.credentials?.password || candidate?.password || candidate?.gptPassword);
+    if (!secret) secret = normalizeCredentialBackupText(candidate?.credentials?.totpSecret || candidate?.totpMfaSecret || candidate?.totpSecret || candidate?.twoFactorSecret).replace(/\s+/g, '').toUpperCase();
   }
-  return null;
+  return secret ? { email: normalizedEmail, password, gptPassword: password, totpMfaSecret: secret, twoFactorEnabled: true, no2faFreeRoute: false } : null;
 }
 
 function getCpaSessionExportApi() {
@@ -8169,12 +7957,15 @@ function isSignupEntryHost(hostname = '') {
 }
 
 function isLikelyLoggedInChatgptHomeUrl(rawUrl) {
+  if (typeof navigationUtils !== 'undefined' && navigationUtils?.isLikelyLoggedInChatgptHomeUrl) {
+    return navigationUtils.isLikelyLoggedInChatgptHomeUrl(rawUrl);
+  }
   const parsed = parseUrlSafely(rawUrl);
   if (!parsed) return false;
   if (!isSignupEntryHost(String(parsed.hostname || '').toLowerCase())) {
     return false;
   }
-  return !/^\/(?:auth\/|create-account\/|email-verification|log-in)(?:[/?#]|$)/i.test(parsed.pathname || '');
+  return !/^\/(?:auth|create-account|email-verification|log-in|login)(?:[/?#]|$)/i.test(parsed.pathname || '');
 }
 
 function isSignupPasswordPageUrl(rawUrl) {
@@ -8655,28 +8446,10 @@ function isRetryableContentScriptTransportError(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
   return /back\/forward cache|message channel is closed|Receiving end does not exist|port closed before a response was received|A listener indicated an asynchronous response|frame with id \d+ was removed|no frame with id \d+ in tab|the frame was removed|内容脚本\s+\d+(?:\.\d+)?\s*秒内未响应|did not respond in \d+s|failed to fetch|networkerror|network error|fetch failed|load failed/i.test(message);
 }
-
 function isStepFetchNetworkRetryableError(error) {
   const message = String(getErrorMessage(error) || '').toLowerCase();
   return /failed to fetch|networkerror|network error|fetch failed|load failed|net::err_/i.test(message);
 }
-
-function getStepFetchNetworkRetryPolicy(step) {
-  if (typeof STEP_FETCH_NETWORK_RETRY_POLICIES === 'undefined' || !(STEP_FETCH_NETWORK_RETRY_POLICIES instanceof Map)) {
-    return null;
-  }
-
-  const policy = STEP_FETCH_NETWORK_RETRY_POLICIES.get(Number(step));
-  if (!policy) {
-    return null;
-  }
-
-  return {
-    maxAttempts: Math.max(1, Math.floor(Number(policy.maxAttempts) || 1)),
-    cooldownMs: Math.max(0, Math.floor(Number(policy.cooldownMs) || 0)),
-  };
-}
-
 const sourceRegistry = self.MultiPageSourceRegistry?.createSourceRegistry?.() || null;
 const flowCapabilityRegistry = self.MultiPageFlowCapabilities?.createFlowCapabilityRegistry?.({
   defaultFlowId: DEFAULT_ACTIVE_FLOW_ID,
@@ -8685,19 +8458,21 @@ const workflowEngine = self.MultiPageBackgroundWorkflowEngine?.createWorkflowEng
   defaultFlowId: DEFAULT_ACTIVE_FLOW_ID,
   workflowDefinitions: self.MultiPageStepDefinitions,
 }) || null;
-
 const navigationUtils = self.MultiPageBackgroundNavigationUtils?.createNavigationUtils({
   DEFAULT_CODEX2API_URL,
   DEFAULT_SUB2API_URL,
   normalizeLocalCpaStep9Mode,
   sourceRegistry,
 });
-
 const loggingStatus = self.MultiPageBackgroundLoggingStatus?.createLoggingStatus({
   chrome,
   DEFAULT_STATE,
   getStepDefinitionForState,
   getStepIdByNodeIdForState,
+  getSessionLogs: async () => {
+    const stored = await chrome.storage.session.get(['logs']);
+    return Array.isArray(stored?.logs) ? stored.logs : [];
+  },
   getState,
   isRecoverableStep9AuthFailure,
   LOG_PREFIX,
@@ -8706,7 +8481,6 @@ const loggingStatus = self.MultiPageBackgroundLoggingStatus?.createLoggingStatus
   sourceRegistry,
   STOP_ERROR_MESSAGE,
 });
-
 const tabRuntime = self.MultiPageBackgroundTabRuntime?.createTabRuntime({
   addLog,
   appendAccountRunRecord: (...args) => appendAndBroadcastAccountRunRecord(...args),
@@ -8723,32 +8497,26 @@ const tabRuntime = self.MultiPageBackgroundTabRuntime?.createTabRuntime({
   STOP_ERROR_MESSAGE,
   throwIfStopped,
 });
-
 function getErrorMessage(error) {
   const message = typeof loggingStatus !== 'undefined' && loggingStatus?.getErrorMessage
     ? loggingStatus.getErrorMessage(error)
     : String(typeof error === 'string' ? error : error?.message || '');
   return String(message || '')
     .replace(/^CARD_HELPER_TASK_ENDED::/i, '')
-    .replace(/^UPI_REDEEM_BACKEND_FAILED::/i, '')
     .replace(new RegExp(`^${HOTMAIL_MAILBOX_UNAVAILABLE_PREFIX}`, 'i'), '')
     .replace(/^AUTO_RUN_STEP_IDLE_RESTART::/i, '');
 }
-
 function isHotmailMailboxUnavailableFailure(error) {
   const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
   return rawMessage.startsWith(HOTMAIL_MAILBOX_UNAVAILABLE_PREFIX)
     || Boolean(isHotmailMailboxAccountUnavailableError?.(error));
 }
-
 function isCloudflareSecurityBlockedError(error) {
   return getErrorMessage(error).startsWith(CLOUDFLARE_SECURITY_BLOCK_ERROR_PREFIX);
 }
-
 function isTerminalSecurityBlockedError(error) {
   return isCloudflareSecurityBlockedError(error);
 }
-
 function getCloudflareSecurityBlockedMessage(error) {
   const message = getErrorMessage(error);
   if (message.startsWith(CLOUDFLARE_SECURITY_BLOCK_ERROR_PREFIX)) {
@@ -8756,30 +8524,24 @@ function getCloudflareSecurityBlockedMessage(error) {
   }
   return CLOUDFLARE_SECURITY_BLOCK_USER_MESSAGE;
 }
-
 function getTerminalSecurityBlockedMessage(error) {
   return getCloudflareSecurityBlockedMessage(error);
 }
-
 function getTerminalSecurityBlockedAlertText(error) {
   return '检测到 Cloudflare 风控，请暂停当前操作。';
 }
-
 function getTerminalSecurityBlockedTitle(error) {
   return 'Cloudflare 风控拦截';
 }
-
 function isBrowserSwitchRequiredError(error) {
   return getErrorMessage(error).startsWith(BROWSER_SWITCH_REQUIRED_ERROR_PREFIX);
 }
-
 function getBrowserSwitchRequiredMessage(error) {
   const message = getErrorMessage(error);
   return message.startsWith(BROWSER_SWITCH_REQUIRED_ERROR_PREFIX)
     ? message.slice(BROWSER_SWITCH_REQUIRED_ERROR_PREFIX.length).trim()
     : message;
 }
-
 function broadcastSecurityBlockedAlert(title = '流程已完全停止', message = CLOUDFLARE_SECURITY_BLOCK_USER_MESSAGE, alertText = '检测到 Cloudflare 风控，请暂停当前操作。') {
   chrome.runtime.sendMessage({
     type: 'SECURITY_BLOCKED_ALERT',
@@ -8793,7 +8555,6 @@ function broadcastSecurityBlockedAlert(title = '流程已完全停止', message 
     },
   }).catch(() => { });
 }
-
 async function handleCloudflareSecurityBlocked(error) {
   const title = getTerminalSecurityBlockedTitle(error);
   const message = getTerminalSecurityBlockedMessage(error);
@@ -8802,14 +8563,12 @@ async function handleCloudflareSecurityBlocked(error) {
   broadcastSecurityBlockedAlert(title, message, alertText);
   return message;
 }
-
 async function handleBrowserSwitchRequired(error) {
   const message = getBrowserSwitchRequiredMessage(error)
     || '检测到第 10 步的特殊冲突状态，请更换浏览器后重新进行注册登录。';
   await requestStop({ logMessage: message });
   return message;
 }
-
 function isVerificationMailPollingError(error) {
   if (typeof loggingStatus !== 'undefined' && loggingStatus?.isVerificationMailPollingError) {
     return loggingStatus.isVerificationMailPollingError(error);
@@ -8817,7 +8576,6 @@ function isVerificationMailPollingError(error) {
   const message = getErrorMessage(error);
   return /未在 .*邮箱中找到新的匹配邮件|未在 Hotmail 收件箱中找到新的匹配验证码|邮箱轮询结束，但未获取到验证码|无法获取新的(?:注册|登录)验证码|页面未能重新就绪|页面通信异常|did not respond in \d+s/i.test(message);
 }
-
 function getLoginAuthStateLabel(state) {
   if (typeof loggingStatus !== 'undefined' && loggingStatus?.getLoginAuthStateLabel) {
     return loggingStatus.getLoginAuthStateLabel(state);
@@ -8833,7 +8591,6 @@ function getLoginAuthStateLabel(state) {
     default: return '未知页面';
   }
 }
-
 function isRestartCurrentAttemptError(error) {
   if (typeof loggingStatus !== 'undefined' && loggingStatus?.isRestartCurrentAttemptError) {
     return loggingStatus.isRestartCurrentAttemptError(error);
@@ -8841,12 +8598,10 @@ function isRestartCurrentAttemptError(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
   return /当前邮箱已存在，需要重新开始新一轮/i.test(message);
 }
-
 function isAssurivoNoValidCodeFailure(error) {
   const message = getErrorMessage(error);
   return /Assurivo\s+JSON\s+接口暂未返回有效验证码|Assurivo.*只返回了早于本轮发码时间|自定义邮箱.*暂未返回有效验证码/i.test(message);
 }
-
 async function waitBeforeAssurivoNoValidCodeRestart(error, options = {}) {
   const cooldownMs = Math.max(
     0,
@@ -8863,25 +8618,21 @@ async function waitBeforeAssurivoNoValidCodeRestart(error, options = {}) {
   );
   await sleepWithStop(cooldownMs);
 }
-
 function createAutoRunParkedByTimerError(message = '') {
   const error = new Error(`AUTO_RUN_PARKED_BY_TIMER::${message || '自动运行已进入倒计时等待。'}`);
   error.autoRunParkedByTimer = true;
   return error;
 }
-
 function isSignupVerificationInputMissingFailure(error) {
   const message = getErrorMessage(error);
   return /未找到验证码输入框/i.test(message)
     && /\/email-verification(?:[/?#]|$)/i.test(message);
 }
-
 function isSignupVerificationInputRenderPendingFailure(error) {
   const message = String(error?.message || error || '');
   return error?.code === 'SIGNUP_VERIFICATION_INPUT_RENDER_PENDING'
     || /SIGNUP_VERIFICATION_INPUT_RENDER_PENDING::/i.test(message);
 }
-
 function isSignupTransitionUncertainFailure(error) {
   const message = String(error?.message || error || '');
   const code = String(error?.code || '').trim();
@@ -8889,7 +8640,6 @@ function isSignupTransitionUncertainFailure(error) {
     || /^SIGNUP_MANUAL_VERIFICATION_(?:REJECTED|UNCONFIRMED)$/i.test(code)
     || /(?:SIGNUP_PASSWORD_SUBMIT_UNCERTAIN|SIGNUP_MANUAL_VERIFICATION_(?:REJECTED|UNCONFIRMED))::/i.test(message);
 }
-
 async function parkFetchSignupCodeRestart(error, options = {}) {
   const cooldownMs = Math.max(
     0,
@@ -8943,7 +8693,6 @@ async function parkFetchSignupCodeRestart(error, options = {}) {
   });
   throw createAutoRunParkedByTimerError(`${reasonLabel}，已安排倒计时后${resumeLabel}。`);
 }
-
 async function parkAssurivoNoValidCodeRestart(error, options = {}) {
   return parkFetchSignupCodeRestart(error, {
     ...options,
@@ -8951,7 +8700,6 @@ async function parkAssurivoNoValidCodeRestart(error, options = {}) {
     countdownTitle: '等待 Assurivo 新验证码',
   });
 }
-
 function isSignupUserAlreadyExistsFailure(error) {
   if (typeof loggingStatus !== 'undefined' && loggingStatus?.isSignupUserAlreadyExistsFailure) {
     return loggingStatus.isSignupUserAlreadyExistsFailure(error);
@@ -8959,42 +8707,23 @@ function isSignupUserAlreadyExistsFailure(error) {
   const message = getErrorMessage(error);
   return /SIGNUP_USER_ALREADY_EXISTS::|user_already_exists/i.test(message);
 }
-
 function isStep8EmailInUseFailure(error) {
   const message = getErrorMessage(error);
   return /STEP8_EMAIL_IN_USE::|email_in_use on add-email verification page/i.test(message);
 }
-
 function isRegistrationIdentityConflictFailure(error) {
   return isSignupUserAlreadyExistsFailure(error) || isStep8EmailInUseFailure(error);
 }
-
 function isStep4Route405RecoveryLimitFailure(error) {
   const message = getErrorMessage(error);
   return /STEP4_405_RECOVERY_LIMIT::|步骤\s*4：检测到\s*405\s*错误页面，已连续点击“重试”恢复/i.test(message);
 }
-
 function isChatgptSessionReaderNonFreeTrialFailure(error) {
   const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
   const message = getErrorMessage(error);
   const combinedMessage = `${rawMessage}\n${message}`;
   return /UPI_ACCOUNT_INELIGIBLE::|PIX_ACCOUNT_INELIGIBLE::|CHATGPT_SESSION_READER_NON_FREE_TRIAL::|今日应付金额不是\s*0|没有免费试用资格|该账号已经开通过\s*ChatGPT\s*订阅套餐，不能重复订阅(?:。)?(?:（\s*checkout_order\s*）|\(\s*checkout_order\s*\))?/i.test(combinedMessage);
 }
-
-function isUpiRedeemBackendFailure(error) {
-  const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
-  const message = getErrorMessage(error);
-  const combinedMessage = `${rawMessage}\n${message}`;
-  return /UPI_REDEEM_BACKEND_FAILED::|UPI[\s\S]*(?:卡密|兑换)[\s\S]*(?:失败|超时|未找到|不存在)|(?:卡密|兑换)[\s\S]*(?:失败|超时|未找到|不存在)[\s\S]*UPI/i.test(combinedMessage);
-}
-
-function isUpiRedeemNetworkFailure(error) {
-  const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
-  const message = getErrorMessage(error);
-  const combinedMessage = `${rawMessage}\n${message}`;
-  return /UPI_REDEEM_NETWORK::|UPI[\s\S]*(?:接口|资格|会员|兑换)[\s\S]*(?:网络请求失败|请求超时|Failed to fetch|NetworkError|fetch failed|Load failed)/i.test(combinedMessage);
-}
-
 function isCardHelperTaskEndedFailure(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
   return /CARD_HELPER_TASK_ENDED::/i.test(message);
@@ -9932,6 +9661,11 @@ async function ensureManualInteractionAllowed(actionLabel) {
   return state;
 }
 
+const REQUIRED_FINAL_WORKFLOW_NODE_IDS = new Set([
+  'check-trial-eligibility',
+  'persist-no-2fa-free',
+]);
+
 async function skipNode(nodeId) {
   const state = await ensureManualInteractionAllowed('跳过步骤');
   const normalizedNodeId = String(nodeId || '').trim();
@@ -9939,6 +9673,9 @@ async function skipNode(nodeId) {
 
   if (!normalizedNodeId || !activeNodeIds.includes(normalizedNodeId)) {
     throw new Error(`无效节点：${normalizedNodeId || nodeId}`);
+  }
+  if (REQUIRED_FINAL_WORKFLOW_NODE_IDS.has(normalizedNodeId)) {
+    throw new Error('最终账号保存节点不能跳过。');
   }
 
   const statuses = normalizeStatusMapForNodes(state.nodeStatuses || {}, state);
@@ -10252,13 +9989,21 @@ const AUTO_RUN_STEP_IDLE_LOG_TIMEOUT_MS = 5 * 60 * 1000;
 const AUTO_RUN_STEP_IDLE_LOG_CHECK_INTERVAL_MS = 5000;
 const HOSTED_CHECKOUT_FINAL_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
 const AUTO_RUN_STEP_IDLE_RESTART_MAX_ATTEMPTS = 3;
+const PASSWORD_SPLIT_RESTART_MAX_ATTEMPTS = 2;
 const AUTO_RUN_STEP_IDLE_RESTART_ERROR_PREFIX = 'AUTO_RUN_STEP_IDLE_RESTART::';
-const AUTO_RUN_BACKGROUND_COMPLETED_STEPS = new Set([1, 2, 4, 6, 7, 8, 9]);
-const STEP_COMPLETION_SIGNAL_STEPS = new Set([3, 5, 10, 12]);
+const AUTO_RUN_BACKGROUND_COMPLETED_STEPS = new Set([1, 2, 4, 5, 7, 8, 9, 10]);
+const STEP_COMPLETION_SIGNAL_STEPS = new Set([3, 6, 12]);
 const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'open-chatgpt',
   'submit-signup-email',
+  'existing-totp-login',
   'fetch-signup-code',
+  'fetch-gpt-password-code',
+  'set-gpt-password',
+  'enable-totp-mfa',
+  'enable-passkey',
+  'check-trial-eligibility',
+  'persist-no-2fa-free',
   'wait-registration-success',
   'local-cpa-json-export',
   'chatgpt-session-reader-billing',
@@ -10426,11 +10171,21 @@ function notifyStepComplete(step, payload) {
   if (waiter) waiter.resolve(payload);
 }
 
+function normalizeWorkflowError(error) {
+  if (error instanceof Error) return error;
+  const normalized = new Error(error?.message || String(error || '未知错误'));
+  if (error && typeof error === 'object') for (const key of ['code', 'retryable', 'preserveSignupSession', 'trialEligibilityStatus', 'nodeId', 'failedNodeId']) {
+    if (error[key] !== undefined) normalized[key] = error[key];
+  }
+  return normalized;
+}
+
 function notifyNodeError(nodeId, error) {
   const normalizedNodeId = String(nodeId || '').trim();
   const waiter = nodeWaiters.get(normalizedNodeId);
-  console.warn(LOG_PREFIX, `[notifyNodeError] node ${normalizedNodeId}, hasWaiter=${Boolean(waiter)}, error=${error}`);
-  if (waiter) waiter.reject(new Error(error));
+  const workflowError = normalizeWorkflowError(error);
+  console.warn(LOG_PREFIX, `[notifyNodeError] node ${normalizedNodeId}, hasWaiter=${Boolean(waiter)}, error=${workflowError.message}`);
+  if (waiter) waiter.reject(workflowError);
 }
 
 function notifyStepError(step, error) {
@@ -10442,7 +10197,7 @@ function notifyStepError(step, error) {
   }).catch(() => {});
   const waiter = stepWaiters.get(step);
   console.warn(LOG_PREFIX, `[notifyStepError] step ${step}, hasWaiter=${Boolean(waiter)}, error=${error}`);
-  if (waiter) waiter.reject(new Error(error));
+  if (waiter) waiter.reject(normalizeWorkflowError(error));
 }
 
 async function runCompletedStepSideEffects(step, payload, completionState, lastStepId) {
@@ -10460,18 +10215,7 @@ async function reportCompletedStepSideEffectError(step, error) {
 async function runCompletedNodeSideEffects(nodeId, payload, completionState, lastNodeId) {
   await handleNodeData(nodeId, payload);
   if (nodeId === lastNodeId) {
-    const successState = nodeId === 'upi-redeem'
-      ? {
-        ...(completionState || {}),
-        upiRedeemSuccess: true,
-        upiRedeemCdkey: payload?.cdkey || '',
-        upiRedeemAccessToken: payload?.upiRedeemAccessToken || payload?.accessToken || completionState?.upiRedeemAccessToken || '',
-        upiRedeemSubscriptionActive: payload?.upiRedeemSubscriptionActive ?? completionState?.upiRedeemSubscriptionActive ?? false,
-        upiRedeemSubscriptionPlanType: payload?.upiRedeemSubscriptionPlanType || completionState?.upiRedeemSubscriptionPlanType || '',
-        upiRedeemSubscriptionCheckedAt: payload?.upiRedeemSubscriptionCheckedAt || completionState?.upiRedeemSubscriptionCheckedAt || '',
-      }
-      : completionState;
-    await appendAndBroadcastAccountRunRecord('success', successState);
+    await appendAndBroadcastAccountRunRecord('success', completionState);
   }
 }
 
@@ -10659,6 +10403,16 @@ async function executeStepViaCompletionSignal(step, timeoutMs = 0) {
 }
 
 async function runStep3PostCompletionReview(nodeId, completionPayload = {}) {
+  if (typeof completionPayload?.signupPasswordCreated === 'boolean') {
+    return completionPayload;
+  }
+  if (
+    completionPayload?.skippedPasswordPage === true
+    || completionPayload?.passwordSubmitAttempted === false
+  ) {
+    return { signupPasswordCreated: false };
+  }
+
   const latestState = await getState();
   const visibleStep = getStepIdByNodeIdForState(nodeId, latestState) || 3;
   const signupTabId = await getTabId('signup-page');
@@ -10684,12 +10438,19 @@ async function runStep3PostCompletionReview(nodeId, completionPayload = {}) {
     visibleStep
   );
   if (result && typeof result === 'object') {
-    await handleNodeData(nodeId, {
+    const reviewedResult = {
       ...(completionPayload || {}),
       ...result,
-    });
+      signupPasswordCreated: Boolean(
+        completionPayload?.signupPasswordCreationAttempted === true
+        && result?.ready === true
+        && result?.existingTotpLoginRequired !== true
+      ),
+    };
+    await handleNodeData(nodeId, reviewedResult);
+    return reviewedResult;
   }
-  return result || {};
+  return { signupPasswordCreated: false };
 }
 
 async function runStep5PostCompletionReview(nodeId, completionPayload = {}) {
@@ -11059,11 +10820,19 @@ async function requestStop(options = {}) {
 // Step Execution
 // ============================================================
 
-const STEP_FETCH_NETWORK_RETRY_POLICIES = new Map([
-  [4, { maxAttempts: 3, cooldownMs: 12000 }],
-  [8, { maxAttempts: 3, cooldownMs: 12000 }],
-  [9, { maxAttempts: 3, cooldownMs: 12000 }],
-]);
+function createAutoRunSessionSupersededError() {
+  const error = new Error('自动运行会话已被新一轮替换。');
+  error.code = 'AUTO_RUN_SESSION_SUPERSEDED';
+  error.retryable = false;
+  return error;
+}
+
+function assertNodeExecutionSessionCurrent(expectedSessionId) {
+  const normalizedExpected = Math.max(0, Math.floor(Number(expectedSessionId) || 0));
+  if (normalizedExpected && normalizedExpected !== getCurrentAutoRunSessionId()) {
+    throw createAutoRunSessionSupersededError();
+  }
+}
 
 async function executeNode(nodeId, options = {}) {
   const { deferRetryableTransportError = false } = options;
@@ -11073,6 +10842,7 @@ async function executeNode(nodeId, options = {}) {
   }
   console.log(LOG_PREFIX, `Executing node ${normalizedNodeId}`);
   let state = await getState();
+  const executionAutoRunSessionId = Math.max(0, Math.floor(Number(state.autoRunSessionId) || 0));
   const activeTaskId = String(state.activeTaskId || '').trim();
   if (activeTaskId) {
     await taskRepository.patch(activeTaskId, {
@@ -11100,15 +10870,16 @@ async function executeNode(nodeId, options = {}) {
   let executionError = null;
   throwIfStopped();
   try {
+    assertNodeExecutionSessionCurrent(executionAutoRunSessionId);
     await setNodeStatus(normalizedNodeId, 'running');
     await addLog('开始执行', 'info', { nodeId: normalizedNodeId });
     await humanStepDelay();
     if (normalizedNodeId === 'fill-profile') {
       await assertSignupAuthPageNotMaxCheckAttemptsBlocked();
     }
-    const fetchRetryPolicy = typeof getStepFetchNetworkRetryPolicy === 'function'
-      ? getStepFetchNetworkRetryPolicy(step)
-      : null;
+    const fetchRetryPolicy = self.MultiPageBackgroundAutoRunRetryPolicy?.getNodeFetchNetworkRetryPolicy?.(
+      normalizedNodeId, getNodeExecutionKeyForState(normalizedNodeId, state)
+    ) || null;
     const isFetchRetryable = (error) => {
       if (typeof isStepFetchNetworkRetryableError === 'function') {
         return isStepFetchNetworkRetryableError(error);
@@ -11118,7 +10889,9 @@ async function executeNode(nodeId, options = {}) {
     let attempt = 1;
 
     while (true) {
+      assertNodeExecutionSessionCurrent(executionAutoRunSessionId);
       state = await getState();
+      assertNodeExecutionSessionCurrent(executionAutoRunSessionId);
 
       // Set flow start time on first step
       if (normalizedNodeId === 'open-chatgpt' && !state.flowStartTime) {
@@ -11138,6 +10911,7 @@ async function executeNode(nodeId, options = {}) {
           nodeDefinition: getNodeDefinitionForState(normalizedNodeId, state),
           stepDefinition: getStepDefinitionForState(step, state),
         });
+        assertNodeExecutionSessionCurrent(executionAutoRunSessionId);
 
         if (attempt > 1) {
           await addLog(
@@ -11147,6 +10921,7 @@ async function executeNode(nodeId, options = {}) {
         }
         break;
       } catch (attemptError) {
+        assertNodeExecutionSessionCurrent(executionAutoRunSessionId);
         if (!fetchRetryPolicy || !isFetchRetryable(attemptError) || attempt >= fetchRetryPolicy.maxAttempts) {
           throw attemptError;
         }
@@ -11167,6 +10942,15 @@ async function executeNode(nodeId, options = {}) {
   } catch (err) {
     executionError = err;
     const errorState = await getState();
+    if (
+      err?.code === 'AUTO_RUN_SESSION_SUPERSEDED'
+      || (
+        executionAutoRunSessionId
+        && executionAutoRunSessionId !== getCurrentAutoRunSessionId()
+      )
+    ) {
+      throw createAutoRunSessionSupersededError();
+    }
     if (isStopError(err)) {
       await setNodeStatus(normalizedNodeId, 'stopped');
       await addLog('已被用户停止', 'warn', { nodeId: normalizedNodeId });
@@ -11217,11 +11001,19 @@ async function executeNodeAndWait(nodeId, delayAfter = 2000) {
   }
   let completionPayload = null;
 
+  const delayState = await getState();
   const delaySeconds = normalizeAutoStepDelaySeconds(
-    (await getState()).autoStepDelaySeconds,
+    delayState.autoStepDelaySeconds,
     PERSISTED_SETTING_DEFAULTS.autoStepDelaySeconds
   );
-  if (delaySeconds > 0) {
+  const hasFreshSplitCheckpoint = (
+    normalizedNodeId === 'set-gpt-password'
+    && delayState.gptPasswordResetStage === 'new_password_ready'
+  ) || (
+    normalizedNodeId === 'check-trial-eligibility'
+    && Boolean(delayState.securityFactorReadyAt)
+  );
+  if (delaySeconds > 0 && !hasFreshSplitCheckpoint) {
     await addLog(
       `自动运行：节点 ${normalizedNodeId} 执行前额外等待 ${delaySeconds} 秒，避免节奏过快。`,
       'info'
@@ -11558,9 +11350,11 @@ const accountRunHistoryHelpers = self.MultiPageBackgroundAccountRunHistory?.crea
   getState,
   normalizeAccountRunHistoryHelperBaseUrl,
 });
-synchronizeAccountReadModel('service-worker-startup').catch((error) => {
-  handleBackgroundStartupError('migrate canonical account records', error);
-});
+migrateFreeAccountV3('service-worker-startup')
+  .then(() => synchronizeAccountReadModel('service-worker-startup'))
+  .catch((error) => {
+    handleBackgroundStartupError('migrate Free Account Tool V3 data', error);
+  });
 const contributionOAuthManager = self.MultiPageBackgroundContributionOAuth?.createContributionOAuthManager({
   addLog,
   broadcastDataUpdate,
@@ -11630,7 +11424,6 @@ function resolveCardHelperHelperBaseUrl(apiUrl = '') {
   normalized = normalized.replace(/\/api\/gp\/tasks(?:\/[^/?#]+)?(?:\/(?:otp|pin|stop))?(?:\?.*)?$/i, '');
   normalized = normalized.replace(/\/api\/gp\/balance(?:\?.*)?$/i, '');
   normalized = normalized.replace(/\/api\/card\/balance(?:\?.*)?$/i, '');
-  normalized = normalized.replace(/\/api\/card\/redeem-api-key(?:\?.*)?$/i, '');
   return normalized || DEFAULT_CARD_HELPER_HELPER_API_URL;
 }
 
@@ -11791,6 +11584,8 @@ const autoRunController = self.MultiPageBackgroundAutoRunController?.createAutoR
   createAutoRunSessionId: () => createAutoRunSessionId(),
   ensureHotmailMailboxReadyForAutoRunRound: (...args) => ensureHotmailMailboxReadyForAutoRunRound(...args),
   getAutoRunStatusPayload,
+  getDefaultNodeStatusesForState: (state = {}) =>
+    self.MultiPageStepDefinitions?.getDefaultNodeStatuses?.(state) || null,
   getErrorMessage,
   getFirstUnfinishedNodeId,
   getPendingAutoRunTimerPlan,
@@ -11799,9 +11594,8 @@ const autoRunController = self.MultiPageBackgroundAutoRunController?.createAutoR
   getStopRequested: () => stopRequested,
   hasSavedNodeProgress,
   isCloudCheckoutAlreadyPaidFailure,
+  isAccountDeactivatedFailure: registrationAccountStateRegistry.isAccountDeactivatedFailure,
   isChatgptSessionReaderNonFreeTrialFailure,
-  isUpiRedeemBackendFailure,
-  isUpiRedeemNetworkFailure,
   isCardHelperTaskEndedFailure,
   isHostedCheckoutCardFallbackFailure,
   isHostedCheckoutGenericErrorFailure,
@@ -11811,6 +11605,7 @@ const autoRunController = self.MultiPageBackgroundAutoRunController?.createAutoR
   isSignupUserAlreadyExistsFailure,
   isStopError,
   launchAutoRunTimerPlan,
+  markCurrentRegistrationAccountDeactivated: registrationAccountStateRegistry.markCurrentRegistrationAccountDeactivated,
   markCurrentRegistrationAccountRegistrationBlocked: registrationAccountStateRegistry.markCurrentRegistrationAccountRegistrationBlocked,
   normalizeAutoRunFallbackThreadIntervalMinutes,
   persistAutoRunTimerPlan,
@@ -12105,6 +11900,7 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
   let postStep7RestartCount = 0;
   let step4RestartCount = 0;
   const nodeIdleRestartCounts = new Map();
+  const structuredNodeRestartCounts = new Map();
   let currentStartNodeId = String(startNodeId || '').trim();
   let continueCurrentAttempt = continued;
   await ensureResolvedSignupMethodForRun();
@@ -12316,11 +12112,11 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
   let loopState = await getState();
   let nodeIds = getAutoRunWorkflowNodeIds(loopState);
-  const firstVerificationIndex = nodeIds.indexOf('fetch-signup-code');
+  const firstPostPasswordIndex = nodeIds.indexOf('existing-totp-login');
   const startIndex = nodeIds.indexOf(currentStartNodeId);
   let nodeIndex = Math.max(
     startIndex >= 0 ? startIndex : 0,
-    firstVerificationIndex >= 0 ? firstVerificationIndex : 0
+    firstPostPasswordIndex >= 0 ? firstPostPasswordIndex : 0
   );
   while (nodeIndex < nodeIds.length) {
     const latestState = await getState();
@@ -12349,6 +12145,25 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
         continue;
       }
 
+      const requestedRestartNodeId = String(err?.restartNodeId || '').trim();
+      if (requestedRestartNodeId) {
+        const restartCount = (structuredNodeRestartCounts.get(requestedRestartNodeId) || 0) + 1;
+        structuredNodeRestartCounts.set(requestedRestartNodeId, restartCount);
+        if (restartCount > PASSWORD_SPLIT_RESTART_MAX_ATTEMPTS) {
+          throw err;
+        }
+        await addLog(
+          `节点 ${nodeId}：${getErrorMessage(err)}，正在回到节点 ${requestedRestartNodeId}（${restartCount}/${PASSWORD_SPLIT_RESTART_MAX_ATTEMPTS}）。`,
+          'warn'
+        );
+        await setNodeStatus(requestedRestartNodeId, 'pending');
+        await invalidateDownstreamAfterAutoRunNodeRestart(requestedRestartNodeId, {
+          logLabel: `节点 ${nodeId} 请求从 ${requestedRestartNodeId} 恢复`,
+        });
+        nodeIndex = Math.max(0, getNodeIndex(await getState(), requestedRestartNodeId));
+        continue;
+      }
+
       const step = getDisplayStepForNode(nodeId, latestState);
       if (nodeId === 'fetch-signup-code') {
         if (isSignupVerificationInputRenderPendingFailure(err)) {
@@ -12358,14 +12173,17 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
             attemptRun: attemptRuns,
             cooldownMs: 15000,
             reasonLabel: '验证码页输入框仍在渲染',
-            countdownTitle: '稍后继续步骤 4',
-            resumeLabel: '继续步骤 4',
+            countdownTitle: '稍后继续步骤 5',
+            resumeLabel: '继续步骤 5',
             safetyLabel: '保留当前页面、邮箱和注册会话',
             resumeCounterKey: 'step4VerificationRenderResumeCount',
             maxResumeCount: 3,
           });
         }
         if (isSignupTransitionUncertainFailure(err)) {
+          throw err;
+        }
+        if (registrationAccountStateRegistry.isAccountDeactivatedFailure(err)) {
           throw err;
         }
         if (isSignupUserAlreadyExistsFailure(err)) {
@@ -12432,6 +12250,37 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
       const restartDecision = await getPostStep6AutoRestartDecision(step, err);
       if (restartDecision.shouldRestart) {
+        if (restartDecision.retryCurrentNode) {
+          const retryCount = (structuredNodeRestartCounts.get(nodeId) || 0) + 1;
+          structuredNodeRestartCounts.set(nodeId, retryCount);
+          const maxRetryCount = Math.max(1, Number(AUTO_RUN_MAX_RETRIES_PER_ROUND) || 0);
+          const retryReasonLabel = String(restartDecision.retryReasonLabel || '当前节点临时失败').trim();
+          const exhaustedMessage = String(
+            restartDecision.exhaustedMessage
+            || `${retryReasonLabel}已达到当前节点 ${maxRetryCount} 次重试上限。保留当前账号和登录现场，可稍后直接重试当前最终节点。`
+          ).trim();
+          if (retryCount > maxRetryCount) {
+            try {
+              err.code = err.code || restartDecision.exhaustedErrorCode || 'FINAL_NODE_RETRY_EXHAUSTED';
+              err.retryable = false;
+              err.preserveSignupSession = true;
+            } catch (_currentNodeRetryAnnotationError) {
+              // State-based failure inference still preserves the current final node.
+            }
+            await addLog(
+              `节点 ${getNodeLabel(nodeId, latestState)}：${exhaustedMessage}`,
+              'error'
+            );
+            throw err;
+          }
+          await addLog(
+            `节点 ${getNodeLabel(nodeId, latestState)}：${retryReasonLabel}，仅重新执行当前最终节点（${retryCount}/${maxRetryCount}），不会回到第 7 步。原因：${restartDecision.errorMessage || '未知错误'}`,
+            'warn'
+          );
+          await setNodeStatus(nodeId, 'pending');
+          nodeIndex = Math.max(0, getNodeIndex(await getState(), nodeId));
+          continue;
+        }
         postStep7RestartCount += 1;
         const restartStep = restartDecision.restartStep;
         const restartNodeId = String(getNodeIdByStepForState(restartStep, await getState()) || 'oauth-login').trim();
@@ -12591,7 +12440,7 @@ async function ensureIcloudMailSessionForVerification(options = {}) {
   });
 }
 
-let upiCredentialMembershipChecker = null;
+let freeAccountService = null;
 let messageRouter = null;
 const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.createSignupExecutorRegistry({
   root: self,
@@ -12622,11 +12471,18 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   SUB2API_STEP1_RESPONSE_TIMEOUT_MS,
   broadcastDataUpdate,
   buildGeneratedAliasEmail,
+  checkRegistrationTrialEligibility: (...args) => {
+    if (!freeAccountService) throw new Error('Free 账号服务尚未初始化。');
+    return freeAccountService.checkRegistrationEligibility(...args);
+  },
+  upsertRegistrationResult: (...args) => {
+    if (!freeAccountService) throw new Error('Free 账号服务尚未初始化。');
+    return freeAccountService.upsertRegistrationResult(...args);
+  },
   buildHotmailLocalEndpoint,
   closeConflictingTabsForSource,
   completeNodeFromBackground,
   createAutomationTab,
-  deleteUpiCredentialMembershipCredentials: (...args) => upiCredentialMembershipChecker?.deleteUpiCredentialMembershipCredentials?.(...args),
   ensureContentScriptReadyOnTab,
   ensureContentScriptReadyOnTabUntilStopped,
   ensureHotmailAccountForFlow,
@@ -12675,6 +12531,7 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   isStopError,
   isTabAlive,
   isVerificationMailPollingError,
+  markCurrentRegistrationAccountDeactivated: registrationAccountStateRegistry.markCurrentRegistrationAccountDeactivated,
   markCurrentRegistrationAccountTrialIneligible: registrationAccountStateRegistry.markCurrentRegistrationAccountTrialIneligible,
   markCurrentRegistrationAccountUsed: registrationAccountStateRegistry.markCurrentRegistrationAccountUsed,
   markCustomEmailPoolEntryTrialEligibility,
@@ -12693,9 +12550,8 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   pollOutlookEmailPlusVerificationCode,
   pollYydsMailVerificationCode,
   readCurrentChatGptSessionForExport,
-  redeemUpiCredentialMembershipFree: (...args) => upiCredentialMembershipChecker?.redeemUpiCredentialMembershipFree?.(...args),
+  readChatGptSessionForTotpRecovery,
   refreshOAuthUrlBeforeStep6,
-  refreshPendingUpiCredentialMembershipRedeemStatuses: (...args) => messageRouter?.refreshPendingUpiCredentialMembershipRedeemStatuses?.(...args),
   registerTab,
   rememberSourceLastUrl,
   rerunStep7ForStep8Recovery: (...args) => rerunStep7ForStep8Recovery(...args),
@@ -12707,11 +12563,6 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   sendToContentScriptResilient,
   sendToMailContentScriptResilient,
   setEmailState,
-  setExistingTotpLoginDisplayStatus: async (status) => {
-    const updates = { existingTotpLoginDisplayStatus: status };
-    await setState(updates);
-    broadcastDataUpdate(updates);
-  },
   setNodeStatus,
   setPasswordState,
   setPersistentSettings,
@@ -12719,7 +12570,6 @@ const signupExecutorRegistry = self.MultiPageBackgroundSignupExecutorRegistry.cr
   shouldUseCustomRegistrationEmail,
   sleepWithStop,
   throwIfStopped,
-  upsertTrialEligibleFreeCredential: (...args) => upiCredentialMembershipChecker?.upsertTrialEligibleFreeCredential?.(...args),
   upsertUpiAccountCredentialBackup,
   waitForTabCompleteUntilStopped,
   waitForTabStableComplete,
@@ -12774,6 +12624,7 @@ const {
     step1: step1Executor,
     step2: step2Executor,
     step3: step3Executor,
+    existingTotpLogin: existingTotpLoginExecutor,
     step4: step4Executor,
     step5: step5Executor,
     step6: step6Executor,
@@ -12782,8 +12633,8 @@ const {
     setGptPassword: setGptPasswordExecutor,
     enableTotpMfa: totpMfaExecutor,
     enablePasskey: passkeyExecutor,
+    checkTrialEligibility: checkTrialEligibilityExecutor,
     no2faFree: no2faFreeRouteExecutor,
-    upiRedeem: upiRedeemExecutor,
   },
 } = signupExecutorRegistry;
 const chatgptSessionReaderCreateExecutor = self.MultiPageBackgroundChatgptSessionReaderCreate?.createChatgptSessionReaderCreateExecutor({
@@ -12890,11 +12741,11 @@ const plusReturnConfirmExecutor = self.MultiPageBackgroundPlusReturnConfirm?.cre
   waitForTabCompleteUntilStopped,
   waitForTabUrlMatchUntilStopped,
 });
-upiCredentialMembershipChecker = self.MultiPageBackgroundUpiCredentialMembershipChecker?.createUpiCredentialMembershipChecker({
+freeAccountService = self.MultiPageBackgroundFreeAccountService?.createFreeAccountService({
+  accountLifecycleService,
+  accountRepository,
   addLog,
   broadcastDataUpdate,
-  checkUpiRedeemSubscriptionStatuses: (...args) => upiRedeemExecutor.checkUpiRedeemSubscriptionStatuses(...args),
-  checkUpiRedeemAccessTokenEligibility: (...args) => upiRedeemExecutor.checkUpiRedeemAccessTokenEligibility(...args),
   chrome,
   ensureContentScriptReadyOnTabUntilStopped,
   fetchImpl: typeof fetch === 'function' ? fetch.bind(globalThis) : null,
@@ -12902,16 +12753,21 @@ upiCredentialMembershipChecker = self.MultiPageBackgroundUpiCredentialMembership
   getState,
   isTabAlive,
   markCustomEmailPoolEntryTrialEligibility,
-  markRegistrationEmailTrialIneligible: registrationAccountStateRegistry.markCurrentRegistrationAccountTrialIneligible,
   registerTab,
-  redeemUpiCredentialWithAccessToken: (...args) => upiRedeemExecutor.redeemUpiCredentialWithAccessToken(...args),
-  refreshPendingUpiCredentialMembershipRedeemStatuses: (...args) => messageRouter?.refreshPendingUpiCredentialMembershipRedeemStatuses?.(...args),
   reuseOrCreateTab,
   sendTabMessageUntilStopped,
   setState,
   SIGNUP_PAGE_INJECT_FILES,
   sleepWithStop,
   throwIfStopped,
+});
+const freeAccountSessionFillTask = self.MultiPageFreeAccountSessionFillTask?.createFreeAccountSessionFillTaskController({
+  chromeApi: chrome,
+  clearStopRequest,
+  freeAccountService,
+  taskRepository,
+  taskRuntime,
+  logger: console,
 });
 const plusSuccessSessionUploadManager = self.MultiPageBackgroundPlusSuccessSessionUpload?.createPlusSuccessSessionUploadManager({
   addLog,
@@ -12949,15 +12805,17 @@ const stepExecutorsByKey = {
   'open-chatgpt': () => step1Executor.executeStep1(),
   'submit-signup-email': (state) => step2Executor.executeStep2(state),
   'fill-password': (state) => step3Executor.executeStep3(state),
+  'existing-totp-login': (state) => existingTotpLoginExecutor.executeExistingTotpLogin(state),
   'fetch-signup-code': (state) => step4Executor.executeStep4(state),
   'fill-profile': (state) => step5Executor.executeStep5(state),
   'wait-registration-success': (state) => step6Executor.executeStep6(state),
   'local-cpa-json-export': (state) => step6Executor.executeLocalCpaJsonNoRtExport(state),
+  'fetch-gpt-password-code': (state) => setGptPasswordExecutor.executeFetchGptPasswordCode(state),
   'set-gpt-password': (state) => setGptPasswordExecutor.executeSetGptPassword(state),
   'enable-totp-mfa': (state) => totpMfaExecutor.executeEnableTotpMfa(state),
   'enable-passkey': (state) => passkeyExecutor.executeEnablePasskey(state),
+  'check-trial-eligibility': (state) => checkTrialEligibilityExecutor.executeCheckTrialEligibility(state),
   'persist-no-2fa-free': (state) => no2faFreeRouteExecutor.executeNo2faFreeRoute(state),
-  'upi-redeem': (state) => upiRedeemExecutor.executeUpiRedeem(state),
 };
 messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   addLog,
@@ -12990,26 +12848,19 @@ messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   executeNodeViaCompletionSignal,
   exportCurrentSessionJson,
   exportUpiAccountCredentialBackupTextFile,
-  checkUpiCredentialMembershipBatch: (...args) => upiCredentialMembershipChecker.checkUpiCredentialMembershipBatch(...args),
-  checkUpiCredentialMembershipOne: (...args) => upiCredentialMembershipChecker.checkUpiCredentialMembershipOne(...args),
-  checkUpiCredentialMembershipTrialEligibility: (...args) => upiCredentialMembershipChecker.checkUpiCredentialMembershipTrialEligibility(...args),
-  deleteUpiCredentialMembershipCredentials: (...args) => upiCredentialMembershipChecker.deleteUpiCredentialMembershipCredentials(...args),
-  deleteUpiCredentialMembershipCheckResults: (...args) => upiCredentialMembershipChecker.deleteUpiCredentialMembershipCheckResults(...args),
-  exportUpiCredentialMembershipCheckResults: (...args) => upiCredentialMembershipChecker.exportUpiCredentialMembershipCheckResults(...args),
-  fillUpiCredentialMembershipFreeAccessTokens: (...args) => upiCredentialMembershipChecker.fillUpiCredentialMembershipFreeAccessTokens(...args),
-  getUpiCredentialMembershipCredentialPool: (...args) => upiCredentialMembershipChecker.getUpiCredentialMembershipCredentialPool(...args),
-  getUpiCredentialMembershipCheckResults: (...args) => upiCredentialMembershipChecker.getUpiCredentialMembershipCheckResults(...args),
-  identifyUpiCredentialMembershipFreePlus: (...args) => upiCredentialMembershipChecker.identifyUpiCredentialMembershipFreePlus(...args),
-  importUpiCredentialMembershipFreeResults: (...args) => upiCredentialMembershipChecker.importUpiCredentialMembershipFreeResults(...args),
-  loginUpiCredentialMembershipAccount: (...args) => upiCredentialMembershipChecker.loginUpiCredentialMembershipAccount(...args),
-  moveUpiCredentialMembershipAccountGroup: (...args) => upiCredentialMembershipChecker.moveUpiCredentialMembershipAccountGroup(...args),
-  pruneIneligibleFreeUpiCredentialMembership: (...args) => upiCredentialMembershipChecker.pruneIneligibleFreeUpiCredentialMembership(...args),
-  redeemUpiCredentialMembershipFree: (...args) => upiCredentialMembershipChecker.redeemUpiCredentialMembershipFree(...args),
-  refreshUpiCredentialMembershipAccessTokens: (...args) => upiCredentialMembershipChecker.refreshUpiCredentialMembershipAccessTokens(...args),
-  retryFailedUpiRedeemCdkey: (...args) => upiCredentialMembershipChecker.retryFailedUpiRedeemCdkey(...args),
-  stopUpiCredentialMembershipCheck: (...args) => upiCredentialMembershipChecker.stopUpiCredentialMembershipCheck(...args),
-  stopUpiCredentialMembershipRedeem: (...args) => upiCredentialMembershipChecker.stopUpiCredentialMembershipRedeem(...args),
-  verifyUpiCredentialMembershipPlus: (...args) => upiCredentialMembershipChecker.verifyUpiCredentialMembershipPlus(...args),
+  checkFreeAccountEligibility: (...args) => freeAccountService.checkEligibility(...args),
+  deleteFreeAccountResults: (...args) => freeAccountService.deleteResults(...args),
+  exportFreeAccountResults: (...args) => freeAccountService.exportResults(...args),
+  fillFreeAccountAccessTokens: (...args) => freeAccountService.fillAccessTokens(...args),
+  startFillFreeAccountSessions: (...args) => freeAccountSessionFillTask.start(...args),
+  resumeFillFreeAccountSessions: (...args) => freeAccountSessionFillTask.resume(...args),
+  stopFillFreeAccountSessions: (...args) => freeAccountSessionFillTask.stop(...args),
+  isFreeAccountSessionFillActive: (...args) => freeAccountSessionFillTask.isActive(...args),
+  getFreeAccountResults: (...args) => freeAccountService.getResults(...args),
+  importFreeAccountResults: (...args) => freeAccountService.importResults(...args),
+  loginFreeAccount: (...args) => freeAccountService.loginAccount(...args),
+  refreshFreeAccountAccessTokens: (...args) => freeAccountService.refreshAccessTokens(...args),
+  stopFreeAccountCheck: (...args) => freeAccountService.stopCheck(...args),
   executePostRegistrationCheckoutBilling: async () => throwLegacyFeatureRemoved('旧 ChatGPT 会话读取 账单'),
   exportSettingsBundle,
   ensureContentScriptReadyOnTabUntilStopped,
@@ -13017,10 +12868,6 @@ messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   testCheckoutConversionProxy: null,
   fetchGeneratedEmail,
   refreshCardHelperCardBalance: null,
-  cancelUpiRedeemCdkeyJobs: (...args) => upiRedeemExecutor.cancelUpiRedeemCdkeyJobs(...args),
-  refreshUpiRedeemCdkeyStatuses: (...args) => upiRedeemExecutor.refreshUpiRedeemCdkeyStatuses(...args),
-  retryUpiRedeemCdkeyJobs: (...args) => upiRedeemExecutor.retryUpiRedeemCdkeyJobs(...args),
-  checkUpiRedeemSubscriptionStatuses: (...args) => upiRedeemExecutor.checkUpiRedeemSubscriptionStatuses(...args),
   refreshOAuthTimeoutWindowAfterCheckoutSuccess: null,
   finalizeStep3Completion: async () => {
     const currentState = await getState();
@@ -13114,15 +12961,6 @@ messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({
   verifyHotmailAccount,
 });
 
-const redeemEffectRecovery = self.MultiPageUpiRedeemEffectGuard.createUpiRedeemEffectGuard({
-  ledger: externalEffectLedger,
-  taskRuntime,
-});
-taskRuntime.setRemoteRecoveryHandler(({ task }) => redeemEffectRecovery.recoverTask(task, {
-  getState,
-  refreshRemoteStatuses: (input) => messageRouter.refreshPendingUpiCredentialMembershipRedeemStatuses(input),
-}));
-
 function buildNodeRegistry(definitions = []) {
   return self.MultiPageBackgroundStepRegistry?.createNodeRegistry(
     definitions.map((definition) => ({
@@ -13174,9 +13012,6 @@ function getStepRegistryForState(state = {}) {
   if (getPanelMode(state) === 'local-cpa-json-no-rt') {
     return localCpaJsonNoRtStepRegistry;
   }
-  if (!isPlusModeState(state)) {
-    return normalStepRegistry;
-  }
   const registrationFreeRoute = normalizeRegistrationFreeRoute(state?.registrationFreeRoute);
   if (registrationFreeRoute === 'no-2fa-free') {
     return no2faFreeStepRegistry;
@@ -13184,7 +13019,7 @@ function getStepRegistryForState(state = {}) {
   if (registrationFreeRoute === 'passkey-free') {
     return passkeyFreeStepRegistry;
   }
-  return plusUpiStepRegistry;
+  return isPlusModeState(state) ? plusUpiStepRegistry : normalStepRegistry;
 }
 
 async function requestOAuthUrlFromPanel(state, options = {}) {
@@ -13634,6 +13469,15 @@ async function getPostStep6AutoRestartDecision(step, error) {
 
   const normalizedStep = Number(step);
   const errorMessage = getErrorMessage(error);
+  const trialEligibilityStatus = String(error?.trialEligibilityStatus || '').trim().toLowerCase();
+  if (error?.code === 'UPI_ACCOUNT_INELIGIBLE' || trialEligibilityStatus === 'ineligible') {
+    return {
+      shouldRestart: false,
+      restartStep: FINAL_OAUTH_CHAIN_START_STEP,
+      errorMessage,
+      authState: null,
+    };
+  }
   const shouldForceRestartFromStep7 = /restart step 7 with a new number/i.test(errorMessage);
   const latestState = await getState();
   const authChainStartStep = typeof getAuthChainStartStepId === 'function'
@@ -13657,6 +13501,46 @@ async function getPostStep6AutoRestartDecision(step, error) {
     return {
       shouldRestart: false,
       restartStep: authChainStartStep,
+      errorMessage,
+      authState: null,
+    };
+  }
+
+  const storageQuotaExceeded = error?.code === 'FREE_ACCOUNT_STORAGE_QUOTA_EXCEEDED'
+    || /FREE_ACCOUNT_STORAGE_QUOTA_EXCEEDED::|(?:Resource::)?kQuotaBytes|QUOTA_BYTES|storage\s+quota(?:\s+bytes)?\s+exceeded|quota(?:\s+bytes)?\s+exceeded/i.test(errorMessage);
+  const finalEligibilityNode = ['check-trial-eligibility', 'persist-no-2fa-free'].includes(currentNodeKey);
+  if (
+    storageQuotaExceeded
+    && finalEligibilityNode
+  ) {
+    return {
+      shouldRestart: true,
+      restartStep: normalizedStep,
+      retryCurrentNode: true,
+      retryKind: 'storage-quota',
+      retryReasonLabel: '本地存储容量写入失败',
+      exhaustedErrorCode: 'FREE_ACCOUNT_STORAGE_QUOTA_EXCEEDED',
+      exhaustedMessage: '本地存储写入连续失败，已达到当前节点重试上限。保留当前账号和登录现场，请重新加载扩展后重试当前最终节点。',
+      errorMessage,
+      authState: null,
+    };
+  }
+
+  const eligibilityTransientFailure = finalEligibilityNode
+    && error?.retryable !== false
+    && (
+      trialEligibilityStatus === 'failed'
+      || ['UPI_ELIGIBILITY_CHECK_FAILED', 'FREE_ACCOUNT_ELIGIBILITY_TIMEOUT'].includes(String(error?.code || '').trim())
+    );
+  if (eligibilityTransientFailure) {
+    return {
+      shouldRestart: true,
+      restartStep: normalizedStep,
+      retryCurrentNode: true,
+      retryKind: 'eligibility-transient',
+      retryReasonLabel: '资格接口临时失败',
+      exhaustedErrorCode: String(error?.code || '').trim() || 'UPI_ELIGIBILITY_CHECK_FAILED',
+      exhaustedMessage: '资格接口连续失败，已达到当前节点重试上限。保留当前账号和登录现场，可稍后直接重试第 10 步。',
       errorMessage,
       authState: null,
     };
@@ -15361,6 +15245,9 @@ function handleTrackedTabUpdated(tabId, changeInfo, tab) {
 }
 
 function handleServiceWorkerStartup() {
+  migrateFreeAccountV3('startup').catch((err) => {
+    handleBackgroundStartupError('migrate Free Account Tool V3 data on startup', err);
+  });
   restoreAutoRunTimerIfNeeded().catch((err) => {
     handleBackgroundStartupError('restore auto run timer on startup', err);
   });
@@ -15370,6 +15257,9 @@ function handleServiceWorkerStartup() {
 }
 
 function handleExtensionInstalled() {
+  migrateFreeAccountV3('install').catch((err) => {
+    handleBackgroundStartupError('migrate Free Account Tool V3 data on install/update', err);
+  });
   restoreAutoRunTimerIfNeeded().catch((err) => {
     handleBackgroundStartupError('restore auto run timer on install/update', err);
   });

@@ -1,1358 +1,532 @@
 (function attachSidepanelAccountRecordsManager(globalScope) {
   function createAccountRecordsManager(context = {}) {
-    const {
-      state,
-      dom,
-      helpers,
-      runtime,
-      constants = {},
-    } = context;
-
-    const root = typeof window !== 'undefined' ? window : globalScope;
-    const displayTimeZone = constants.displayTimeZone || 'Asia/Shanghai';
-    const pageSize = Math.max(1, Math.floor(Number(constants.pageSize) || 10));
-    const accountRecordsViewModel = globalScope.SidepanelAccountRecordsViewModel || {};
-    const membershipViewModel = globalScope.SidepanelMembershipViewModel || {};
-    const membershipRowPolicy = globalScope.SidepanelMembershipRowPolicy || {};
-    const membershipRenderer = globalScope.SidepanelMembershipRenderer || {};
-    const REDEEM_CHANNEL_FAILURE_LIMIT = 3;
-    const REDEEM_CHANNEL_DAILY_LIMIT_BLOCK_MS = 24 * 60 * 60 * 1000;
-    const membershipRedeemProgress = globalScope.SidepanelMembershipRedeemProgress || {};
-    if (
-      typeof membershipRedeemProgress.clampRedeemProgressPercent !== 'function'
-      || typeof membershipRedeemProgress.getUpiCredentialMembershipRedeemProgressMeta !== 'function'
-      || typeof membershipRedeemProgress.renderUpiCredentialMembershipRedeemProgress !== 'function'
-    ) {
-      throw new Error('Membership redeem progress module is not loaded.');
-    }
-    const accountRecordsExport = globalScope.SidepanelAccountRecordsExport || {};
-    if (typeof accountRecordsExport.createAccountRecordsExportHelpers !== 'function') {
-      throw new Error('Account records export module is not loaded.');
-    }
-    const accountRecordsFreeExportPreferences = globalScope.SidepanelAccountRecordsFreeExportPreferences || {};
-    if (typeof accountRecordsFreeExportPreferences.createFreeExportPreferences !== 'function') {
-      throw new Error('Account records Free export preferences module is not loaded.');
-    }
-    const {
-      getIncludeVerificationUrl: getFreeExportIncludeVerificationUrl,
-      toggleIncludeVerificationUrl: toggleFreeExportIncludeVerificationUrl,
-    } = accountRecordsFreeExportPreferences.createFreeExportPreferences();
-    const {
-      buildRecordId,
-      getRecordDisplayStatus,
-      getRecordExportUrl,
-      getRecordTotpMfaSecret,
-      getRecordGptPassword,
-      sanitizeExportField,
-      isUpiRedeemSuccessRecord,
-      getRecordUpiRedeemCdkey,
-      getRecordUpiRedeemAccessToken,
-    } = accountRecordsExport.createAccountRecordsExportHelpers({
-      accountRecordsViewModel,
-    });
-    const accountRecordsSubscription = globalScope.SidepanelAccountRecordsSubscription || {};
-    if (typeof accountRecordsSubscription.createAccountRecordsSubscriptionHelpers !== 'function') {
-      throw new Error('Account records subscription module is not loaded.');
-    }
-    const {
-      normalizeSubscriptionPlanType,
-      isPaidSubscriptionPlan,
-      getRecordSubscriptionPlanType,
-      buildSubscriptionCheckId,
-      buildSubscriptionResultLookup,
-      isRecordPaidSubscription,
-      getConfirmedUpiSubscriptionLabel,
-    } = accountRecordsSubscription.createAccountRecordsSubscriptionHelpers({
-      buildRecordId,
-      getRecordEmail: (record) => getRecordEmail(record),
-      getRecordUpiRedeemCdkey,
-    });
-    const accountRecordsMembershipGroups = globalScope.SidepanelAccountRecordsMembershipGroups || {};
-    if (typeof accountRecordsMembershipGroups.createAccountRecordsMembershipGroupHelpers !== 'function') {
-      throw new Error('Account records membership groups module is not loaded.');
-    }
-    const {
-      getMembershipViewModelGroup,
-      getUpiCredentialMembershipUiGroup,
-      buildMembershipViewModelRows,
-      summarizeMembershipViewModelRows,
-      buildUpiCredentialMembershipDisplayRowKey,
-    } = accountRecordsMembershipGroups.createAccountRecordsMembershipGroupHelpers({
-      membershipViewModel,
-      membershipRowPolicy,
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-      normalizeText: (value) => normalizeUpiCredentialMembershipText(value),
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-    });
-    const accountRecordsRedeemStatus = globalScope.SidepanelAccountRecordsRedeemStatus || {};
-    if (typeof accountRecordsRedeemStatus.createAccountRecordsRedeemStatusHelpers !== 'function') {
-      throw new Error('Account records redeem status module is not loaded.');
-    }
-    const {
-      normalizeUpiRedeemRemoteStatus,
-      isActiveUpiRedeemRemoteStatus,
-      normalizeUpiCredentialMembershipCapabilityFlag,
-      getRedeemChannelLabel,
-    } = accountRecordsRedeemStatus.createAccountRecordsRedeemStatusHelpers({
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-    });
-    const accountRecordsCdkPoolText = globalScope.SidepanelAccountRecordsCdkPoolText || {};
-    if (typeof accountRecordsCdkPoolText.createAccountRecordsCdkPoolTextHelpers !== 'function') {
-      throw new Error('Account records CDK pool text module is not loaded.');
-    }
-    const {
-      getUpiRedeemCdkeyUsage,
-      getStoredCdkPoolText,
-      parseUpiRedeemCdkeyPoolText,
-    } = accountRecordsCdkPoolText.createAccountRecordsCdkPoolTextHelpers({
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-    });
-    const accountRecordsDeletionState = globalScope.SidepanelAccountRecordsDeletionState || {};
-    if (typeof accountRecordsDeletionState.createAccountRecordsDeletionStateHelpers !== 'function') {
-      throw new Error('Account records deletion state module is not loaded.');
-    }
-    const {
-      normalizeUpiCredentialMembershipEmailList,
-      normalizeRedeemPlusDeletedEmailsByChannel,
-      mergeRedeemPlusDeletedEmailsByChannel,
-      buildRedeemPlusDeletedEmailSets: buildRedeemPlusDeletedEmailSetsFromValues,
-    } = accountRecordsDeletionState.createAccountRecordsDeletionStateHelpers({
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-    });
-    const accountRecordsExportBuilders = globalScope.SidepanelAccountRecordsExportBuilders || {};
-    if (typeof accountRecordsExportBuilders.createAccountRecordsExportBuilders !== 'function') {
-      throw new Error('Account records export builders module is not loaded.');
-    }
-    const {
-      buildUpiRedeemSuccessEmailExportRows,
-      summarizeUpiRedeemSuccessExportEligibility,
-      buildUpiRedeemSuccessExportBlockedMessage,
-      getUpiRedeemSuccessExportSubscriptionItems,
-      getUpiRedeemSuccessExportCdkeys,
-      buildUpiRedeemSuccessEmailExportFileName,
-    } = accountRecordsExportBuilders.createAccountRecordsExportBuilders({
-      buildSubscriptionCheckId,
-      getRecordEmail: (record) => getRecordEmail(record),
-      getRecordGptPassword,
-      getRecordTotpMfaSecret,
-      getRecordUpiRedeemAccessToken,
-      getRecordUpiRedeemCdkey,
-      isRecordPaidSubscription,
-      isRemoteRedeemSuccess: (cdkey, usage) => isRemoteRedeemSuccess(cdkey, usage),
-      isUpiRedeemSuccessRecord,
-      sanitizeExportField,
-    });
-    const accountRecordsRedeemPolicy = globalScope.SidepanelAccountRecordsRedeemPolicy || {};
-    if (typeof accountRecordsRedeemPolicy.createAccountRecordsRedeemPolicy !== 'function') {
-      throw new Error('Account records redeem policy module is not loaded.');
-    }
-    const {
-      getRedeemChannelFailureField,
-      getRedeemChannelFailureCount,
-      getRedeemChannelDailyLimitBlockedAtField,
-      getRedeemChannelDailyLimitBlockedUntilField,
-      getRedeemChannelDailyLimitReasonField,
-      isRedeemChannelDailyLimitReason,
-      isRedeemChannelDailyLimitBlocked,
-      isUpiCredentialMembershipRedeemLocked,
-      getUpiCredentialMembershipRedeemLockReason,
-      getUpiCredentialMembershipFailureLimit,
-      shouldApplyRedeemFailureLimitForChannel,
-      isPreSubmitUpiCredentialMembershipBlockedReason,
-      isPreSubmitUpiCredentialMembershipBlockedRow,
-      hasUpiCredentialMembershipLoginMaterial,
-      isManualLoginRetryableUpiCredentialMembershipRow,
-      isDuplicateCdkeyPendingMembershipRow,
-      getOperationDecision,
-      buildOperationDecisions,
-    } = accountRecordsRedeemPolicy.createAccountRecordsRedeemPolicy({
-      failureLimit: REDEEM_CHANNEL_FAILURE_LIMIT,
-      getRedeemChannelStateHelpers: () => getRedeemChannelStateHelpers(),
-      membershipRowPolicy,
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-    });
-
-    function getRedeemChannelStateHelpers() {
-      const rootScope = typeof window !== 'undefined' ? window : globalThis;
-      return rootScope.MultiPageRedeemChannelState || {};
-    }
-
-    function getMembershipCredentialFormatHelpers() {
-      const helpers = root.MultiPageMembershipCredentialFormat;
-      if (!helpers || typeof helpers.parseCredentialLine !== 'function') {
-        throw new Error('Membership credential format module is not loaded.');
-      }
-      return helpers;
-    }
-
-    const accountRecordsCredentialParser = globalScope.SidepanelAccountRecordsCredentialParser || {};
-    if (typeof accountRecordsCredentialParser.createAccountRecordsCredentialParser !== 'function') {
-      throw new Error('Account records credential parser module is not loaded.');
-    }
-    const {
-      parseUpiCredentialMembershipText,
-      normalizeUpiCredentialMembershipCredential,
-      parseUpiCredentialMembershipParts,
-      normalizeUpiCredentialMembershipTotpSecret,
-      parseUpiCredentialMembershipPasskeyMarker,
-    } = accountRecordsCredentialParser.createAccountRecordsCredentialParser({
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-      normalizeText: (value) => normalizeUpiCredentialMembershipText(value),
-      getMembershipCredentialFormatHelpers,
-    });
-    const accountRecordsDisplayModel = globalScope.SidepanelAccountRecordsDisplayModel || {};
-    if (typeof accountRecordsDisplayModel.createAccountRecordsDisplayModel !== 'function') {
-      throw new Error('Account records display model module is not loaded.');
-    }
-    const accountRecordsStatusMeta = globalScope.SidepanelAccountRecordsStatusMeta || {};
-    if (typeof accountRecordsStatusMeta.createAccountRecordsStatusMeta !== 'function') {
-      throw new Error('Account records status meta module is not loaded.');
-    }
-    const accountRecordsFlowView = globalScope.SidepanelAccountRecordsFlowView || {};
-    if (typeof accountRecordsFlowView.createAccountRecordsFlowView !== 'function') {
-      throw new Error('Account records flow view module is not loaded.');
-    }
-    const accountRecordsRenderer = globalScope.SidepanelAccountRecordsRenderer || {};
-    if (typeof accountRecordsRenderer.createAccountRecordsRenderer !== 'function') {
-      throw new Error('Account records renderer module is not loaded.');
-    }
-    const accountRecordsMembershipActions = globalScope.SidepanelAccountRecordsMembershipActions || {};
-    if (typeof accountRecordsMembershipActions.createAccountRecordsMembershipActions !== 'function') {
-      throw new Error('Account records membership actions module is not loaded.');
-    }
-    const accountRecordsMembershipAccessTokenActions = globalScope.SidepanelAccountRecordsMembershipAccessTokenActions || {};
-    if (typeof accountRecordsMembershipAccessTokenActions.createAccountRecordsMembershipAccessTokenActions !== 'function') {
-      throw new Error('Account records membership access-token actions module is not loaded.');
-    }
-    const accountRecordsRedeemActions = globalScope.SidepanelAccountRecordsRedeemActions || {};
-    if (typeof accountRecordsRedeemActions.createAccountRecordsRedeemActions !== 'function') {
-      throw new Error('Account records redeem actions module is not loaded.');
-    }
-    const accountRecordsDomHelpers = globalScope.SidepanelAccountRecordsDomHelpers || {};
-    if (typeof accountRecordsDomHelpers.createAccountRecordsDomHelpers !== 'function') {
-      throw new Error('Account records DOM helpers module is not loaded.');
-    }
-    const {
-      findClosest,
-      getDatasetValue,
-      setNodeAttr,
-      setNodeDisabled,
-      setNodeHidden,
-      setNodeText,
-      toggleNodeClass,
-    } = accountRecordsDomHelpers.createAccountRecordsDomHelpers();
-    const accountRecordsMembershipStateSync = globalScope.SidepanelAccountRecordsMembershipStateSync || {};
-    if (typeof accountRecordsMembershipStateSync.createAccountRecordsMembershipStateSync !== 'function') {
-      throw new Error('Account records membership state sync module is not loaded.');
-    }
-    const accountRecordsTrialEligibility = globalScope.SidepanelAccountRecordsTrialEligibility || {};
-    if (typeof accountRecordsTrialEligibility.createAccountRecordsTrialEligibility !== 'function') {
-      throw new Error('Account records trial eligibility module is not loaded.');
-    }
-    const accountRecordsRunHistory = globalScope.SidepanelAccountRecordsRunHistory || {};
-    if (typeof accountRecordsRunHistory.createAccountRecordsRunHistory !== 'function') {
-      throw new Error('Account records run history module is not loaded.');
-    }
-    const accountRecordsSettingsPayload = globalScope.SidepanelAccountRecordsSettingsPayload || {};
-    if (typeof accountRecordsSettingsPayload.createAccountRecordsSettingsPayload !== 'function') {
-      throw new Error('Account records settings payload module is not loaded.');
-    }
-    const accountRecordsMembershipHelpers = globalScope.SidepanelAccountRecordsMembershipHelpers || {};
-    if (typeof accountRecordsMembershipHelpers.createAccountRecordsMembershipHelpers !== 'function') {
-      throw new Error('Account records membership helpers module is not loaded.');
-    }
-    const accountRecordsMembershipPoolOps = globalScope.SidepanelAccountRecordsMembershipPoolOps || {};
-    if (typeof accountRecordsMembershipPoolOps.createAccountRecordsMembershipPoolOps !== 'function') {
-      throw new Error('Account records membership pool ops module is not loaded.');
-    }
-    const accountRecordsMembershipResultOps = globalScope.SidepanelAccountRecordsMembershipResultOps || {};
-    if (typeof accountRecordsMembershipResultOps.createAccountRecordsMembershipResultOps !== 'function') {
-      throw new Error('Account records membership result ops module is not loaded.');
-    }
-    const accountRecordsPanelEvents = globalScope.SidepanelAccountRecordsPanelEvents || {};
-    if (typeof accountRecordsPanelEvents.createAccountRecordsPanelEvents !== 'function') {
-      throw new Error('Account records panel events module is not loaded.');
-    }
-    const {
-      buildUpiCredentialMembershipResultLookup,
-      sanitizeUpiCredentialMembershipDisplayRow,
-      mergeUpiCredentialMembershipDisplayCredentialResult,
-      buildUpiCredentialMembershipDisplayRows,
-      getUpiCredentialMembershipRowStatusMeta,
-    } = accountRecordsDisplayModel.createAccountRecordsDisplayModel({
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-      normalizeText: (value) => normalizeUpiCredentialMembershipText(value),
-      createAccountRecordsStatusMeta: (displayContext) => accountRecordsStatusMeta.createAccountRecordsStatusMeta(displayContext),
-      getMembershipCredentialFormatHelpers,
-      collectPasskeyNumericMetadataPatch: (...sources) => collectUpiCredentialMembershipPasskeyNumericMetadataPatch(...sources),
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      buildRedeemPlusDeletedEmailSets: (value) => buildRedeemPlusDeletedEmailSets(value),
-      buildUpiRedeemSuccessMembershipLookup: (currentState) => buildUpiRedeemSuccessMembershipLookup(currentState),
-      getLatestState: () => state.getLatestState(),
-      getUpiCredentialMembershipPoolRows: () => upiCredentialMembershipPoolRows,
-      getUpiCredentialMembershipPoolSource: () => upiCredentialMembershipPoolSource,
-      isUpiCredentialMembershipEmailDisabled: (email) => disabledUpiCredentialMembershipEmails.has(email),
-      getLocallyDeletedUpiCredentialMembershipEmails: () => getLocallyDeletedUpiCredentialMembershipEmails(),
-      applyUpiRedeemSuccessMembershipPatch: (row, lookup) => applyUpiRedeemSuccessMembershipPatch(row, lookup),
-      buildMembershipViewModelRows,
-      buildUpiCredentialMembershipDisplayRowKey,
-      isRedeemPlusDeletedDisplayRow: (row, deletedEmailSets) => isRedeemPlusDeletedDisplayRow(row, deletedEmailSets),
-      getUpiCredentialMembershipFlowTitle: (stepKey, results) => getUpiCredentialMembershipFlowTitle(stepKey, results),
-      getMembershipPlanLabel: (planType) => getMembershipPlanLabel(planType),
-      normalizeTrialEligibilityStatus: (value) => normalizeTrialEligibilityStatus(value),
-      getRedeemChannelFailureCount: (row, channel) => getRedeemChannelFailureCount(row, channel),
-      isUpiCredentialMembershipRedeemLocked: (row) => isUpiCredentialMembershipRedeemLocked(row),
-      getUpiCredentialMembershipRedeemLockReason: (row) => getUpiCredentialMembershipRedeemLockReason(row),
-      isDuplicateCdkeyPendingMembershipRow: (row) => isDuplicateCdkeyPendingMembershipRow(row),
-      isActiveUpiRedeemRemoteStatus: (value) => isActiveUpiRedeemRemoteStatus(value),
-      getUpiCredentialMembershipFailureLimit: (row) => getUpiCredentialMembershipFailureLimit(row),
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-      getRedeemChannelLabel: (value) => getRedeemChannelLabel(value),
-      isPreSubmitUpiCredentialMembershipBlockedRow: (row) => isPreSubmitUpiCredentialMembershipBlockedRow(row),
-      isManualLoginRetryableUpiCredentialMembershipRow: (row) => isManualLoginRetryableUpiCredentialMembershipRow(row),
-      getTrialEligibilityChannelBlockedDetail: (row, channel) => getTrialEligibilityChannelBlockedDetail(row, channel),
-      compactMembershipReason: (value, maxLength) => compactMembershipReason(value, maxLength),
-      getUpiCredentialMembershipCheckingEmail: () => upiCredentialMembershipCheckingEmail,
-      getUpiCredentialMembershipLoginEmail: () => upiCredentialMembershipLoginEmail,
-      getUpiCredentialMembershipRedeemProgressMeta: (row, results) => getUpiCredentialMembershipRedeemProgressMeta(row, results),
-      buildOperationDecisions: (row, options) => buildOperationDecisions(row, options),
-    });
-
-    const FILTER_CONFIG = {
-      all: {
-        label: '总',
-        className: '',
-        matches: () => true,
-        metaLabel: '全部',
-      },
-      success: {
-        label: '成',
-        className: 'is-success',
-        matches: (record) => matchesRecordFilter(record, 'success'),
-        metaLabel: '成功',
-      },
-      running: {
-        label: '运行',
-        className: 'is-running',
-        matches: (record) => matchesRecordFilter(record, 'running'),
-        metaLabel: '运行中',
-      },
-      failed: {
-        label: '失',
-        className: 'is-failed',
-        matches: (record) => matchesRecordFilter(record, 'failed'),
-        metaLabel: '失败',
-      },
-      stopped: {
-        label: '停',
-        className: 'is-stopped',
-        matches: (record) => matchesRecordFilter(record, 'stopped'),
-        metaLabel: '停止',
-      },
-      retry: {
-        label: '重试',
-        className: 'is-retry',
-        matches: (record) => matchesRecordFilter(record, 'retry'),
-        metaLabel: '重试',
-      },
-    };
-
-    let currentPage = 1;
-    let activeFilter = 'all';
-    let selectionMode = false;
+    const { state = {}, dom = {}, helpers = {}, runtime = {} } = context;
+    const normalizeText = (value = '') => String(value || '').trim();
+    const normalizeEmail = (value = '') => normalizeText(value).toLowerCase();
+    const resultsApi = globalScope.MultiPageFreeAccountResults || {};
     let eventsBound = false;
-    let upiCredentialBackupPreviewVisible = false;
-    let upiCredentialMembershipCheckBusy = false;
-    let upiCredentialMembershipRedeemBusy = false;
-    let upiCredentialMembershipAllRedeemBusy = false;
-    let upiCredentialMembershipPoolRows = [];
-    let upiCredentialMembershipPoolSource = '';
-    let upiCredentialMembershipPoolLoaded = false;
-    let upiCredentialMembershipPoolLoading = false;
-    let upiCredentialMembershipCheckingEmail = '';
-    let upiCredentialMembershipLoginEmail = '';
-    let upiCredentialMembershipRedeemStatusRefreshBusy = false;
-    let upiCredentialMembershipGroup = 'free';
-    const disabledUpiCredentialMembershipEmails = new Set();
-    const locallyDeletedUpiCredentialMembershipEmails = new Set();
-    const locallyDeletedRedeemPlusEmailsByChannel = {
-      upi: new Set(),
-      ideal: new Set(),
-      pix: new Set(),
-    };
-    const selectedRecordIds = new Set();
-    const membershipStateSync = accountRecordsMembershipStateSync.createAccountRecordsMembershipStateSync({
-      state,
-      membershipRowPolicy,
-      locallyDeletedUpiCredentialMembershipEmails,
-      locallyDeletedRedeemPlusEmailsByChannel,
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-      normalizeText: (value) => normalizeUpiCredentialMembershipText(value),
-      normalizeTimestamp,
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-      normalizeSubscriptionPlanType: (value) => normalizeSubscriptionPlanType(value),
-      isPaidSubscriptionPlan: (planType) => isPaidSubscriptionPlan(planType),
-      isActiveUpiRedeemRemoteStatus: (value) => isActiveUpiRedeemRemoteStatus(value),
-      normalizeUpiCredentialMembershipEmailList,
-      buildRedeemPlusDeletedEmailSetsFromValues,
-      mergeRedeemPlusDeletedEmailsByChannel,
-      getUpiRedeemCdkeyUsage: (currentState, channel) => getUpiRedeemCdkeyUsage(currentState, channel),
-      getUpiRedeemUsageEmail: (entry) => getUpiRedeemUsageEmail(entry),
-      findActiveUpiRedeemCdkeyUsageEntryByEmail: (email, currentState, channel) => (
-        findActiveUpiRedeemCdkeyUsageEntryByEmail(email, currentState, channel)
-      ),
-    });
-    const trialEligibility = accountRecordsTrialEligibility.createAccountRecordsTrialEligibility({
-      membershipRowPolicy,
-      failureLimit: REDEEM_CHANNEL_FAILURE_LIMIT,
-      normalizeEmail: (value) => normalizeUpiCredentialMembershipEmail(value),
-      normalizeText: (value) => normalizeUpiCredentialMembershipText(value),
-      normalizeRedeemChannel: (value) => normalizeRedeemChannel(value),
-      getRedeemChannelLabel: (channel) => getRedeemChannelLabel(channel),
-      getUpiCredentialMembershipCheckResults: () => getUpiCredentialMembershipCheckResults(),
-      buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
-    });
-    const runHistory = accountRecordsRunHistory.createAccountRecordsRunHistory({
-      accountRecordsViewModel,
-      buildRecordId,
-      getRecordDisplayStatus,
-      normalizeTimestamp,
-      normalizeRetryCount,
-    });
+    let checkingEmail = '';
+    let loginEmail = '';
+    let busy = false;
+    let includeVerificationUrl = true;
+    let exportCredentialMode = 'access-token';
+    let sessionTasks = [];
+    let sessionTaskPollTimer = null;
+    let panelOpen = false;
 
-    function escapeHtml(value) {
-      if (typeof helpers.escapeHtml === 'function') {
-        return helpers.escapeHtml(String(value || ''));
-      }
-      return String(value || '');
+    function escapeHtml(value = '') {
+      if (typeof helpers.escapeHtml === 'function') return helpers.escapeHtml(String(value || ''));
+      return String(value || '').replace(/[&<>'"]/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+      }[char]));
     }
 
-    function normalizeTimestamp(value) {
-      const timestamp = Date.parse(String(value || ''));
-      return Number.isFinite(timestamp) ? timestamp : 0;
+    function getResults(currentState = state.getLatestState?.() || {}) {
+      const source = currentState.freeAccountResults || {};
+      return typeof resultsApi.normalizeResults === 'function'
+        ? resultsApi.normalizeResults(source)
+        : { schemaVersion: 3, items: [], ...source };
     }
 
-    function normalizeRetryCount(value) {
-      const count = Math.floor(Number(value) || 0);
-      return count > 0 ? count : 0;
+    function syncResults(results) {
+      if (!results) return;
+      state.syncLatestState?.({ freeAccountResults: results });
     }
 
-    function normalizeUpiRedeemConfiguredRoundCount(value, fallback = 3) {
-      const fallbackNumber = Math.floor(Number(fallback));
-      const fallbackCount = Number.isFinite(fallbackNumber)
-        ? Math.max(0, Math.min(20, fallbackNumber))
-        : 3;
-      const rawValue = String(value ?? '').trim();
-      if (!rawValue) {
-        return fallbackCount;
-      }
-      const count = Math.floor(Number(rawValue));
-      if (!Number.isFinite(count)) {
-        return fallbackCount;
-      }
-      return Math.max(0, Math.min(20, count));
+    function getRows(results = getResults()) {
+      return (Array.isArray(results.items) ? results.items : [])
+        .map((row) => ({ ...row, email: normalizeEmail(row?.email) }))
+        .filter((row) => row.email);
     }
 
-    function normalizeUpiRedeemTotalRoundLimit(value, fallback = 3) {
-      const configuredRoundCount = normalizeUpiRedeemConfiguredRoundCount(value, fallback);
-      return configuredRoundCount > 0 ? configuredRoundCount : 1;
+    function getRowByEmail(email = '') {
+      const target = normalizeEmail(email);
+      return getRows().find((row) => row.email === target) || null;
     }
 
-    function normalizeRedeemChannel(value = '') {
-      const helper = getRedeemChannelStateHelpers().normalizeRedeemChannel;
-      if (typeof helper === 'function') {
-        return helper(value);
-      }
-      return membershipRowPolicy.normalizeRedeemChannel?.(value)
-        || (() => {
-          const normalized = normalizeUpiCredentialMembershipText(value).toLowerCase();
-          return normalized === 'ideal' || normalized === 'pix' ? normalized : 'upi';
-        })();
+    function hasCompleteSession(row = {}) {
+      return typeof resultsApi.hasCompleteSession === 'function'
+        ? resultsApi.hasCompleteSession(row)
+        : Boolean(row?.session?.user?.email && (row?.session?.accessToken || row?.session?.access_token));
     }
 
-    function getLocallyDeletedRedeemPlusEmailsByChannel() {
-      return membershipStateSync.getLocallyDeletedRedeemPlusEmailsByChannel();
+    function getSessionTaskGroup(task = {}) {
+      return normalizeText(task?.payload?.group || task?.checkpoint?.group) === 'free-ineligible'
+        ? 'free-ineligible'
+        : 'free';
     }
 
-    function addLocallyDeletedRedeemPlusEmails(channel = 'upi', emails = []) {
-      membershipStateSync.addLocallyDeletedRedeemPlusEmails(channel, emails);
+    function getSessionTask(group = 'free') {
+      const normalizedGroup = group === 'free-ineligible' ? 'free-ineligible' : 'free';
+      return sessionTasks.find((task) => task?.type === 'fill_session' && getSessionTaskGroup(task) === normalizedGroup) || null;
     }
 
-    function getLocallyDeletedUpiCredentialMembershipEmails() {
-      return membershipStateSync.getLocallyDeletedUpiCredentialMembershipEmails();
+    function isSessionTaskActive(task = getSessionTask()) {
+      return ['pending', 'running', 'cancel_requested'].includes(normalizeText(task?.status));
     }
 
-    function buildRedeemPlusDeletedEmailSets(value = {}) {
-      return membershipStateSync.buildRedeemPlusDeletedEmailSets(value);
+    function hasActiveSessionTask() {
+      return sessionTasks.some((task) => task?.type === 'fill_session' && isSessionTaskActive(task));
     }
 
-    function isRedeemPlusDeletedEmail(email = '', channel = 'upi', deletedEmailSets = {}) {
-      return membershipStateSync.isRedeemPlusDeletedEmail(email, channel, deletedEmailSets);
+    function clearSessionTaskPoll() {
+      if (sessionTaskPollTimer) globalScope.clearTimeout?.(sessionTaskPollTimer);
+      sessionTaskPollTimer = null;
     }
 
-    function isRedeemPlusDeletedDisplayRow(row = {}, deletedEmailSets = {}) {
-      return membershipStateSync.isRedeemPlusDeletedDisplayRow(row, deletedEmailSets);
-    }
-
-    function isActiveUpiCredentialMembershipRedeemRow(row = {}, results = getUpiCredentialMembershipCheckResults()) {
-      return membershipStateSync.isActiveUpiCredentialMembershipRedeemRow(row, results);
-    }
-
-    function isActiveUpiCredentialMembershipRedeemRowOrUsage(row = {}, results = getUpiCredentialMembershipCheckResults()) {
-      return membershipStateSync.isActiveUpiCredentialMembershipRedeemRowOrUsage(row, results);
-    }
-
-    function buildUpiRedeemSuccessMembershipLookup(currentState = state.getLatestState()) {
-      return membershipStateSync.buildUpiRedeemSuccessMembershipLookup(currentState);
-    }
-
-    function applyUpiRedeemSuccessMembershipPatch(row = {}, lookup = buildUpiRedeemSuccessMembershipLookup()) {
-      return membershipStateSync.applyUpiRedeemSuccessMembershipPatch(row, lookup);
-    }
-
-    function buildFreeMembershipOverridePatch(checkedAt = new Date().toISOString()) {
-      return membershipStateSync.buildFreeMembershipOverridePatch(checkedAt);
-    }
-
-    function mergeManualFreeMembershipOverridesIntoResults(results = {}, currentState = state.getLatestState()) {
-      return membershipStateSync.mergeManualFreeMembershipOverridesIntoResults(results, currentState);
-    }
-
-    function getUpiCredentialMembershipCheckResults(currentState = state.getLatestState()) {
-      return membershipStateSync.getUpiCredentialMembershipCheckResults(currentState);
-    }
-
-    function getMembershipStatusTitle(status = '') {
-      if (status === 'paid-upi') return 'UPI Plus';
-      if (status === 'paid-ideal') return 'IDEAL Plus';
-      if (status === 'paid-pix') return 'PIX Plus';
-      if (status === 'paid-all') return '全部 Plus';
-      if (status === 'paid') return '有会员';
-      if (status === 'free') return '无会员';
-      return '失败';
-    }
-
-    function getMembershipPlanLabel(planType = '') {
-      const normalized = normalizeSubscriptionPlanType(planType);
-      if (normalized === 'pro') return 'Pro';
-      if (normalized === 'team') return 'Team';
-      if (normalized === 'plus') return 'Plus';
-      return normalized || '-';
-    }
-
-    function compactMembershipReason(value = '', maxLength = 42) {
-      const text = String(value || '').replace(/\s+/g, ' ').trim();
-      if (!text) {
-        return '';
-      }
-      const limit = Math.max(8, Math.floor(Number(maxLength) || 42));
-      return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
-    }
-
-    function normalizeUpiCredentialMembershipEmail(value = '') {
-      return String(value || '').trim().toLowerCase();
-    }
-
-    function normalizeUpiCredentialMembershipText(value = '') {
-      return String(value || '').trim();
-    }
-
-    function readFirstFiniteUpiCredentialMembershipNumericMetadataValue(values = []) {
-      for (const value of values) {
-        if (value === undefined || value === null) continue;
-        if (typeof value === 'string' && value.trim() === '') continue;
-        const numeric = Number(value);
-        if (Number.isFinite(numeric)) return numeric;
-      }
-      return undefined;
-    }
-
-    function collectUpiCredentialMembershipPasskeyNumericMetadataPatch(...sources) {
-      const signCountNumeric = readFirstFiniteUpiCredentialMembershipNumericMetadataValue(sources.flatMap((source) => (
-        source && typeof source === 'object' && !Array.isArray(source)
-          ? [source.passkeySignCount, source.signCount, source.sign_count]
-          : [source]
-      )));
-      const alg = readFirstFiniteUpiCredentialMembershipNumericMetadataValue(sources.flatMap((source) => (
-        source && typeof source === 'object' && !Array.isArray(source)
-          ? [source.passkeyAlg, source.alg]
-          : [source]
-      )));
-      const signCount = signCountNumeric === undefined ? undefined : Math.max(0, Math.floor(signCountNumeric));
-      return {
-        ...(signCount !== undefined ? { passkeySignCount: signCount } : {}),
-        ...(alg !== undefined ? { passkeyAlg: alg } : {}),
-      };
-    }
-
-    function setUpiCredentialMembershipPoolRows(rows = [], source = '') {
-      const seen = new Set();
-      upiCredentialMembershipPoolRows = (Array.isArray(rows) ? rows : [])
-        .map((item) => normalizeUpiCredentialMembershipCredential(item, source))
-        .filter((item) => {
-          if (!item?.email || seen.has(item.email)) {
-            return false;
-          }
-          seen.add(item.email);
-          return true;
+    function scheduleSessionTaskPoll() {
+      clearSessionTaskPoll();
+      if (!panelOpen || !hasActiveSessionTask()) return;
+      sessionTaskPollTimer = globalScope.setTimeout?.(() => {
+        sessionTaskPollTimer = null;
+        void refreshResults().catch(() => null).finally(() => {
+          render();
+          scheduleSessionTaskPoll();
         });
-      upiCredentialMembershipPoolSource = normalizeUpiCredentialMembershipText(source);
-      for (const email of Array.from(disabledUpiCredentialMembershipEmails)) {
-        if (!seen.has(email)) {
-          disabledUpiCredentialMembershipEmails.delete(email);
-        }
-      }
+      }, 1200);
     }
 
-    function clampRedeemProgressPercent(value = 0) {
-      return membershipRedeemProgress.clampRedeemProgressPercent(value);
-    }
-
-    function getUpiCredentialMembershipRedeemProgressMeta(row = {}, results = getUpiCredentialMembershipCheckResults()) {
-      return membershipRedeemProgress.getUpiCredentialMembershipRedeemProgressMeta(row, results, {
-        normalizeEmail: normalizeUpiCredentialMembershipEmail,
-        normalizeText: normalizeUpiCredentialMembershipText,
-        normalizeRemoteStatus: normalizeUpiRedeemRemoteStatus,
-        isActiveRemoteStatus: isActiveUpiRedeemRemoteStatus,
-        normalizeChannel: normalizeRedeemChannel,
-        getChannelLabel: getRedeemChannelLabel,
-        isRedeemLocked: isUpiCredentialMembershipRedeemLocked,
-        getRedeemLockReason: getUpiCredentialMembershipRedeemLockReason,
-      });
-    }
-
-    function renderUpiCredentialMembershipRedeemProgress(row = {}, progress = {}, cancelRedeemControl = {}) {
-      return membershipRedeemProgress.renderUpiCredentialMembershipRedeemProgress(row, progress, cancelRedeemControl, {
-        normalizeEmail: normalizeUpiCredentialMembershipEmail,
-        escapeHtml,
-      });
-    }
-
-    function normalizeTrialEligibilityStatus(value = '') {
-      return trialEligibility.normalizeTrialEligibilityStatus(value);
-    }
-
-    function isTrialEligibilityChannelAllowed(row = {}, channel = 'upi') {
-      return trialEligibility.isTrialEligibilityChannelAllowed(row, channel);
-    }
-
-    function getTrialEligibilityChannelBlockedDetail(row = {}, channel = 'upi') {
-      return trialEligibility.getTrialEligibilityChannelBlockedDetail(row, channel);
-    }
-
-    function buildUpiCredentialMembershipTrialEligibilitySummary(results = {}, rows = []) {
-      return trialEligibility.buildUpiCredentialMembershipTrialEligibilitySummary(results, rows);
-    }
-
-    function isRedeemableFreeUpiCredentialMembershipRowForChannel(row = {}, channel = 'upi') {
-      return trialEligibility.isRedeemableFreeUpiCredentialMembershipRowForChannel(row, channel);
-    }
-
-    function isRedeemableFreeUpiCredentialMembershipRow(row = {}) {
-      return trialEligibility.isRedeemableFreeUpiCredentialMembershipRow(row);
-    }
-
-    function isUpiCredentialMembershipChannelFailureLimitReached(row = {}, channel = 'upi') {
-      return trialEligibility.isUpiCredentialMembershipChannelFailureLimitReached(row, channel);
-    }
-
-    function getChannelFailureLimitBlockedFreeRows(rows = [], channel = 'upi') {
-      return trialEligibility.getChannelFailureLimitBlockedFreeRows(rows, channel);
-    }
-
-    function buildNoRedeemableForChannelMessage(channel = 'upi') {
-      return trialEligibility.buildNoRedeemableForChannelMessage(channel);
-    }
-
-    function getNotRedeemableFreeUpiCredentialMembershipReason(row = {}) {
-      return trialEligibility.getNotRedeemableFreeUpiCredentialMembershipReason(row);
-    }
-
-    function getUpiCredentialMembershipGroup(row = {}) {
-      return getMembershipViewModelGroup(row) === 'free' ? 'free' : 'paid';
-    }
-
-    function filterUpiCredentialMembershipRowsByGroup(rows = [], group = upiCredentialMembershipGroup) {
-      const normalizedGroup = String(group || '').trim().toLowerCase() === 'paid' ? 'paid' : 'free';
-      return (Array.isArray(rows) ? rows : []).filter((row) => getUpiCredentialMembershipGroup(row) === normalizedGroup);
-    }
-
-    function isUpiCredentialMembershipRowInResultGroup(row = {}, normalizedStatus = 'paid', targetChannel = '') {
-      const status = String(row?.status || '').trim().toLowerCase();
-      const uiGroup = getUpiCredentialMembershipUiGroup(row);
-      if (normalizedStatus === 'free') {
-        return uiGroup === 'free';
-      }
-      if (normalizedStatus === 'paid') {
-        if (targetChannel === 'ideal') {
-          return uiGroup === 'paid-ideal';
-        }
-        if (targetChannel === 'upi') {
-          return uiGroup === 'paid-upi';
-        }
-        if (targetChannel === 'pix') {
-          return uiGroup === 'paid-pix';
-        }
-        return uiGroup !== 'free';
-      }
-      if (status !== normalizedStatus) {
-        return false;
-      }
-      return !targetChannel || normalizeRedeemChannel(row.redeemChannel || row.channel) === targetChannel;
-    }
-
-    function getUpiCredentialMembershipGroupLabel(group = upiCredentialMembershipGroup) {
-      return String(group || '').trim().toLowerCase() === 'paid' ? '有 Plus' : 'Free';
-    }
-    const {
-      getUpiCredentialMembershipFlowTitle,
-      getUpiCredentialMembershipFlowSteps,
-      normalizeUpiCredentialMembershipFlowStage,
-      getUpiCredentialMembershipFlowStatus,
-      getUpiCredentialMembershipFlowDetail,
-      renderUpiCredentialMembershipFlow,
-    } = accountRecordsFlowView.createAccountRecordsFlowView({
-      escapeHtml,
-      compactMembershipReason,
-      getMembershipStatusTitle,
-      getRedeemChannelLabel,
-      getChannelFailureLimitBlockedFreeRows,
-      isRedeemableFreeUpiCredentialMembershipRowForChannel,
-    });
-
-    function isAutoRunRecordDisplayRunning(currentState = {}) {
-      return runHistory.isAutoRunRecordDisplayRunning(currentState);
-    }
-
-    function buildCurrentAccountRecordId(currentState = {}) {
-      return runHistory.buildCurrentAccountRecordId(currentState);
-    }
-
-    function applyRunningDisplayState(record = {}, currentState = {}) {
-      return runHistory.applyRunningDisplayState(record, currentState);
-    }
-
-    function getRecordIdentifierType(record = {}) {
-      return runHistory.getRecordIdentifierType(record);
-    }
-
-    function getRecordEmail(record = {}) {
-      return runHistory.getRecordEmail(record);
-    }
-
-    function getRecordPrimaryIdentifier(record = {}) {
-      return runHistory.getRecordPrimaryIdentifier(record);
-    }
-
-    function getRecordSecondaryIdentifier(record = {}) {
-      return runHistory.getRecordSecondaryIdentifier(record);
-    }
-
-    function getRecordTitle(record = {}) {
-      return runHistory.getRecordTitle(record);
-    }
-
-    function getAccountRunRecords(currentState = state.getLatestState()) {
-      return runHistory.getAccountRunRecords(currentState);
-    }
-
-    function summarizeAccountRunHistory(records = []) {
-      return runHistory.summarizeAccountRunHistory(records);
-    }
-
-    function getFilterConfig(filterKey = activeFilter) {
-      return FILTER_CONFIG[filterKey] || FILTER_CONFIG.all;
-    }
-
-    function matchesRecordFilter(record = {}, filterKey = activeFilter) {
-      return runHistory.matchesRecordFilter(record, filterKey);
-    }
-
-    function getFilteredRecords(records = []) {
-      return runHistory.getFilteredRecords(records, activeFilter);
-    }
-
-    function pruneSelectedRecordIds(records = []) {
-      const availableIds = new Set(records.map((record) => buildRecordId(record)).filter(Boolean));
-      for (const recordId of Array.from(selectedRecordIds)) {
-        if (!availableIds.has(recordId)) {
-          selectedRecordIds.delete(recordId);
-        }
-      }
-    }
-
-    function ensureValidCurrentPage(totalRecords) {
-      const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0;
-      if (totalPages === 0) {
-        currentPage = 1;
-      } else if (currentPage > totalPages) {
-        currentPage = totalPages;
-      } else if (currentPage < 1) {
-        currentPage = 1;
-      }
-      return totalPages;
-    }
-
-    const {
-      renderAccountRecordsPanel,
-      renderUpiCredentialMembershipCheckResults,
-      updateHeader,
-      updateStats,
-      updatePagination,
-    } = accountRecordsRenderer.createAccountRecordsRenderer({
-      dom,
-      state,
-      pageSize,
-      displayTimeZone,
-      redeemChannelFailureLimit: REDEEM_CHANNEL_FAILURE_LIMIT,
-      escapeHtml,
-      getAccountRunRecords: (currentState) => getAccountRunRecords(currentState),
-      getFilteredRecords: (records) => getFilteredRecords(records),
-      summarizeAccountRunHistory,
-      getRecordDisplayStatus,
-      getConfirmedUpiSubscriptionLabel,
-      getRecordTitle: (record) => getRecordTitle(record),
-      normalizeRetryCount,
-      getFilterConfig: (filterKey) => getFilterConfig(filterKey),
-      getCurrentPage: () => currentPage,
-      getActiveFilter: () => activeFilter,
-      getSelectionMode: () => selectionMode,
-      getSelectedRecordCount: () => selectedRecordIds.size,
-      isRecordSelected: (recordId) => selectedRecordIds.has(recordId),
-      setNodeText,
-      setNodeDisabled,
-      setNodeHidden,
-      toggleNodeClass,
-      setNodeAttr,
-      buildUpiRedeemSuccessEmailExportRows,
-      getUpiCredentialBackupPreviewVisible: () => upiCredentialBackupPreviewVisible,
-      ensureValidCurrentPage,
-      buildRecordId,
-      getRecordPrimaryIdentifier: (record) => getRecordPrimaryIdentifier(record),
-      getRecordSecondaryIdentifier: (record) => getRecordSecondaryIdentifier(record),
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
-      normalizeUpiCredentialMembershipEmail,
-      getOperationDecision: (row, operation, options) => getOperationDecision(row, operation, options),
-      normalizeUpiCredentialMembershipText,
-      isActiveUpiCredentialMembershipRedeemRow: (row, results) => isActiveUpiCredentialMembershipRedeemRow(row, results),
-      isAutoRunRecordDisplayRunning: (currentState) => isAutoRunRecordDisplayRunning(currentState),
-      summarizeMembershipViewModelRows,
-      getUpiCredentialMembershipUiGroup,
-      getFreeExportIncludeVerificationUrl,
-      getOperationDecision,
-      getChannelFailureLimitBlockedFreeRows: (rows, channel) => getChannelFailureLimitBlockedFreeRows(rows, channel),
-      isRedeemChannelDailyLimitBlocked: (row, channel) => isRedeemChannelDailyLimitBlocked(row, channel),
-      isUpiCredentialMembershipRedeemLocked: (row) => isUpiCredentialMembershipRedeemLocked(row),
-      hasUpiCredentialMembershipLoginMaterial: (row) => hasUpiCredentialMembershipLoginMaterial(row),
-      getUpiCredentialMembershipRowStatusMeta: (row, results) => getUpiCredentialMembershipRowStatusMeta(row, results),
-      getUpiCredentialMembershipRedeemCancelControl: (row, results) => getUpiCredentialMembershipRedeemCancelControl(row, results),
-      getUpiCredentialMembershipRedeemProgressMeta: (row, results) => getUpiCredentialMembershipRedeemProgressMeta(row, results),
-      renderUpiCredentialMembershipRedeemProgress: (row, progress, cancelControl) => renderUpiCredentialMembershipRedeemProgress(row, progress, cancelControl),
-      getAvailableUpiRedeemCdkeyCount: (currentState, channel) => getAvailableUpiRedeemCdkeyCount(currentState, channel),
-      isRedeemableFreeUpiCredentialMembershipRow: (row) => isRedeemableFreeUpiCredentialMembershipRow(row),
-      isRedeemableFreeUpiCredentialMembershipRowForChannel: (row, channel) => isRedeemableFreeUpiCredentialMembershipRowForChannel(row, channel),
-      getRedeemChannelLabel: (channel) => getRedeemChannelLabel(channel),
-      renderUpiCredentialMembershipFlow: (results, rows) => renderUpiCredentialMembershipFlow(results, rows),
-      getUpiCredentialMembershipFlowTitle: (stepKey, results) => getUpiCredentialMembershipFlowTitle(stepKey, results),
-      getUpiCredentialMembershipCheckBusy: () => upiCredentialMembershipCheckBusy,
-      getUpiCredentialMembershipRedeemBusy: () => upiCredentialMembershipRedeemBusy,
-      getUpiCredentialMembershipAllRedeemBusy: () => upiCredentialMembershipAllRedeemBusy,
-      getUpiCredentialMembershipCheckingEmail: () => upiCredentialMembershipCheckingEmail,
-      getUpiCredentialMembershipLoginEmail: () => upiCredentialMembershipLoginEmail,
-      setExportButtonsBusy,
-    });
-
-    function render(currentState = state.getLatestState()) {
-      const allRecords = getAccountRunRecords(currentState);
-      pruneSelectedRecordIds(allRecords);
-
-      if (!allRecords.length) {
-        selectionMode = false;
-      }
-
-      const membershipResults = getUpiCredentialMembershipCheckResults(currentState);
-      upiCredentialMembershipCheckBusy = membershipResults.running;
-      upiCredentialMembershipRedeemBusy = membershipResults.redeeming;
-      renderAccountRecordsPanel(currentState);
-    }
-
-    function toggleRecordSelection(recordId, forceSelected = null) {
-      const normalizedRecordId = String(recordId || '').trim().toLowerCase();
-      if (!selectionMode || !normalizedRecordId) {
-        return;
-      }
-
-      const shouldSelect = forceSelected === null
-        ? !selectedRecordIds.has(normalizedRecordId)
-        : Boolean(forceSelected);
-
-      if (shouldSelect) {
-        selectedRecordIds.add(normalizedRecordId);
-      } else {
-        selectedRecordIds.delete(normalizedRecordId);
-      }
-    }
-    function setExportButtonsBusy(busy) {
-      setNodeDisabled(dom.btnExportSuccessAccountRecords, busy);
-      setNodeDisabled(dom.btnShowUpiCredentialBackups, busy);
-      setNodeDisabled(dom.btnExportUpiCredentialBackups, busy);
-      const membershipBusy = upiCredentialMembershipCheckBusy || upiCredentialMembershipRedeemBusy;
-      setNodeDisabled(dom.btnCheckUpiCredentialMembershipLocal, busy || membershipBusy);
-      setNodeDisabled(dom.btnImportUpiCredentialMembershipTxt, busy || membershipBusy);
-      setNodeDisabled(dom.btnImportUpiCredentialMembershipFreeTxt, busy || membershipBusy);
-      setNodeDisabled(dom.btnExportUpiRedeemSuccessRecords, busy);
-      setNodeText(dom.btnExportUpiRedeemSuccessRecords, busy ? '查询中' : '导出已开通会员密码2FA');
-      setNodeText(dom.btnShowUpiCredentialBackups, busy ? '读取中' : '查看全部已存密码2FA');
-      setNodeText(dom.btnExportUpiCredentialBackups, busy ? '查询中' : '导出当前 CDK 成功密码2FA');
-      setNodeText(dom.btnCheckUpiCredentialMembershipLocal, membershipBusy ? (upiCredentialMembershipRedeemBusy ? '兑换中' : '核验中') : '核验启用已存备份');
-      setNodeText(dom.btnImportUpiCredentialMembershipTxt, membershipBusy ? (upiCredentialMembershipRedeemBusy ? '兑换中' : '核验中') : '导入备份TXT并核验');
-      setNodeText(dom.btnImportUpiCredentialMembershipFreeTxt, membershipBusy ? (upiCredentialMembershipRedeemBusy ? '兑换中' : '核验中') : '导入 Free TXT');
-      setNodeHidden(dom.btnStopUpiCredentialMembershipCheck, !upiCredentialMembershipCheckBusy);
-    }
-
-    function setUpiCredentialBackupPreviewText(content = '') {
-      if (dom.upiCredentialBackupPreview) {
-        dom.upiCredentialBackupPreview.value = String(content || '').trimEnd()
-          || '暂无已保存的 UPI 密码 2FA 备份。';
-      }
-      setNodeHidden(dom.upiCredentialBackupPreviewWrap, !upiCredentialBackupPreviewVisible);
-    }
-
-    const membershipCredentialHelpers = accountRecordsMembershipHelpers.createAccountRecordsMembershipHelpers({
-      state,
-      getLatestState: () => state.getLatestState(),
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
-      getUpiCredentialMembershipPoolRows: () => upiCredentialMembershipPoolRows,
-      isUpiCredentialMembershipEmailDisabled: (email) => disabledUpiCredentialMembershipEmails.has(email),
-      normalizeUpiCredentialMembershipEmail,
-      normalizeUpiCredentialMembershipText,
-      normalizeUpiCredentialMembershipTotpSecret,
-      collectUpiCredentialMembershipPasskeyNumericMetadataPatch,
-      getUpiCredentialMembershipFailureLimit: (row) => getUpiCredentialMembershipFailureLimit(row),
-      getRedeemChannelFailureCount: (row, channel) => getRedeemChannelFailureCount(row, channel),
-      isUpiCredentialMembershipRedeemLocked: (row) => isUpiCredentialMembershipRedeemLocked(row),
-      getUpiCredentialMembershipRedeemLockReason: (row) => getUpiCredentialMembershipRedeemLockReason(row),
-      getUpiCredentialMembershipGroup: (row) => getUpiCredentialMembershipGroup(row),
-      isRedeemableFreeUpiCredentialMembershipRow: (row) => isRedeemableFreeUpiCredentialMembershipRow(row),
-      isRedeemableFreeUpiCredentialMembershipRowForChannel: (row, channel) => isRedeemableFreeUpiCredentialMembershipRowForChannel(row, channel),
-      normalizeRedeemChannel,
-      getStoredCdkPoolText: (currentState, channel) => getStoredCdkPoolText(currentState, channel),
-      parseUpiRedeemCdkeyPoolText,
-      getUpiRedeemCdkeyUsage: (currentState, channel) => getUpiRedeemCdkeyUsage(currentState, channel),
-      normalizeUpiRedeemRemoteStatus,
-      isActiveUpiRedeemRemoteStatus,
-      normalizeUpiCredentialMembershipCapabilityFlag,
-      getUpiCredentialMembershipCheckBusy: () => upiCredentialMembershipCheckBusy,
-      getUpiCredentialMembershipRedeemBusy: () => upiCredentialMembershipRedeemBusy,
-    });
-    const {
-      getEnabledUpiCredentialMembershipPoolRows,
-      getEnabledFreeUpiCredentialMembershipRows,
-      getEnabledFreeUpiCredentialMembershipRowsForChannel,
-      getIdealFallbackUpiCredentialMembershipRows,
-      getEnabledFreeUpiCredentialMembershipRowsMissingAt,
-      getEnabledFreeUpiCredentialMembershipRowsWithAt,
-      getEnabledPlusUpiCredentialMembershipRowsWithAt,
-      buildUpiCredentialMembershipRedeemCredential,
-      buildUpiCredentialMembershipActionCredential,
-      getUpiRedeemUsageEmail,
-      getUpiRedeemCdkeyUsageEntryByCdkey,
-      findActiveUpiRedeemCdkeyUsageEntryByEmail,
-      getUpiCredentialMembershipRedeemCdkey,
-      getUpiCredentialMembershipRedeemCancelControl,
-      getAvailableUpiRedeemCdkeyCount,
-      isRemoteRedeemSuccess,
-      getUpiCredentialMembershipSingleRedeemRow,
-      getUpiRedeemUsageRelatedEmail,
-      buildUpiCredentialMembershipRedeemStatusRefreshTargets,
-      getUpiCredentialMembershipDisplayRowByEmail,
-    } = membershipCredentialHelpers;
-    const settingsPayload = accountRecordsSettingsPayload.createAccountRecordsSettingsPayload({
-      state,
-      dom,
-      getStoredCdkPoolText: (currentState, channel) => getStoredCdkPoolText(currentState, channel),
-    });
-
-    const redeemActions = accountRecordsRedeemActions.createAccountRecordsRedeemActions({
-      state,
-      helpers,
-      runtime,
-      normalizeRedeemChannel,
-      getRedeemChannelLabel: (channel) => getRedeemChannelLabel(channel),
-      normalizeUpiCredentialMembershipEmail,
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      refreshUpiCredentialMembershipCheckResults: (...args) => refreshUpiCredentialMembershipCheckResults(...args),
-      getMembershipCheckSettingsPayload: () => getMembershipCheckSettingsPayload(),
-      mergeManualFreeMembershipOverridesIntoResults: (results) => mergeManualFreeMembershipOverridesIntoResults(results),
-      getEnabledFreeUpiCredentialMembershipRowsForChannel: (channel) => getEnabledFreeUpiCredentialMembershipRowsForChannel(channel),
-      buildNoRedeemableForChannelMessage: (channel) => buildNoRedeemableForChannelMessage(channel),
-      getAvailableUpiRedeemCdkeyCount: (currentState, channel) => getAvailableUpiRedeemCdkeyCount(currentState, channel),
-      getIdealFallbackUpiCredentialMembershipRows: () => getIdealFallbackUpiCredentialMembershipRows(),
-      getUpiCredentialMembershipPoolRows: () => upiCredentialMembershipPoolRows,
-      setUpiCredentialMembershipPoolRows: (rows, source) => setUpiCredentialMembershipPoolRows(rows, source),
-      getUpiCredentialMembershipPoolSource: () => upiCredentialMembershipPoolSource,
-      deleteDisabledUpiCredentialMembershipEmail: (email) => disabledUpiCredentialMembershipEmails.delete(email),
-      getUpiCredentialMembershipSingleRedeemRow: (email) => getUpiCredentialMembershipSingleRedeemRow(email),
-      isRedeemableFreeUpiCredentialMembershipRow: (row) => isRedeemableFreeUpiCredentialMembershipRow(row),
-      getNotRedeemableFreeUpiCredentialMembershipReason: (row) => getNotRedeemableFreeUpiCredentialMembershipReason(row),
-      isRedeemableFreeUpiCredentialMembershipRowForChannel: (row, channel) => isRedeemableFreeUpiCredentialMembershipRowForChannel(row, channel),
-      buildUpiCredentialMembershipRedeemCredential: (row) => buildUpiCredentialMembershipRedeemCredential(row),
-      getUpiCredentialMembershipDisplayRowByEmail: (email) => getUpiCredentialMembershipDisplayRowByEmail(email),
-      getUpiCredentialMembershipRedeemCdkey: (row) => getUpiCredentialMembershipRedeemCdkey(row),
-      getStoredCdkPoolText: (currentState, channel) => getStoredCdkPoolText(currentState, channel),
-      buildUpiCredentialMembershipRedeemStatusRefreshTargets: (results) => (
-        buildUpiCredentialMembershipRedeemStatusRefreshTargets(
-          buildUpiCredentialMembershipDisplayRows(results || getUpiCredentialMembershipCheckResults())
+    function hasLoginMaterial(row = {}) {
+      return Boolean(
+        normalizeText(row.password || row.gptPassword)
+        && (
+          row.no2faFreeRoute === true
+          || normalizeText(row.totpMfaSecret || row.totpSecret)
+          || row.passkeyEnabled === true
+          || row.passkeyPrivateJwk
         )
-      ),
-      getUpiCredentialMembershipCheckBusy: () => upiCredentialMembershipCheckBusy,
-      setUpiCredentialMembershipRedeemBusy: (value) => {
-        upiCredentialMembershipRedeemBusy = value === true;
-      },
-      getUpiCredentialMembershipRedeemBusy: () => upiCredentialMembershipRedeemBusy,
-      setUpiCredentialMembershipAllRedeemBusy: (value) => {
-        upiCredentialMembershipAllRedeemBusy = value === true;
-      },
-      getUpiCredentialMembershipAllRedeemBusy: () => upiCredentialMembershipAllRedeemBusy,
-      setUpiCredentialMembershipRedeemStatusRefreshBusy: (value) => {
-        upiCredentialMembershipRedeemStatusRefreshBusy = value === true;
-      },
-      getUpiCredentialMembershipRedeemStatusRefreshBusy: () => upiCredentialMembershipRedeemStatusRefreshBusy,
-      setExportButtonsBusy,
-      isAutoRunRecordDisplayRunning: (currentState) => isAutoRunRecordDisplayRunning(currentState),
-      render: () => render(),
-    });
-    const {
-      refreshUpiCredentialMembershipRedeemStatuses,
-      startUpiCredentialMembershipFreeRedeem,
-      startUpiCredentialMembershipAllRedeem,
-      startSingleUpiCredentialMembershipFreeRedeem,
-      cancelUpiCredentialMembershipRedeemJob,
-    } = redeemActions;
-
-    function getMembershipCheckSettingsPayload() {
-      return settingsPayload.getMembershipCheckSettingsPayload();
+      );
     }
 
-    const membershipActions = accountRecordsMembershipActions.createAccountRecordsMembershipActions({
-      state,
-      helpers,
-      runtime,
-      getMembershipCheckSettingsPayload: () => getMembershipCheckSettingsPayload(),
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      mergeManualFreeMembershipOverridesIntoResults: (results) => mergeManualFreeMembershipOverridesIntoResults(results),
-      getEnabledFreeUpiCredentialMembershipRowsMissingAt: () => getEnabledFreeUpiCredentialMembershipRowsMissingAt(),
-      getEnabledFreeUpiCredentialMembershipRowsWithAt: () => getEnabledFreeUpiCredentialMembershipRowsWithAt(),
-      getEnabledPlusUpiCredentialMembershipRowsWithAt: () => getEnabledPlusUpiCredentialMembershipRowsWithAt(),
-      normalizeUpiCredentialMembershipText,
-      normalizeUpiCredentialMembershipEmail,
-      getUpiCredentialMembershipDisplayRowByEmail: (email) => getUpiCredentialMembershipDisplayRowByEmail(email),
-      hasUpiCredentialMembershipLoginMaterial: (row) => hasUpiCredentialMembershipLoginMaterial(row),
-      buildUpiCredentialMembershipActionCredential: (row) => buildUpiCredentialMembershipActionCredential(row),
-      mergeUpiCredentialMembershipResultItem: (item) => mergeUpiCredentialMembershipResultItem(item),
-      renderUpiCredentialMembershipCheckResults: () => renderUpiCredentialMembershipCheckResults(),
-      getUpiCredentialMembershipCheckingEmail: () => upiCredentialMembershipCheckingEmail,
-      getUpiCredentialMembershipLoginEmail: () => upiCredentialMembershipLoginEmail,
-      setUpiCredentialMembershipLoginEmail: (value) => {
-        upiCredentialMembershipLoginEmail = value || '';
-      },
-      setUpiCredentialMembershipCheckBusy: (value) => {
-        upiCredentialMembershipCheckBusy = value === true;
-      },
-      setUpiCredentialMembershipRedeemBusy: (value) => {
-        upiCredentialMembershipRedeemBusy = value === true;
-      },
-      setExportButtonsBusy,
-      render: () => render(),
-    });
-    const membershipAccessTokenActions = accountRecordsMembershipAccessTokenActions.createAccountRecordsMembershipAccessTokenActions({
-      state,
-      helpers,
-      runtime,
-      getMembershipCheckSettingsPayload: () => getMembershipCheckSettingsPayload(),
-      getEnabledFreeUpiCredentialMembershipRowsWithAt: () => getEnabledFreeUpiCredentialMembershipRowsWithAt(),
-      mergeManualFreeMembershipOverridesIntoResults: (results) => mergeManualFreeMembershipOverridesIntoResults(results),
-      normalizeUpiCredentialMembershipText,
-      refreshUpiCredentialMembershipCheckResults: (...args) => membershipActions.refreshUpiCredentialMembershipCheckResults(...args),
-      setUpiCredentialMembershipCheckBusy: (value) => {
-        upiCredentialMembershipCheckBusy = value === true;
-      },
-      setExportButtonsBusy,
-      render: () => render(),
-    });
-    const {
-      refreshUpiCredentialMembershipCheckResults,
-      fillFreeUpiCredentialMembershipAccessTokens,
-      identifyFreeUpiCredentialMembershipPlus,
-      verifyPlusUpiCredentialMembershipRows,
-      loginUpiCredentialMembershipAccount,
-      moveUpiCredentialMembershipAccountGroup,
-    } = membershipActions;
-    const { refreshUpiCredentialMembershipAccessTokens } = membershipAccessTokenActions;
-
-    const membershipPoolOps = accountRecordsMembershipPoolOps.createAccountRecordsMembershipPoolOps({
-      state,
-      dom,
-      helpers,
-      runtime,
-      parseUpiCredentialMembershipText,
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      mergeManualFreeMembershipOverridesIntoResults: (results) => mergeManualFreeMembershipOverridesIntoResults(results),
-      buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
-      normalizeUpiCredentialMembershipEmail,
-      isActiveUpiCredentialMembershipRedeemRowOrUsage: (row, results) => isActiveUpiCredentialMembershipRedeemRowOrUsage(row, results),
-      renderUpiCredentialMembershipCheckResults: () => renderUpiCredentialMembershipCheckResults(),
-      getEnabledUpiCredentialMembershipPoolRows: () => getEnabledUpiCredentialMembershipPoolRows(),
-      getEnabledFreeUpiCredentialMembershipRowsForChannel: (channel) => getEnabledFreeUpiCredentialMembershipRowsForChannel(channel),
-      startUpiCredentialMembershipFreeRedeem: (...args) => startUpiCredentialMembershipFreeRedeem(...args),
-      getMembershipCheckSettingsPayload: () => getMembershipCheckSettingsPayload(),
-      refreshUpiCredentialMembershipCheckResults: (...args) => refreshUpiCredentialMembershipCheckResults(...args),
-      getUpiCredentialMembershipPoolRows: () => upiCredentialMembershipPoolRows,
-      setUpiCredentialMembershipPoolRows: (rows, source) => setUpiCredentialMembershipPoolRows(rows, source),
-      getUpiCredentialMembershipPoolSource: () => upiCredentialMembershipPoolSource,
-      getUpiCredentialMembershipPoolLoaded: () => upiCredentialMembershipPoolLoaded,
-      setUpiCredentialMembershipPoolLoaded: (value) => {
-        upiCredentialMembershipPoolLoaded = value === true;
-      },
-      getUpiCredentialMembershipPoolLoading: () => upiCredentialMembershipPoolLoading,
-      setUpiCredentialMembershipPoolLoading: (value) => {
-        upiCredentialMembershipPoolLoading = value === true;
-      },
-      clearLocallyDeletedUpiCredentialMembershipEmails: () => {
-        membershipStateSync.clearLocallyDeletedUpiCredentialMembershipEmails();
-      },
-      clearLocallyDeletedRedeemPlusEmailsByChannel: () => {
-        membershipStateSync.clearLocallyDeletedRedeemPlusEmailsByChannel();
-      },
-      deleteLocallyDeletedUpiCredentialMembershipEmail: (email) => {
-        membershipStateSync.deleteLocallyDeletedUpiCredentialMembershipEmail(email);
-      },
-      setExportButtonsBusy,
-      render: () => render(),
-      getAvailableUpiRedeemCdkeyCount: (currentState, channel) => getAvailableUpiRedeemCdkeyCount(currentState, channel),
-      normalizeRedeemChannel,
-      getUpiCredentialMembershipCheckBusy: () => upiCredentialMembershipCheckBusy,
-      setUpiCredentialMembershipCheckBusy: (value) => {
-        upiCredentialMembershipCheckBusy = value === true;
-      },
-      getUpiCredentialMembershipRedeemBusy: () => upiCredentialMembershipRedeemBusy,
-      setUpiCredentialMembershipRedeemBusy: (value) => {
-        upiCredentialMembershipRedeemBusy = value === true;
-      },
-      getUpiCredentialMembershipAllRedeemBusy: () => upiCredentialMembershipAllRedeemBusy,
-      isAutoRunRecordDisplayRunning: (currentState) => isAutoRunRecordDisplayRunning(currentState),
-      setUpiCredentialBackupPreviewVisible: (value) => {
-        upiCredentialBackupPreviewVisible = value === true;
-      },
-      setUpiCredentialBackupPreviewText: (content) => setUpiCredentialBackupPreviewText(content),
-    });
-    const {
-      refreshUpiCredentialMembershipCredentialPool,
-      reloadUpiCredentialMembershipAfterRuntimeImport,
-      exportUpiCredentialBackupTextFile,
-      showUpiCredentialBackupText,
-      startUpiCredentialMembershipCheck,
-      startLocalUpiCredentialMembershipCheck,
-      openUpiCredentialMembershipTxtImport,
-      handleUpiCredentialMembershipTxtSelected,
-      stopUpiCredentialMembershipCheck,
-      resumeFreeRedeemAfterCdkImport,
-      stopUpiCredentialMembershipRedeem,
-    } = membershipPoolOps;
-
-    function mergeUpiCredentialMembershipResultItem(item = {}) {
-      const email = normalizeUpiCredentialMembershipEmail(item?.email);
-      if (!email) {
-        return;
-      }
-      const currentResults = getUpiCredentialMembershipCheckResults();
-      const items = Array.isArray(currentResults.items) ? [...currentResults.items] : [];
-      const index = items.findIndex((row) => normalizeUpiCredentialMembershipEmail(row?.email) === email);
-      const itemStatus = String(item.status || '').trim().toLowerCase();
-      const nextItem = {
-        ...(index >= 0 ? items[index] : {}),
-        ...item,
-        email,
+    function buildCredential(row = {}) {
+      return {
+        email: normalizeEmail(row.email),
+        password: normalizeText(row.password || row.gptPassword),
+        gptPassword: normalizeText(row.gptPassword || row.password),
+        totpMfaSecret: normalizeText(row.totpMfaSecret || row.totpSecret),
+        totpSecret: normalizeText(row.totpSecret || row.totpMfaSecret),
+        no2faFreeRoute: row.no2faFreeRoute === true,
+        accessToken: normalizeText(row.accessToken),
+        session: row.session && typeof row.session === 'object' && !Array.isArray(row.session) ? row.session : null,
+        verificationUrl: normalizeText(row.verificationUrl),
+        passkeyEnabled: row.passkeyEnabled === true,
+        passkeyCredentialId: normalizeText(row.passkeyCredentialId),
+        passkeyFactorId: normalizeText(row.passkeyFactorId),
+        passkeyRpId: normalizeText(row.passkeyRpId),
+        passkeyUserHandle: normalizeText(row.passkeyUserHandle),
+        passkeyPrivateJwk: row.passkeyPrivateJwk || null,
+        passkeyPublicKeyCose: row.passkeyPublicKeyCose || null,
+        passkeySignCount: row.passkeySignCount,
+        passkeyAlg: row.passkeyAlg,
       };
-      if (itemStatus === 'free') {
-        Object.assign(nextItem, buildFreeMembershipOverridePatch(item.checkedAt || nextItem.checkedAt));
-      } else if (itemStatus === 'paid') {
-        delete nextItem.membershipOverrideStatus;
-        delete nextItem.membershipOverrideCheckedAt;
+    }
+
+    function getSettingsPayload() {
+      const currentState = state.getLatestState?.() || {};
+      return {
+        upiCredentialMembershipCheckTotpApiBaseUrl: normalizeText(currentState.upiCredentialMembershipCheckTotpApiBaseUrl || 'https://cha.nerver.cc'),
+        upiCredentialMembershipCheckTotpLookupKey: normalizeText(currentState.upiCredentialMembershipCheckTotpLookupKey),
+      };
+    }
+
+    function formatTime(value = '') {
+      const timestamp = Date.parse(String(value || ''));
+      if (!Number.isFinite(timestamp)) return '--:--';
+      return new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+      }).format(new Date(timestamp));
+    }
+
+    function getStatusMeta(row = {}) {
+      if (normalizeEmail(checkingEmail) === normalizeEmail(row.email)) {
+        return { className: 'pending', label: '检测中', detail: '正在重新检测试用资格' };
       }
-      if (index >= 0) {
-        items[index] = nextItem;
-      } else {
-        items.push(nextItem);
+      if (normalizeEmail(loginEmail) === normalizeEmail(row.email)) {
+        return { className: 'pending', label: '登录中', detail: '正在登录账号' };
       }
-      state.syncLatestState({
-        upiCredentialMembershipCheckResults: {
-          ...currentResults,
-          items,
-          running: false,
-          updatedAt: new Date().toISOString(),
-          flowStage: '',
-          flowStageEmail: '',
-          total: Math.max(Number(currentResults.total) || 0, items.length),
-          completed: Math.max(Number(currentResults.completed) || 0, items.length),
+      const status = typeof resultsApi.getItemEligibilityStatus === 'function'
+        ? resultsApi.getItemEligibilityStatus(row)
+        : normalizeText(row.trialEligibilityStatus || 'unknown').toLowerCase();
+      const detail = normalizeText(row.trialEligibilityReason || row.reason);
+      if (status === 'eligible') return { className: 'success', label: '有试用资格', detail: detail || '已确认有试用资格' };
+      if (status === 'ineligible') return { className: 'failed', label: '无试用资格', detail: detail || '服务端明确返回无试用资格' };
+      if (status === 'failed') return { className: 'failed', label: '资格检测失败', detail: detail || '临时失败，账号保留在 Free 组' };
+      if (status === 'checking') return { className: 'pending', label: '检测中', detail: detail || '资格检测进行中' };
+      return { className: 'pending', label: '未检测资格', detail: detail || '等待资格检测' };
+    }
+
+    const rendererFactory = globalScope.SidepanelAccountRecordsMembershipResultsRenderer?.createAccountRecordsMembershipResultsRenderer;
+    if (typeof rendererFactory !== 'function') throw new Error('Free account results renderer is not loaded.');
+    const membershipRenderer = rendererFactory({
+      dom,
+      state,
+      escapeHtml,
+      formatAccountRecordTime: formatTime,
+      getUpiCredentialMembershipCheckResults: getResults,
+      buildUpiCredentialMembershipDisplayRows: getRows,
+      normalizeUpiCredentialMembershipEmail: normalizeEmail,
+      normalizeUpiCredentialMembershipText: normalizeText,
+      getUpiCredentialMembershipRowStatusMeta: getStatusMeta,
+      hasUpiCredentialMembershipLoginMaterial: hasLoginMaterial,
+      isAutoRunRecordDisplayRunning: (currentState = {}) => Boolean(currentState.autoRunning),
+      getUpiCredentialMembershipCheckBusy: () => busy,
+      getUpiCredentialMembershipCheckingEmail: () => checkingEmail,
+      getUpiCredentialMembershipLoginEmail: () => loginEmail,
+      getFreeExportIncludeVerificationUrl: () => includeVerificationUrl,
+      getFreeExportCredentialMode: () => exportCredentialMode,
+      getFreeSessionFillTask: getSessionTask,
+      isFreeSessionFillActive: hasActiveSessionTask,
+    });
+
+    async function refreshResults() {
+      const [response, taskResponse] = await Promise.all([
+        runtime.sendMessage?.({ type: 'GET_FREE_ACCOUNT_RESULTS', source: 'sidepanel', payload: {} }),
+        runtime.sendMessage?.({ type: 'GET_ACCOUNT_TASKS', source: 'sidepanel', payload: {} }).catch?.(() => null),
+      ]);
+      if (response?.error) throw new Error(response.error);
+      if (response?.results) syncResults(response.results);
+      if (Array.isArray(taskResponse?.tasks)) sessionTasks = taskResponse.tasks;
+      return response?.results || getResults();
+    }
+
+    function render(currentState = state.getLatestState?.() || {}) {
+      if (currentState.freeAccountResults && currentState !== state.getLatestState?.()) syncResults(currentState.freeAccountResults);
+      const results = getResults(currentState);
+      if (dom.accountRecordsMeta) dom.accountRecordsMeta.textContent = `Free 账号 ${results.items.length} 个`;
+      membershipRenderer.renderUpiCredentialMembershipCheckResults();
+    }
+
+    function groupRows(group = 'free') {
+      return getRows().filter((row) => {
+        const itemGroup = resultsApi.getItemGroup?.(row) || 'free';
+        return itemGroup === group && row.enabled !== false;
+      });
+    }
+
+    async function runBusy(action) {
+      if (busy || state.getLatestState?.()?.autoRunning || hasActiveSessionTask()) return;
+      busy = true;
+      render();
+      try {
+        await action();
+      } catch (error) {
+        helpers.showToast?.(error?.message || String(error), 'error');
+      } finally {
+        busy = false;
+        await refreshResults().catch(() => null);
+        render();
+      }
+    }
+
+    async function checkGroup(group = 'free') {
+      const credentials = groupRows(group).map(buildCredential);
+      if (!credentials.length) return helpers.showToast?.('当前分组没有可复检的启用账号。', 'warn', 1800);
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({
+          type: 'CHECK_FREE_ACCOUNT_ELIGIBILITY', source: 'sidepanel',
+          payload: { source: group === 'free-ineligible' ? 'ineligible-free-recheck' : 'free-recheck', credentials, settings: getSettingsPayload() },
+        });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+        helpers.showToast?.(`资格复检完成：有资格 ${response?.eligible?.length || 0}，无资格 ${response?.ineligible?.length || 0}，可重试 ${response?.retryable?.length || 0}。`, 'success', 2800);
+      });
+    }
+
+    async function checkOne(email = '') {
+      const row = getRowByEmail(email);
+      if (!row || row.enabled === false || checkingEmail) return;
+      checkingEmail = row.email;
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({
+          type: 'CHECK_FREE_ACCOUNT_ELIGIBILITY', source: 'sidepanel',
+          payload: { source: 'single-free-eligibility-check', credentials: [buildCredential(row)], settings: getSettingsPayload() },
+        });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+      });
+      checkingEmail = '';
+      render();
+    }
+
+    async function login(email = '') {
+      const row = getRowByEmail(email);
+      if (!row || !hasLoginMaterial(row) || loginEmail) return;
+      loginEmail = row.email;
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({
+          type: 'LOGIN_FREE_ACCOUNT', source: 'sidepanel',
+          payload: { email: row.email, source: 'row-login', readAccessToken: false, credential: buildCredential(row), settings: getSettingsPayload() },
+        });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+        helpers.showToast?.(`${row.email} 登录完成。`, 'success', 2000);
+      });
+      loginEmail = '';
+      render();
+    }
+
+    async function fillAccessTokens(group = 'free') {
+      const credentials = groupRows(group).filter((row) => !normalizeText(row.accessToken)).map(buildCredential);
+      if (!credentials.length) return helpers.showToast?.('当前分组没有缺 AT 的启用账号。', 'warn', 1800);
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({
+          type: 'FILL_FREE_ACCOUNT_ACCESS_TOKENS', source: 'sidepanel',
+          payload: { source: 'free-fill-at', credentials, settings: getSettingsPayload() },
+        });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+      });
+    }
+
+    async function refreshAccessTokens(group = 'free') {
+      const credentials = groupRows(group).filter((row) => normalizeText(row.accessToken)).map(buildCredential);
+      if (!credentials.length) return helpers.showToast?.('当前分组没有带 AT 的启用账号。', 'warn', 1800);
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({
+          type: 'REFRESH_FREE_ACCOUNT_ACCESS_TOKENS', source: 'sidepanel',
+          payload: { source: 'free-refresh-at', credentials, settings: getSettingsPayload() },
+        });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+      });
+    }
+
+    async function startSessionFill(group = 'free') {
+      if (busy || hasActiveSessionTask() || state.getLatestState?.()?.autoRunning) return;
+      const targets = groupRows(group).filter((row) => !hasCompleteSession(row));
+      if (!targets.length) return helpers.showToast?.('当前分组没有缺 Session 的启用账号。', 'warn', 1800);
+      const confirmed = await helpers.openConfirmModal?.({
+        title: `补充 Session（${targets.length} 个账号）`,
+        message: `任务会按顺序逐个登录 ${targets.length} 个账号，并切换当前 Chrome 中的 ChatGPT Cookie。开始后将退出当前 ChatGPT 登录，结束时浏览器可能停留在最后一个成功账号。每成功一个账号都会立即保存，完成后自动下载 Session TXT。`,
+        confirmLabel: '开始补充 Session',
+        confirmVariant: 'btn-primary',
+      });
+      if (!confirmed) return;
+      busy = true;
+      render();
+      try {
+        const response = await runtime.sendMessage?.({
+          type: 'START_FILL_FREE_ACCOUNT_SESSIONS',
+          source: 'sidepanel',
+          payload: {
+            group,
+            includeVerificationUrl: group === 'free' && includeVerificationUrl,
+            onlyMissing: true,
+            autoExport: true,
+          },
+        });
+        if (response?.error) throw new Error(response.error);
+        helpers.showToast?.(`已开始补充 Session：${response?.count || targets.length} 个账号。`, 'success', 2200);
+      } catch (error) {
+        helpers.showToast?.(error?.message || String(error), 'error');
+      } finally {
+        busy = false;
+        await refreshResults().catch(() => null);
+        render();
+        scheduleSessionTaskPoll();
+      }
+    }
+
+    async function resumeSessionFill(taskId = '') {
+      if (!normalizeText(taskId) || busy || hasActiveSessionTask() || state.getLatestState?.()?.autoRunning) return;
+      try {
+        const response = await runtime.sendMessage?.({
+          type: 'RESUME_FREE_ACCOUNT_SESSION_FILL',
+          source: 'sidepanel',
+          payload: { taskId: normalizeText(taskId) },
+        });
+        if (response?.error) throw new Error(response.error);
+        helpers.showToast?.(`已继续补充 Session，剩余约 ${response?.remainingCount || 0} 个账号。`, 'success', 2200);
+      } catch (error) {
+        helpers.showToast?.(error?.message || String(error), 'error');
+      } finally {
+        await refreshResults().catch(() => null);
+        render();
+        scheduleSessionTaskPoll();
+      }
+    }
+
+    async function stopSessionFill(taskId = '') {
+      try {
+        const response = await runtime.sendMessage?.({
+          type: 'STOP_FREE_ACCOUNT_SESSION_FILL',
+          source: 'sidepanel',
+          payload: { taskId: normalizeText(taskId) },
+        });
+        if (response?.error) throw new Error(response.error);
+        helpers.showToast?.('已请求停止，将在当前账号到达安全边界后退出。', 'warn', 2400);
+      } catch (error) {
+        helpers.showToast?.(error?.message || String(error), 'error');
+      } finally {
+        await refreshResults().catch(() => null);
+        render();
+        scheduleSessionTaskPoll();
+      }
+    }
+
+    async function exportGroup(group = 'free') {
+      const rows = groupRows(group);
+      if (!rows.length) return helpers.showToast?.('当前分组没有可导出的账号。', 'warn', 1800);
+      const response = await runtime.sendMessage?.({
+        type: 'EXPORT_FREE_ACCOUNT_RESULTS', source: 'sidepanel',
+        payload: {
+          status: group,
+          emails: rows.map((row) => row.email),
+          includeVerificationUrl: group === 'free' && includeVerificationUrl,
+          credentialMode: exportCredentialMode,
         },
       });
+      if (response?.error) throw new Error(response.error);
+      await helpers.downloadTextFile?.(
+        response.fileContent || '',
+        response.fileName || `${group}.txt`,
+        response.mimeType || 'text/plain;charset=utf-8'
+      );
+      if (response.missingSessionCount > 0) {
+        helpers.showToast?.(`已导出；其中 ${response.missingSessionCount} 个旧账号没有注册最终步骤保存的完整 Session。`, 'warn', 3200);
+      } else {
+        helpers.showToast?.(`已导出 ${rows.length} 个账号（${exportCredentialMode === 'session' ? 'Session' : 'AT'}）。`, 'success', 2200);
+      }
     }
 
-    const membershipResultOps = accountRecordsMembershipResultOps.createAccountRecordsMembershipResultOps({
-      state,
-      helpers,
-      runtime,
-      getAccountRunRecords: (currentState) => getAccountRunRecords(currentState),
-      getUpiRedeemCdkeyUsage: (currentState, channel) => getUpiRedeemCdkeyUsage(currentState, channel),
-      getUpiRedeemSuccessExportCdkeys,
-      buildUpiRedeemSuccessEmailExportRows,
-      summarizeUpiRedeemSuccessExportEligibility,
-      buildUpiRedeemSuccessExportBlockedMessage,
-      buildUpiRedeemSuccessEmailExportFileName,
-      setExportButtonsBusy,
-      render: () => render(),
-      getUpiCredentialMembershipCheckResults: (currentState) => getUpiCredentialMembershipCheckResults(currentState),
-      refreshUpiCredentialMembershipCheckResults: (...args) => refreshUpiCredentialMembershipCheckResults(...args),
-      mergeManualFreeMembershipOverridesIntoResults: (results) => mergeManualFreeMembershipOverridesIntoResults(results),
-      buildUpiCredentialMembershipDisplayRows: (results) => buildUpiCredentialMembershipDisplayRows(results),
-      isUpiCredentialMembershipRowInResultGroup: (row, status, channel) => isUpiCredentialMembershipRowInResultGroup(row, status, channel),
-      getFreeExportIncludeVerificationUrl,
-      getMembershipStatusTitle,
-      normalizeUpiCredentialMembershipEmail,
-      normalizeUpiCredentialMembershipText,
-      normalizeRedeemChannel,
-      isActiveUpiCredentialMembershipRedeemRowOrUsage: (row, results) => isActiveUpiCredentialMembershipRedeemRowOrUsage(row, results),
-      getUpiCredentialMembershipDisplayRowByEmail: (email, channel) => getUpiCredentialMembershipDisplayRowByEmail(email, channel),
-      addLocallyDeletedRedeemPlusEmails: (channel, emails) => addLocallyDeletedRedeemPlusEmails(channel, emails),
-      addLocallyDeletedUpiCredentialMembershipEmail: (email) => {
-        membershipStateSync.addLocallyDeletedUpiCredentialMembershipEmail(email);
-      },
-      removeDisabledUpiCredentialMembershipEmail: (email) => {
-        disabledUpiCredentialMembershipEmails.delete(email);
-      },
-      getUpiCredentialMembershipPoolRows: () => upiCredentialMembershipPoolRows,
-      setUpiCredentialMembershipPoolRows: (rows, source) => setUpiCredentialMembershipPoolRows(rows, source),
-      getUpiCredentialMembershipPoolSource: () => upiCredentialMembershipPoolSource,
-      getMembershipCheckSettingsPayload: () => getMembershipCheckSettingsPayload(),
-      getMembershipPlanLabel,
-      getUpiCredentialMembershipCheckingEmail: () => upiCredentialMembershipCheckingEmail,
-      setUpiCredentialMembershipCheckingEmail: (value) => {
-        upiCredentialMembershipCheckingEmail = value || '';
-      },
-      mergeUpiCredentialMembershipResultItem: (item) => mergeUpiCredentialMembershipResultItem(item),
-    });
-    const {
-      exportUpiRedeemSuccessEmailTextFile,
-      exportUpiCredentialMembershipCheckResultTextFile,
-      deleteUpiCredentialMembershipResultGroup,
-      deleteUpiCredentialMembershipCredential,
-      checkOneUpiCredentialMembership,
-    } = membershipResultOps;
+    async function deleteRows(emails = [], group = '') {
+      const normalized = [...new Set(emails.map(normalizeEmail).filter(Boolean))];
+      if (!normalized.length) return;
+      const confirmed = await helpers.openConfirmModal?.({
+        title: group ? `删除${group === 'free-ineligible' ? '无资格 Free' : 'Free'}分组` : '删除 Free 账号',
+        message: `确认删除 ${normalized.length} 条 Free 账号记录吗？账号运行历史不会被删除。`,
+        confirmLabel: '确认删除', confirmVariant: 'btn-danger',
+      });
+      if (!confirmed) return;
+      await runBusy(async () => {
+        const response = await runtime.sendMessage?.({ type: 'DELETE_FREE_ACCOUNT_RESULTS', source: 'sidepanel', payload: { status: group, emails: normalized } });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+      });
+    }
 
-    const panelEvents = accountRecordsPanelEvents.createAccountRecordsPanelEvents({
-      state,
-      dom,
-      helpers,
-      runtime,
-      FILTER_CONFIG,
-      render: () => render(),
-      refreshUpiCredentialMembershipCredentialPool: (...args) => refreshUpiCredentialMembershipCredentialPool(...args),
-      getUpiCredentialMembershipPoolLoaded: () => upiCredentialMembershipPoolLoaded,
-      setNodeHidden,
-      getDatasetValue,
-      findClosest,
-      buildRecordId,
-      getAccountRunRecords: (currentState) => getAccountRunRecords(currentState),
-      getSelectedRecordIds: () => selectedRecordIds,
-      getSelectionMode: () => selectionMode,
-      setSelectionModeState: (value) => {
-        selectionMode = value === true;
-      },
-      getActiveFilter: () => activeFilter,
-      setActiveFilter: (value) => {
-        activeFilter = value || 'all';
-      },
-      getCurrentPage: () => currentPage,
-      setCurrentPage: (value) => {
-        currentPage = value;
-      },
-      getEventsBound: () => eventsBound,
-      setEventsBound: (value) => {
-        eventsBound = value === true;
-      },
-      getUpiCredentialMembershipGroup: () => upiCredentialMembershipGroup,
-      setUpiCredentialMembershipGroup: (value) => {
-        upiCredentialMembershipGroup = value === 'paid' ? 'paid' : 'free';
-        renderUpiCredentialMembershipCheckResults();
-      },
-      toggleRecordSelectionImpl: (recordId, forceSelected) => toggleRecordSelection(recordId, forceSelected),
-      exportUpiRedeemSuccessEmailTextFile: (...args) => exportUpiRedeemSuccessEmailTextFile(...args),
-      showUpiCredentialBackupText: (...args) => showUpiCredentialBackupText(...args),
-      startLocalUpiCredentialMembershipCheck: (...args) => startLocalUpiCredentialMembershipCheck(...args),
-      openUpiCredentialMembershipTxtImport: (mode) => openUpiCredentialMembershipTxtImport(mode),
-      handleUpiCredentialMembershipTxtSelected: (...args) => handleUpiCredentialMembershipTxtSelected(...args),
-      stopUpiCredentialMembershipCheck: (...args) => stopUpiCredentialMembershipCheck(...args),
-      stopUpiCredentialMembershipRedeem: (...args) => stopUpiCredentialMembershipRedeem(...args),
-      checkOneUpiCredentialMembership: (...args) => checkOneUpiCredentialMembership(...args),
-      fillFreeUpiCredentialMembershipAccessTokens: (...args) => fillFreeUpiCredentialMembershipAccessTokens(...args),
-      refreshUpiCredentialMembershipAccessTokens: (...args) => refreshUpiCredentialMembershipAccessTokens(...args),
-      identifyFreeUpiCredentialMembershipPlus: (...args) => identifyFreeUpiCredentialMembershipPlus(...args),
-      verifyPlusUpiCredentialMembershipRows: (...args) => verifyPlusUpiCredentialMembershipRows(...args),
-      loginUpiCredentialMembershipAccount: (...args) => loginUpiCredentialMembershipAccount(...args),
-      moveUpiCredentialMembershipAccountGroup: (...args) => moveUpiCredentialMembershipAccountGroup(...args),
-      startUpiCredentialMembershipFreeRedeem: (...args) => startUpiCredentialMembershipFreeRedeem(...args),
-      startUpiCredentialMembershipAllRedeem: (...args) => startUpiCredentialMembershipAllRedeem(...args),
-      openRedeemChannelChoiceDialog: (...args) => helpers.openRedeemChannelChoiceDialog?.(...args),
-      toggleFreeExportIncludeVerificationUrl,
-      exportUpiCredentialMembershipCheckResultTextFile: (...args) => exportUpiCredentialMembershipCheckResultTextFile(...args),
-      deleteUpiCredentialMembershipResultGroup: (...args) => deleteUpiCredentialMembershipResultGroup(...args),
-      cancelUpiCredentialMembershipRedeemJob: (...args) => cancelUpiCredentialMembershipRedeemJob(...args),
-      deleteUpiCredentialMembershipCredential: (...args) => deleteUpiCredentialMembershipCredential(...args),
-      addDisabledUpiCredentialMembershipEmail: (email) => {
-        disabledUpiCredentialMembershipEmails.add(email);
-      },
-      removeDisabledUpiCredentialMembershipEmail: (email) => {
-        disabledUpiCredentialMembershipEmails.delete(email);
-      },
-      normalizeUpiCredentialMembershipEmail,
-    });
-    const {
-      bindEvents,
-      clearRecords,
-      closePanel,
-      deleteSelectedRecords,
-      openPanel,
-      reset,
-      setSelectionMode,
-      toggleSelectionMode,
-    } = panelEvents;
+    async function setEnabled(email = '', enabled = true) {
+      const row = getRowByEmail(email);
+      if (!row) return;
+      const nextItems = getRows().map((item) => item.email === row.email ? { ...item, enabled } : item);
+      const nextResults = resultsApi.normalizeResults?.({ ...getResults(), items: nextItems, updatedAt: new Date().toISOString() }) || { ...getResults(), items: nextItems };
+      syncResults(nextResults);
+      await runtime.sendMessage?.({
+        type: 'IMPORT_FREE_ACCOUNT_RESULTS', source: 'sidepanel',
+        payload: { source: 'toggle-enabled', results: nextResults },
+      }).then((response) => {
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+      }).catch((error) => helpers.showToast?.(`更新启用状态失败：${error.message}`, 'error'));
+      render();
+    }
+
+    async function importFile(event) {
+      const input = event?.target;
+      const file = input?.files?.[0];
+      if (input) input.value = '';
+      if (!file) return;
+      const text = await file.text();
+      if (!text.trim()) return helpers.showToast?.('导入文件为空。', 'warn', 1800);
+      await runBusy(async () => {
+        let payload = { source: 'free-import', text };
+        if (/^\s*[{[]/.test(text)) {
+          try { payload = { source: 'free-v3-json', results: JSON.parse(text) }; } catch { /* plain text */ }
+        }
+        const response = await runtime.sendMessage?.({ type: 'IMPORT_FREE_ACCOUNT_RESULTS', source: 'sidepanel', payload });
+        if (response?.error) throw new Error(response.error);
+        syncResults(response?.results);
+        helpers.showToast?.(`已导入 ${response?.importedCount || 0} 条 Free 账号。`, 'success', 2200);
+      });
+    }
+
+    async function stopCheck() {
+      const response = await runtime.sendMessage?.({ type: 'STOP_FREE_ACCOUNT_CHECK', source: 'sidepanel', payload: {} });
+      if (response?.error) throw new Error(response.error);
+      syncResults(response?.results);
+      busy = false;
+      render();
+    }
+
+    function handleClick(event) {
+      const target = event?.target?.closest?.('[data-free-account-check-group],[data-free-account-fill-session],[data-free-account-resume-session],[data-free-account-stop-session],[data-upi-membership-check-one],[data-upi-membership-login],[data-upi-membership-export],[data-upi-membership-delete-group],[data-upi-membership-delete],[data-upi-membership-fill-free-at],[data-upi-membership-refresh-invalid-at],[data-upi-membership-import-free],[data-upi-membership-stop-check],[data-upi-membership-toggle-export-verification-url]');
+      if (!target) return;
+      if (target.hasAttribute('data-free-account-check-group')) return void checkGroup(target.getAttribute('data-free-account-check-group') || 'free');
+      if (target.hasAttribute('data-upi-membership-check-one')) return void checkOne(target.getAttribute('data-upi-membership-check-one'));
+      if (target.hasAttribute('data-upi-membership-login')) return void login(target.getAttribute('data-upi-membership-login'));
+      if (target.hasAttribute('data-upi-membership-export')) return void exportGroup(target.getAttribute('data-upi-membership-export') || 'free');
+      if (target.hasAttribute('data-upi-membership-delete-group')) {
+        const group = target.getAttribute('data-upi-membership-delete-group') || 'free';
+        return void deleteRows(groupRows(group).map((row) => row.email), group);
+      }
+      if (target.hasAttribute('data-upi-membership-delete')) return void deleteRows([target.getAttribute('data-upi-membership-delete')]);
+      if (target.hasAttribute('data-upi-membership-fill-free-at')) return void fillAccessTokens(target.getAttribute('data-free-account-group') || 'free');
+      if (target.hasAttribute('data-upi-membership-refresh-invalid-at')) return void refreshAccessTokens(target.getAttribute('data-free-account-group') || 'free');
+      if (target.hasAttribute('data-free-account-fill-session')) return void startSessionFill(target.getAttribute('data-free-account-fill-session') || 'free');
+      if (target.hasAttribute('data-free-account-resume-session')) return void resumeSessionFill(target.getAttribute('data-free-account-resume-session'));
+      if (target.hasAttribute('data-free-account-stop-session')) return void stopSessionFill(target.getAttribute('data-free-account-stop-session'));
+      if (target.hasAttribute('data-upi-membership-import-free')) return void dom.inputUpiCredentialMembershipTxt?.click?.();
+      if (target.hasAttribute('data-upi-membership-stop-check')) return void stopCheck();
+      if (target.hasAttribute('data-upi-membership-toggle-export-verification-url')) {
+        includeVerificationUrl = !includeVerificationUrl;
+        render();
+      }
+    }
+
+    function bindEvents() {
+      if (eventsBound) return;
+      eventsBound = true;
+      dom.btnOpenAccountRecords?.addEventListener('click', openPanel);
+      dom.btnCloseAccountRecords?.addEventListener('click', closePanel);
+      dom.accountRecordsOverlay?.addEventListener('click', (event) => {
+        if (event.target === dom.accountRecordsOverlay) closePanel();
+      });
+      dom.upiCredentialMembershipCheckResults?.addEventListener('click', handleClick);
+      dom.upiCredentialMembershipCheckResults?.addEventListener('change', (event) => {
+        const exportMode = event?.target?.closest?.('[data-free-account-export-credential-mode]');
+        if (exportMode) {
+          exportCredentialMode = exportMode.value === 'session' ? 'session' : 'access-token';
+          render();
+          return;
+        }
+        const toggle = event?.target?.closest?.('[data-upi-membership-toggle]');
+        if (toggle) void setEnabled(toggle.getAttribute('data-upi-membership-toggle'), toggle.checked !== false);
+      });
+      dom.inputUpiCredentialMembershipTxt?.addEventListener('change', (event) => void importFile(event));
+    }
+
+    function openPanel() {
+      panelOpen = true;
+      if (dom.accountRecordsOverlay) dom.accountRecordsOverlay.hidden = false;
+      globalScope.document?.body?.classList?.add('account-records-open');
+      void refreshResults().catch(() => null).finally(() => {
+        render();
+        scheduleSessionTaskPoll();
+      });
+    }
+
+    function closePanel() {
+      panelOpen = false;
+      clearSessionTaskPoll();
+      if (dom.accountRecordsOverlay) dom.accountRecordsOverlay.hidden = true;
+      globalScope.document?.body?.classList?.remove('account-records-open');
+    }
 
     return {
       bindEvents,
-      clearRecords,
       closePanel,
-      deleteSelectedRecords,
-      exportUpiCredentialBackupTextFile,
-      exportUpiRedeemSuccessEmailTextFile,
-      getFreeExportIncludeVerificationUrl,
-      getOperationDecision,
+      getFreeExportCredentialMode: () => exportCredentialMode,
+      getFreeExportIncludeVerificationUrl: () => includeVerificationUrl,
       openPanel,
-      reloadUpiCredentialMembershipAfterRuntimeImport,
+      reloadUpiCredentialMembershipAfterRuntimeImport: refreshResults,
       render,
-      reset,
-      resumeFreeRedeemAfterCdkImport,
-      setSelectionMode,
-      showUpiCredentialBackupText,
-      summarizeAccountRunHistory,
-      toggleFreeExportIncludeVerificationUrl,
-      toggleSelectionMode,
+      reset: render,
+      summarizeAccountRunHistory: () => ({ total: 0, success: 0, running: 0, failed: 0, stopped: 0, retryRecordCount: 0, retryTotal: 0 }),
+      toggleFreeExportIncludeVerificationUrl: () => { includeVerificationUrl = !includeVerificationUrl; render(); },
     };
   }
 
-  globalScope.SidepanelAccountRecordsManager = {
-    createAccountRecordsManager,
-  };
+  const api = { createAccountRecordsManager };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  globalScope.SidepanelAccountRecordsManager = api;
 })(typeof window !== 'undefined' ? window : globalThis);

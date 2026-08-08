@@ -1,4 +1,4 @@
-// background/membership/login-session-executor.js - Browser login/session executor for UPI membership checks
+// Browser login/session executor for Free account checks.
 (function attachMembershipLoginSessionExecutor(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) {
@@ -18,9 +18,7 @@
     'passkey-login',
     'totp',
     'token',
-    'subscription-check',
-    'upi-redeem-plus',
-    'confirm-plus',
+    'eligibility-check',
   ]);
 
   function normalizeString(value = '') {
@@ -694,7 +692,7 @@
                   sessionMismatchRetry: false,
                 });
               }
-              throw createMismatchError(`${mismatchMessage}，已停止提交 CDK。`, {
+              throw createMismatchError(`${mismatchMessage}，已停止当前操作。`, {
                 sessionEmail,
                 targetEmail,
               });
@@ -884,7 +882,7 @@
             sessionMismatchRetry: false,
           });
         }
-        throw createMismatchError(`${mismatchMessage}，已停止提交 CDK。`, {
+        throw createMismatchError(`${mismatchMessage}，已停止当前操作。`, {
           sessionEmail,
           targetEmail,
         });

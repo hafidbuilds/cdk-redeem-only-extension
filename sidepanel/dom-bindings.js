@@ -11,6 +11,7 @@
     const accountTaskEvents = document.getElementById('account-task-events');
     const accountTaskMeta = document.getElementById('account-task-meta');
     const btnRefreshAccountTasks = document.getElementById('btn-refresh-account-tasks');
+    const btnClearAccountTasks = document.getElementById('btn-clear-account-tasks');
     const btnAccountRecordsPrev = document.getElementById('btn-account-records-prev');
     const btnAccountRecordsNext = document.getElementById('btn-account-records-next');
     const btnCloseAccountRecords = document.getElementById('btn-close-account-records');
@@ -175,13 +176,8 @@
     const btnToggleUpiInfoHelperPin = document.getElementById('btn-toggle-upiInfo-helper-pin');
     const rowUpiSubscriptionApiBaseUrl = document.getElementById('row-upi-subscription-api-base-url');
     const inputUpiSubscriptionApiBaseUrl = document.getElementById('input-upi-subscription-api-base-url');
-    const rowUpiRedeemExternalApiKey = document.getElementById('row-upi-redeem-external-api-key');
-    const inputUpiRedeemExternalApiKey = document.getElementById('input-upi-redeem-external-api-key');
-    const btnToggleUpiRedeemExternalApiKey = document.getElementById('btn-toggle-upi-redeem-external-api-key');
-    const rowUpiRedeemClientId = document.getElementById('row-upi-redeem-client-id');
-    const inputUpiRedeemClientId = document.getElementById('input-upi-redeem-client-id');
-    const rowUpiRedeemFailedAccountRetryLimit = document.getElementById('row-upi-redeem-failed-account-retry-limit');
-    const inputUpiRedeemFailedAccountRetryLimit = document.getElementById('input-upi-redeem-failed-account-retry-limit');
+    const rowGcashEligibilityApiToken = document.getElementById('row-gcash-eligibility-api-token');
+    const inputGcashEligibilityApiToken = document.getElementById('input-gcash-eligibility-api-token');
     const rowTotpMfaAfterProfileEnabled = document.getElementById('row-totp-mfa-after-profile-enabled');
     const inputTotpMfaAfterProfileEnabled = document.getElementById('input-totp-mfa-after-profile-enabled');
     const rowRegistrationFreeRoute = document.getElementById('row-registration-free-route');
@@ -192,22 +188,6 @@
     const inputUpiCredentialMembershipTotpApiBaseUrl = document.getElementById('input-upi-credential-membership-totp-api-base-url');
     const rowUpiCredentialMembershipTotpLookupKey = document.getElementById('row-upi-credential-membership-totp-lookup-key');
     const inputUpiCredentialMembershipTotpLookupKey = document.getElementById('input-upi-credential-membership-totp-lookup-key');
-    const rowUpiRedeemStopAfterRedeem = document.getElementById('row-upi-redeem-stop-after-redeem');
-    const selectUpiRedeemAfterMode = document.getElementById('select-upi-redeem-after-mode');
-    const inputUpiRedeemStopAfterRedeem = document.getElementById('input-upi-redeem-stop-after-redeem');
-    const rowUpiRedeemCdkeyPool = document.getElementById('row-upi-redeem-cdkey-pool');
-    const inputUpiRedeemCdkeyPool = document.getElementById('input-upi-redeem-cdkey-pool');
-    const btnImportCdkPool = document.getElementById('btn-import-cdk-pool');
-    const btnDeleteAllCdkPool = document.getElementById('btn-delete-all-cdk-pool');
-    const upiRedeemCdkeyPoolSummary = document.getElementById('upi-redeem-cdkey-pool-summary');
-    const inputIdealRedeemCdkeyPool = document.getElementById('input-ideal-redeem-cdkey-pool');
-    const btnImportIdealCdkPool = document.getElementById('btn-import-ideal-cdk-pool');
-    const btnDeleteAllIdealCdkPool = document.getElementById('btn-delete-all-ideal-cdk-pool');
-    const idealRedeemCdkeyPoolSummary = document.getElementById('ideal-redeem-cdkey-pool-summary');
-    const inputPixRedeemCdkeyPool = document.getElementById('input-pix-redeem-cdkey-pool');
-    const btnImportPixCdkPool = document.getElementById('btn-import-pix-cdk-pool');
-    const btnDeleteAllPixCdkPool = document.getElementById('btn-delete-all-pix-cdk-pool');
-    const pixRedeemCdkeyPoolSummary = document.getElementById('pix-redeem-cdkey-pool-summary');
     const btnShowUpiCredentialBackups = document.getElementById('btn-show-upi-credential-backups');
     const btnExportUpiCredentialBackups = document.getElementById('btn-export-upi-credential-backups');
     const btnCheckUpiCredentialMembershipLocal = document.getElementById('btn-check-upi-credential-membership-local');
@@ -215,14 +195,9 @@
     const btnImportUpiCredentialMembershipFreeTxt = document.getElementById('btn-import-upi-credential-membership-free-txt');
     const btnStopUpiCredentialMembershipCheck = document.getElementById('btn-stop-upi-credential-membership-check');
     const inputUpiCredentialMembershipTxt = document.getElementById('input-upi-credential-membership-txt');
-    const btnExportUpiRedeemSuccessRecords = document.getElementById('btn-export-upi-redeem-success-records');
-    const btnUpiRedeemCdkeyStatusRefresh = document.getElementById('btn-upi-redeem-cdkey-status-refresh');
     const upiCredentialBackupPreviewWrap = document.getElementById('upi-credential-backup-preview-wrap');
     const upiCredentialBackupPreview = document.getElementById('upi-credential-backup-preview');
     const upiCredentialMembershipCheckResults = document.getElementById('upi-credential-membership-check-results');
-    const upiRedeemCdkeyStatusList = document.getElementById('upi-redeem-cdkey-status-list');
-    const idealRedeemCdkeyStatusList = document.getElementById('ideal-redeem-cdkey-status-list');
-    const pixRedeemCdkeyStatusList = document.getElementById('pix-redeem-cdkey-status-list');
     const rowLegacyPayCountryCode = document.getElementById('row-legacyPay-country-code');
     const selectLegacyPayCountryCode = document.getElementById('select-legacyPay-country-code');
     const rowLegacyPayOtp = document.getElementById('row-legacyPay-otp');
@@ -519,6 +494,7 @@
       accountTaskEvents,
       accountTaskMeta,
       btnRefreshAccountTasks,
+      btnClearAccountTasks,
       btnAccountRecordsPrev,
       btnAccountRecordsNext,
       btnCloseAccountRecords,
@@ -683,13 +659,8 @@
       btnToggleUpiInfoHelperPin,
       rowUpiSubscriptionApiBaseUrl,
       inputUpiSubscriptionApiBaseUrl,
-      rowUpiRedeemExternalApiKey,
-      inputUpiRedeemExternalApiKey,
-      btnToggleUpiRedeemExternalApiKey,
-      rowUpiRedeemClientId,
-      inputUpiRedeemClientId,
-      rowUpiRedeemFailedAccountRetryLimit,
-      inputUpiRedeemFailedAccountRetryLimit,
+      rowGcashEligibilityApiToken,
+      inputGcashEligibilityApiToken,
       rowTotpMfaAfterProfileEnabled,
       inputTotpMfaAfterProfileEnabled,
       rowRegistrationFreeRoute,
@@ -700,22 +671,6 @@
       inputUpiCredentialMembershipTotpApiBaseUrl,
       rowUpiCredentialMembershipTotpLookupKey,
       inputUpiCredentialMembershipTotpLookupKey,
-      rowUpiRedeemStopAfterRedeem,
-      selectUpiRedeemAfterMode,
-      inputUpiRedeemStopAfterRedeem,
-      rowUpiRedeemCdkeyPool,
-      inputUpiRedeemCdkeyPool,
-      btnImportCdkPool,
-      btnDeleteAllCdkPool,
-      upiRedeemCdkeyPoolSummary,
-      inputIdealRedeemCdkeyPool,
-      btnImportIdealCdkPool,
-      btnDeleteAllIdealCdkPool,
-      idealRedeemCdkeyPoolSummary,
-      inputPixRedeemCdkeyPool,
-      btnImportPixCdkPool,
-      btnDeleteAllPixCdkPool,
-      pixRedeemCdkeyPoolSummary,
       btnShowUpiCredentialBackups,
       btnExportUpiCredentialBackups,
       btnCheckUpiCredentialMembershipLocal,
@@ -723,14 +678,9 @@
       btnImportUpiCredentialMembershipFreeTxt,
       btnStopUpiCredentialMembershipCheck,
       inputUpiCredentialMembershipTxt,
-      btnExportUpiRedeemSuccessRecords,
-      btnUpiRedeemCdkeyStatusRefresh,
       upiCredentialBackupPreviewWrap,
       upiCredentialBackupPreview,
       upiCredentialMembershipCheckResults,
-      upiRedeemCdkeyStatusList,
-      idealRedeemCdkeyStatusList,
-      pixRedeemCdkeyStatusList,
       rowLegacyPayCountryCode,
       selectLegacyPayCountryCode,
       rowLegacyPayOtp,

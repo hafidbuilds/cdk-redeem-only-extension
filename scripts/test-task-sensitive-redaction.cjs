@@ -34,3 +34,29 @@ test('background log persistence uses the shared redactor', async () => {
   await logging.addLog('password=plain-secret Bearer token-value-123456789');
   assert.doesNotMatch(JSON.stringify(state.logs), /plain-secret|token-value-123456789/);
 });
+
+test('background log append reads only the session log buffer when available', async () => {
+  const state = { logs: [{ message: 'existing', timestamp: 1 }] };
+  let fullStateReads = 0;
+  let sessionLogReads = 0;
+  const logging = require('../background/logging-status.js').createLoggingStatus({
+    chrome: { runtime: { sendMessage: async () => {} } },
+    DEFAULT_STATE: { nodeStatuses: {} },
+    getState: async () => {
+      fullStateReads += 1;
+      return state;
+    },
+    getSessionLogs: async () => {
+      sessionLogReads += 1;
+      return state.logs;
+    },
+    setState: async (patch) => Object.assign(state, patch),
+    redactText: redactor.redactText,
+  });
+
+  await logging.addLog('next');
+
+  assert.equal(fullStateReads, 0);
+  assert.equal(sessionLogReads, 1);
+  assert.equal(state.logs.length, 2);
+});

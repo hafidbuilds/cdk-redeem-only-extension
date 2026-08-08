@@ -1,12 +1,15 @@
 (function attachBackgroundAutoRunRetryPolicy(root, factory) {
   const api = factory();
-  if (root) {
-    root.MultiPageBackgroundAutoRunRetryPolicy = api;
-  }
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = api;
-  }
+  if (root) root.MultiPageBackgroundAutoRunRetryPolicy = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createBackgroundAutoRunRetryPolicyModule() {
+  const NODE_FETCH_NETWORK_RETRY_POLICIES = new Map([
+    ['fetch-signup-code', [3, 12000]], ['fetch-gpt-password-code', [3, 12000]], ['check-trial-eligibility', [3, 12000]],
+  ]);
+  function getNodeFetchNetworkRetryPolicy(nodeId = '', executeKey = '') {
+    const [maxAttempts, cooldownMs] = NODE_FETCH_NETWORK_RETRY_POLICIES.get(String(executeKey || nodeId || '').trim()) || [];
+    return maxAttempts ? { maxAttempts, cooldownMs } : null;
+  }
   function createAutoRunRetryPolicy(deps = {}) {
     const getErrorMessage = typeof deps.getErrorMessage === 'function'
       ? deps.getErrorMessage
@@ -16,16 +19,11 @@
       : (typeof globalThis.isHostedCheckoutCardFallbackFailure === 'function'
           ? globalThis.isHostedCheckoutCardFallbackFailure.bind(globalThis)
           : null);
-
-    function normalizeRecordNode(value = '') {
-      return String(value || '').trim();
-    }
-
+    function normalizeRecordNode(value = '') { return String(value || '').trim(); }
     function extractNodeFromRecordStatus(status = '') {
       const match = String(status || '').trim().match(/^node:([^:]+):(failed|stopped)$/i);
       return match ? normalizeRecordNode(match[1]) : '';
     }
-
     function getKnownNodeIdsFromState(state = {}) {
       const ids = new Set();
       for (const key of Object.keys(state?.nodeStatuses || {})) {
@@ -34,7 +32,6 @@
           ids.add(nodeId);
         }
       }
-
       const currentNodeId = normalizeRecordNode(state?.currentNodeId);
       if (currentNodeId) {
         ids.add(currentNodeId);
@@ -42,7 +39,6 @@
 
       return Array.from(ids);
     }
-
     function inferRecordNodeFromState(state = {}, preferredStatuses = []) {
       const statuses = state?.nodeStatuses || {};
       const preferredStatusSet = new Set(preferredStatuses.map((item) => String(item || '').trim()).filter(Boolean));
@@ -67,7 +63,6 @@
 
       return '';
     }
-
     function inferRecordNodeFromError(errorLike = null) {
       if (!errorLike || typeof errorLike !== 'object') {
         return '';
@@ -77,7 +72,6 @@
         || normalizeRecordNode(errorLike.nodeId)
         || normalizeRecordNode(errorLike.currentNodeId);
     }
-
     function resolveAutoRunAccountRecordStatus(status, state = {}, errorLike = null) {
       const normalizedStatus = String(status || '').trim().toLowerCase();
       const explicitNode = extractNodeFromRecordStatus(status);
@@ -98,7 +92,6 @@
 
       return status;
     }
-
     function isUpiAccountIneligibleFailure(error) {
       const rawMessage = String(typeof error === 'string' ? error : error?.message || '');
       const message = String(getErrorMessage(error) || rawMessage);
@@ -115,25 +108,23 @@
       const hasExplicitIneligibleResult = /UPI_ACCOUNT_INELIGIBLE::|not[\s_-]*eligible|ineligible|无试用资格|账号[^\n]*无资格|未通过[^\n]*试用资格/i.test(combinedMessage);
       return hasUpiEligibilityContext && hasExplicitIneligibleResult;
     }
-
     function isSessionFrameUnavailableFailure(error) {
       const message = String(getErrorMessage(error) || error?.message || error || '');
       return error?.code === 'CHATGPT_SESSION_FRAME_UNAVAILABLE'
         || /CHATGPT_SESSION_FRAME_UNAVAILABLE|SET_GPT_PASSWORD_(?:SESSION_EXPIRED|RESET_ENTRY_UNAVAILABLE)|读取 SESSION\/AT 时持续切换|重新定位标签页\s*\d+\s*次仍未恢复/i.test(message);
     }
-
     function isSignupPasswordSubmitUncertainFailure(error) {
       const message = String(getErrorMessage(error) || error?.message || error || '');
-      return ['SIGNUP_EMAIL_SUBMIT_UNCERTAIN', 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN'].includes(error?.code)
-        || /SIGNUP_(?:EMAIL|PASSWORD)_SUBMIT_UNCERTAIN::/i.test(message);
+      return ['SIGNUP_EMAIL_SUBMIT_UNCERTAIN', 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN'].includes(error?.code) || /SIGNUP_(?:EMAIL|PASSWORD)_SUBMIT_UNCERTAIN::/i.test(message);
     }
-
+    function isSignupExistingTotpLoginFailure(error) {
+      const message = String(getErrorMessage(error) || error?.message || error || '');
+      return error?.code === 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED' || /SIGNUP_EXISTING_TOTP_LOGIN_FAILED::/i.test(message);
+    }
     function getMaxAttemptsForRound(options = {}) {
       const attemptRun = Math.max(1, Math.floor(Number(options.attemptRun) || 1));
       const maxRetriesPerRound = Math.max(0, Math.floor(Number(deps.AUTO_RUN_MAX_RETRIES_PER_ROUND) || 0));
-      return options.autoRunSkipFailures || options.autoRunRetryNonFreeTrial || options.autoRunRetryLegacyWalletCallback
-        ? maxRetriesPerRound + 1
-        : Math.max(maxRetriesPerRound + 1, attemptRun);
+      return options.autoRunSkipFailures || options.autoRunRetryNonFreeTrial || options.autoRunRetryLegacyWalletCallback ? maxRetriesPerRound + 1 : Math.max(maxRetriesPerRound + 1, attemptRun);
     }
 
     function evaluateAttemptFailure(options = {}) {
@@ -150,17 +141,17 @@
       const reason = blockedByCustomEmailPoolEmpty
         ? rawReason.replace(/^CUSTOM_EMAIL_POOL_EXHAUSTED::/i, '').trim()
         : rawReason;
-
       const blockedByUpiAccountIneligible = isUpiAccountIneligibleFailure(error);
       const blockedBySessionFrameUnavailable = isSessionFrameUnavailableFailure(error);
       const blockedBySignupPasswordSubmitUncertain = isSignupPasswordSubmitUncertainFailure(error);
+      const blockedBySignupExistingTotpLogin = isSignupExistingTotpLoginFailure(error);
+      const blockedByAccountDeactivated = typeof deps.isAccountDeactivatedFailure === 'function'
+        ? deps.isAccountDeactivatedFailure(error)
+        : error?.code === 'ACCOUNT_DEACTIVATED' || /ACCOUNT_DEACTIVATED::|account[_\s-]*deactivated|账号.*(?:删除|停用|封禁)/i.test(rawReason);
+      const blockedByPreserveSignupSession = error?.preserveSignupSession === true;
       const blockedByPlusNonFreeTrial = !blockedByUpiAccountIneligible
         && typeof deps.isChatgptSessionReaderNonFreeTrialFailure === 'function'
         && deps.isChatgptSessionReaderNonFreeTrialFailure(error);
-      const blockedByUpiRedeemBackendFailure = typeof deps.isUpiRedeemBackendFailure === 'function'
-        && deps.isUpiRedeemBackendFailure(error);
-      const blockedByUpiRedeemNetworkFailure = typeof deps.isUpiRedeemNetworkFailure === 'function'
-        && deps.isUpiRedeemNetworkFailure(error);
       const blockedByCardHelperTaskEnded = typeof deps.isCardHelperTaskEndedFailure === 'function'
         ? deps.isCardHelperTaskEndedFailure(error)
         : /CARD_HELPER_TASK_ENDED::/i.test(error?.message || String(error || ''));
@@ -180,13 +171,8 @@
         && deps.isSignupUserAlreadyExistsFailure(error);
       const blockedByStep4Route405 = typeof deps.isStep4Route405RecoveryLimitFailure === 'function'
         && deps.isStep4Route405RecoveryLimitFailure(error);
-
       const retryablePlusNonFreeTrial = blockedByPlusNonFreeTrial
         && options.autoRunRetryNonFreeTrial
-        && attemptRun < maxRetryAttempts;
-      const retryableUpiRedeemBackendFailure = blockedByUpiRedeemBackendFailure
-        && attemptRun < maxRetryAttempts;
-      const retryableUpiRedeemNetworkFailure = blockedByUpiRedeemNetworkFailure
         && attemptRun < maxRetryAttempts;
       const retryableHostedCheckoutGenericError = blockedByHostedCheckoutGenericError
         && options.autoRunRetryLegacyWalletCallback
@@ -194,12 +180,13 @@
       const retryableHostedCheckoutCardFallback = blockedByHostedCheckoutCardFallback
         && attemptRun < maxRetryAttempts;
       const canRetry = !blockedByUpiAccountIneligible
+        && !blockedByAccountDeactivated
         && !blockedBySessionFrameUnavailable
         && !blockedBySignupPasswordSubmitUncertain
+        && !blockedBySignupExistingTotpLogin
+        && !blockedByPreserveSignupSession
         && !blockedByCustomEmailPoolEmpty
         && !blockedByPlusNonFreeTrial
-        && !blockedByUpiRedeemBackendFailure
-        && !blockedByUpiRedeemNetworkFailure
         && !blockedByCardHelperTaskEnded
         && !blockedByHostedCheckoutGenericError
         && !blockedByHostedCheckoutCardFallback
@@ -208,7 +195,6 @@
         && !blockedBySignupUserAlreadyExists
         && options.autoRunSkipFailures
         && attemptRun < maxAttemptsForRound;
-
       return {
         reason,
         attemptRun,
@@ -218,52 +204,40 @@
         maxAttemptsForRound,
         maxRetryAttempts,
         blockedByCardHelperTaskEnded,
+        blockedByAccountDeactivated,
         blockedByCloudCheckoutAlreadyPaid,
         blockedByCustomEmailPoolEmpty,
         blockedByHostedCheckoutCardFallback,
         blockedByHostedCheckoutGenericError,
         blockedByHostedCheckoutVerificationResendLimit,
         blockedByPlusNonFreeTrial,
+        blockedByPreserveSignupSession,
+        blockedBySignupExistingTotpLogin,
         blockedBySignupUserAlreadyExists,
         blockedBySessionFrameUnavailable,
         blockedBySignupPasswordSubmitUncertain,
         blockedByStep4Route405,
         blockedByUpiAccountIneligible,
-        blockedByUpiRedeemBackendFailure,
-        blockedByUpiRedeemNetworkFailure,
         canRetry,
         restartCurrentAttempt: typeof deps.isRestartCurrentAttemptError === 'function'
           && deps.isRestartCurrentAttemptError(error),
         retryableHostedCheckoutCardFallback,
         retryableHostedCheckoutGenericError,
         retryablePlusNonFreeTrial,
-        retryableUpiRedeemBackendFailure,
-        retryableUpiRedeemNetworkFailure,
       };
     }
 
     function selectFailureAction(result = {}) {
       const terminalStop = (code) => ({ code, forceFreshTabsNextRun: false, shouldFailRound: true, shouldStop: true });
+      if (result.blockedByAccountDeactivated) return { code: 'replace_account_deactivated', forceFreshTabsNextRun: true, shouldReplaceAccount: true };
       if (result.blockedByCustomEmailPoolEmpty) return terminalStop('fail_custom_email_pool_empty');
       if (result.blockedBySessionFrameUnavailable) return terminalStop('fail_session_frame_unavailable');
       if (result.blockedBySignupPasswordSubmitUncertain) return terminalStop('fail_signup_password_submit_uncertain');
+      if (result.blockedBySignupExistingTotpLogin) return terminalStop('fail_signup_existing_totp_login');
+      if (result.blockedByPreserveSignupSession) return terminalStop('fail_preserve_signup_session');
       if (result.retryablePlusNonFreeTrial) {
         return {
           code: 'retry_plus_non_free_trial',
-          forceFreshTabsNextRun: true,
-          shouldRetry: true,
-        };
-      }
-      if (result.retryableUpiRedeemBackendFailure) {
-        return {
-          code: 'retry_upi_redeem_backend_failure',
-          forceFreshTabsNextRun: true,
-          shouldRetry: true,
-        };
-      }
-      if (result.retryableUpiRedeemNetworkFailure) {
-        return {
-          code: 'retry_upi_redeem_network_failure',
           forceFreshTabsNextRun: true,
           shouldRetry: true,
         };
@@ -295,21 +269,6 @@
           forceFreshTabsNextRun: result.autoRunSkipFailures,
           shouldFailRound: true,
           shouldStop: !result.autoRunSkipFailures,
-        };
-      }
-      if (result.blockedByUpiRedeemBackendFailure) {
-        return {
-          code: 'fail_upi_redeem_backend_failure',
-          forceFreshTabsNextRun: result.autoRunSkipFailures,
-          shouldFailRound: true,
-          shouldStop: !result.autoRunSkipFailures,
-        };
-      }
-      if (result.blockedByUpiRedeemNetworkFailure) {
-        return {
-          code: 'fail_upi_redeem_network_failure',
-          forceFreshTabsNextRun: true,
-          shouldFailRound: true,
         };
       }
       if (result.blockedByCardHelperTaskEnded) {
@@ -393,5 +352,6 @@
 
   return {
     createAutoRunRetryPolicy,
+    getNodeFetchNetworkRetryPolicy,
   };
 });

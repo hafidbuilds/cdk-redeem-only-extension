@@ -47,7 +47,7 @@
   }
 
   function isSetGptPasswordReuseErrorText(value = '') {
-    return /password.*(?:must\s+not\s+be\s+)?re(?:use|used)|re(?:use|used).*password|密码.*(?:重复|用过|不能.*相同)|(?:重复|用过|不能.*相同).*密码|パスワード.*(?:再利用|使用済み|同じパスワード)|(?:再利用|使用済み|同じパスワード).*パスワード|पासवर्ड.*(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).*पासवर्ड/i.test(String(value || ''));
+    return /password.*(?:must\s+not\s+be\s+)?re(?:use|used)|re(?:use|used).*password|密码.*(?:重复|用过|不能.*相同)|(?:重复|用过|不能.*相同).*密码|パスワード.*(?:再利用|使用済み|同じパスワード)|(?:再利用|使用済み|同じパスワード).*パスワード|비밀번호.*(?:재사용|다시\s*사용|이전에\s*사용|같은\s*비밀번호)|(?:재사용|다시\s*사용|이전에\s*사용|같은\s*비밀번호).*비밀번호|पासवर्ड.*(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान)|(?:(?:पहले|दोबारा)\s+(?:इस्तेमाल|उपयोग)|पुराना|समान).*पासवर्ड/i.test(String(value || ''));
   }
 
   function isRetryablePasswordSetupCodeFetchError(error) {
@@ -138,15 +138,15 @@
       waitForTabStableComplete = null,
     } = deps;
 
-    function getVisibleStep(state = {}) {
+    function getVisibleStep(state = {}, fallbackStep = 8) {
       const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
-      return visibleStep > 0 ? visibleStep : 6;
+      return visibleStep > 0 ? visibleStep : fallbackStep;
     }
 
     function addStepLog(step, message, level = 'info') {
       return rawAddLog(message, level, {
         step,
-        stepKey: 'set-gpt-password',
+        stepKey: Number(step) === 7 ? 'fetch-gpt-password-code' : 'set-gpt-password',
       });
     }
 
@@ -465,7 +465,7 @@
         timeoutMs: 30000,
         logMessage: `步骤 ${visibleStep}：${label}内容脚本未就绪，正在重新注入...`,
         logStep: visibleStep,
-        logStepKey: 'set-gpt-password',
+        logStepKey: Number(visibleStep) === 7 ? 'fetch-gpt-password-code' : 'set-gpt-password',
       });
     }
 
@@ -1047,17 +1047,19 @@
       };
     }
 
-    async function sendSetPasswordPageMessage(type, payload = {}, visibleStep = 6, timeoutMs = 30000) {
+    async function sendSetPasswordPageMessage(type, payload = {}, visibleStep = 7, timeoutMs = 30000) {
       if (typeof sendToContentScriptResilient !== 'function') {
         throw new Error(`步骤 ${visibleStep}：无法与 OpenAI 认证页通信，内容脚本通道未初始化。`);
       }
+      const nodeId = normalizeString(payload?.nodeId)
+        || (Number(visibleStep) === 7 ? 'fetch-gpt-password-code' : 'set-gpt-password');
       const result = await sendToContentScriptResilient(AUTH_SOURCE, {
         type,
         source: 'background',
         payload: {
           ...payload,
           visibleStep,
-          nodeId: 'set-gpt-password',
+          nodeId,
         },
       }, {
         timeoutMs: Math.max(timeoutMs, 1000),
@@ -1065,7 +1067,7 @@
         retryDelayMs: 700,
         logMessage: `步骤 ${visibleStep}：OpenAI 设置密码页面正在切换，等待页面重新就绪...`,
         logStep: visibleStep,
-        logStepKey: 'set-gpt-password',
+        logStepKey: nodeId,
       });
       if (result?.error) {
         throw new Error(result.error);
@@ -1075,6 +1077,10 @@
 
     async function prepareSetPasswordFlowWithRetry(tabId, visibleStep, options = {}) {
       const timeoutMs = Math.max(5000, Math.floor(Number(options.timeoutMs) || SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS));
+      const passwordChallengePayload = {
+        email: normalizeEmail(options.email),
+        currentPassword: normalizeString(options.currentPassword),
+      };
       const startedAt = Date.now();
       let attempt = 0;
       let lastError = null;
@@ -1102,6 +1108,7 @@
           }
 
           const result = await sendSetPasswordPageMessage('PREPARE_SET_GPT_PASSWORD', {
+            ...passwordChallengePayload,
             waitTimeoutMs,
             fallbackWaitTimeoutMs: waitTimeoutMs,
           }, visibleStep, Math.min(messageTimeoutMs, Math.max(3000, remainingMs)));
@@ -1193,7 +1200,7 @@
           result = await sendSetPasswordPageMessage('RESEND_VERIFICATION_CODE', {
             step: visibleStep,
             visibleStep,
-            nodeId: 'set-gpt-password',
+            nodeId: Number(visibleStep) === 7 ? 'fetch-gpt-password-code' : 'set-gpt-password',
             resendTimeoutMs: PASSWORD_SETUP_RESEND_BUTTON_TIMEOUT_MS,
           }, visibleStep, PASSWORD_SETUP_RESEND_MESSAGE_TIMEOUT_MS);
           lastTransportError = null;
@@ -1266,15 +1273,18 @@
       };
     }
 
-    async function executeSetGptPasswordAttempt(state = {}) {
+    async function executeFetchGptPasswordCodeAttempt(state = {}) {
       throwIfStopped();
       const initialState = await getMergedState(state);
-      const visibleStep = getVisibleStep(initialState);
+      const visibleStep = getVisibleStep(initialState, 7);
       let email = resolveAccountEmail(initialState);
 
       await setState({
         gptPasswordSet: false,
         gptPasswordSetAt: '',
+        gptPasswordResetStage: '',
+        gptPasswordResetEmail: '',
+        gptPasswordResetReadyAt: '',
       });
       let authTabId = await openPasswordSetupVerificationPage(visibleStep);
       if (chrome?.tabs?.update) {
@@ -1283,14 +1293,6 @@
       if (!email) {
         email = await resolveLoggedInAccountEmailFromSession(visibleStep);
       }
-      let password = await ensureGptPassword({
-        ...initialState,
-        email,
-        accountIdentifierType: 'email',
-        accountIdentifier: email,
-        step8VerificationTargetEmail: email,
-      }, visibleStep);
-
       const startedAt = Date.now();
       const runtimeState = {
         ...(await getMergedState(initialState)),
@@ -1298,22 +1300,29 @@
         accountIdentifierType: 'email',
         accountIdentifier: email,
         step8VerificationTargetEmail: email,
-        password,
+      };
+      const accountIdentity = resolvePasswordAccountIdentity(runtimeState);
+      const currentPassword = isStatePasswordForIdentity(runtimeState, accountIdentity)
+        ? normalizeString(runtimeState.password)
+        : '';
+      const passwordChallengePayload = {
+        email,
+        currentPassword,
       };
 
-      await addStepLog(visibleStep, `正在为 ${email} 强制设置 GPT 登录密码，完成后会开通 2FA 并检测 UPI 试用资格...`, 'info');
+      await addStepLog(visibleStep, `正在为 ${email} 收取并提交设置 GPT 密码验证码...`, 'info');
 
       let prepareResult = await sendSetPasswordPageMessage('START_SET_GPT_PASSWORD_RESET', {
-        email,
+        ...passwordChallengePayload,
       }, visibleStep, 60000);
       if (prepareResult?.resetEntryMissing && isChatGptSecuritySettingsUrl(prepareResult?.url)) {
         await addStepLog(
           visibleStep,
-          '设置 GPT 密码：Security 页面已打开但密码入口仍在渲染，继续在当前标签页等待，不立即重载或重启步骤 6。',
+          '设置 GPT 密码：Security 页面已打开但密码入口仍在渲染，继续在当前标签页等待，不立即重载或重启步骤 7。',
           'warn'
         );
         prepareResult = await sendSetPasswordPageMessage('START_SET_GPT_PASSWORD_RESET', {
-          email,
+          ...passwordChallengePayload,
           passwordActionWaitMs: SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS,
         }, visibleStep, SET_PASSWORD_RESET_ENTRY_RECHECK_RESPONSE_TIMEOUT_MS);
       }
@@ -1323,11 +1332,12 @@
       if (prepareResult?.resetEntryClickFailed) {
         await addStepLog(
           visibleStep,
-          '设置 GPT 密码：密码入口已点击但页面仍在慢跳转，继续在当前标签页复核验证码页，不立即重启步骤 6。',
+          '设置 GPT 密码：密码入口已点击但页面仍在慢跳转，继续在当前标签页复核验证码页，不立即重启步骤 7。',
           'warn'
         );
         try {
           prepareResult = await prepareSetPasswordFlowWithRetry(authTabId, visibleStep, {
+            ...passwordChallengePayload,
             timeoutMs: SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS,
           });
         } catch (error) {
@@ -1350,11 +1360,13 @@
             timeoutMs: 30000,
           });
         prepareResult = await prepareSetPasswordFlowWithRetry(authTabId, visibleStep, {
+          ...passwordChallengePayload,
           timeoutMs: SET_PASSWORD_RESET_NAVIGATION_TIMEOUT_MS,
         });
       }
       if (!prepareResult?.ready) {
         prepareResult = await prepareSetPasswordFlowWithRetry(authTabId, visibleStep, {
+          ...passwordChallengePayload,
           timeoutMs: 30000,
         });
       }
@@ -1377,7 +1389,7 @@
         await addStepLog(visibleStep, '设置 GPT 密码：邮箱准备完成，开始取验证码。', 'info');
 
         const stateKey = typeof getVerificationCodeStateKey === 'function'
-          ? getVerificationCodeStateKey(8)
+          ? getVerificationCodeStateKey(8, { nodeId: 'fetch-gpt-password-code' })
           : 'lastLoginCode';
         const rejectedCodes = new Set();
         if (runtimeState[stateKey]) {
@@ -1398,6 +1410,8 @@
           try {
             codeResult = await fetchPasswordSetupCode(runtimeState, mail, {
               completionStep: visibleStep,
+              nodeId: 'fetch-gpt-password-code',
+              executeKey: 'fetch-gpt-password-code',
               targetEmail: email,
               filterAfterTimestamp: mail?.provider === '2925'
                 ? Math.max(0, startedAt - MAIL_2925_FILTER_LOOKBACK_MS)
@@ -1409,8 +1423,15 @@
               resendIntervalMs: getPasswordSetupResendIntervalMs(mail || {}),
             });
           } catch (error) {
-            if (!isRetryablePasswordSetupCodeFetchError(error) || attempt >= maxAttempts) {
+            if (!isRetryablePasswordSetupCodeFetchError(error)) {
               throw error;
+            }
+            if (attempt >= maxAttempts) {
+              const preservedError = new Error(`SET_GPT_PASSWORD_CODE_FETCH_UNCERTAIN::步骤 ${visibleStep}：连续 ${maxAttempts} 次取码未返回有效验证码，已保留当前步骤 7 页面，请稍后从当前页面继续。`);
+              Object.assign(preservedError, {
+                code: 'SET_GPT_PASSWORD_CODE_FETCH_UNCERTAIN', retryable: false, preserveSignupSession: true, nodeId: 'fetch-gpt-password-code', failedNodeId: 'fetch-gpt-password-code',
+              });
+              throw preservedError;
             }
             if (
               resendCount < PASSWORD_SETUP_CODE_RESEND_LIMIT
@@ -1451,13 +1472,13 @@
             }
             await addStepLog(
               visibleStep,
-              `设置 GPT 密码：本次取码临时失败，将继续等待下一次尝试（${attempt + 1}/${maxAttempts}）：${error?.message || error}`,
+              `设置 GPT 密码：本次取码临时失败，将继续等待下一次尝试（${attempt + 1}/${maxAttempts}）：${/<html\b/i.test(String(error?.message || error)) ? '邮箱取码接口返回网页而非验证码' : error?.message || error}`,
               'warn'
             );
             continue;
           }
 
-          await addStepLog(visibleStep, `已获取设置 GPT 密码验证码：${codeResult.code}，正在提交（${attempt}/${maxAttempts}）...`, 'info');
+          await addStepLog(visibleStep, `已获取设置 GPT 密码验证码，正在提交（${attempt}/${maxAttempts}）...`, 'info');
           let submitResult = null;
           try {
             submitResult = await sendSetPasswordPageMessage('SUBMIT_SET_GPT_PASSWORD_CODE', {
@@ -1474,7 +1495,7 @@
           }
           if (submitResult.invalidCode) {
             rejectedCodes.add(codeResult.code);
-            lastRejectedText = submitResult.errorText || codeResult.code;
+            lastRejectedText = submitResult.errorText || '验证码被页面拒绝';
             await addStepLog(visibleStep, `设置 GPT 密码验证码被页面拒绝：${lastRejectedText}`, 'warn');
             if (attempt < maxAttempts) {
               if (resendCount < PASSWORD_SETUP_CODE_RESEND_LIMIT) {
@@ -1531,15 +1552,67 @@
           throw new Error(`步骤 ${visibleStep}：未能提交有效的设置 GPT 密码验证码${lastRejectedText ? `：${lastRejectedText}` : ''}`);
         }
         if (!codeStageComplete) {
-          await setState({
-            lastEmailTimestamp: acceptedCodeResult.emailTimestamp || Date.now(),
-            [stateKey]: acceptedCodeResult.code,
-          });
+          await setState({ lastEmailTimestamp: acceptedCodeResult.emailTimestamp || Date.now() });
         }
       }
 
       await ensureSetPasswordContentScriptReady(authTabId, visibleStep, 'OpenAI 新密码页');
+      const checkpoint = {
+        gptPasswordResetStage: 'new_password_ready',
+        gptPasswordResetEmail: email,
+        gptPasswordResetReadyAt: new Date().toISOString(),
+        gptPasswordSet: false,
+        gptPasswordSetAt: '',
+      };
+      await setState(checkpoint);
+      await addStepLog(visibleStep, '设置 GPT 密码验证码已通过，新密码页已就绪，继续步骤 8。', 'success');
+      await completeNodeFromBackground(state?.nodeId || 'fetch-gpt-password-code', checkpoint);
+      return checkpoint;
+    }
 
+    function createPasswordResetSessionError(visibleStep, message) {
+      const error = new Error(`SET_GPT_PASSWORD_SESSION_EXPIRED::步骤 ${visibleStep}：${message}`);
+      error.code = 'SET_GPT_PASSWORD_SESSION_EXPIRED';
+      error.retryable = true;
+      error.restartNodeId = 'fetch-gpt-password-code';
+      error.nodeId = 'set-gpt-password';
+      error.failedNodeId = 'set-gpt-password';
+      return error;
+    }
+
+    async function executeSetGptPasswordAttempt(state = {}) {
+      throwIfStopped();
+      const initialState = await getMergedState(state);
+      const visibleStep = getVisibleStep(initialState, 8);
+      const email = resolveAccountEmail(initialState);
+      const checkpointEmail = normalizeEmail(initialState.gptPasswordResetEmail);
+      if (initialState.gptPasswordResetStage !== 'new_password_ready' || !email || checkpointEmail !== normalizeEmail(email)) {
+        throw createPasswordResetSessionError(visibleStep, '设置密码验证码检查点不存在或账号已变化，请重新执行步骤 7。');
+      }
+      const authTabId = Number(await getTabId?.(AUTH_SOURCE));
+      if (!Number.isInteger(authTabId) || (typeof isTabAlive === 'function' && !(await isTabAlive(AUTH_SOURCE)))) {
+        throw createPasswordResetSessionError(visibleStep, '新密码页面标签页已关闭，请重新执行步骤 7。');
+      }
+      const currentUrl = await getCurrentAuthTabUrl(authTabId);
+      if (!isSetGptPasswordNewPasswordUrl(currentUrl)) {
+        throw createPasswordResetSessionError(visibleStep, '当前页面已离开新密码页，请重新执行步骤 7。');
+      }
+      await ensureSetPasswordContentScriptReady(authTabId, visibleStep, 'OpenAI 新密码页');
+      let password = await ensureGptPassword({
+        ...initialState,
+        email,
+        accountIdentifierType: 'email',
+        accountIdentifier: email,
+        step8VerificationTargetEmail: email,
+      }, visibleStep);
+      const runtimeState = {
+        ...initialState,
+        email,
+        accountIdentifierType: 'email',
+        accountIdentifier: email,
+        step8VerificationTargetEmail: email,
+        password,
+      };
       let passwordResult = null;
       let lastPasswordSubmitState = null;
       const submittedPasswords = new Set();
@@ -1556,57 +1629,31 @@
             passwordResult = await waitForPasswordSubmitOutcomeFromBackground(authTabId, visibleStep, email);
           }
         } catch (error) {
-          if (!isPasswordSubmitStateProbeError(error)) {
-            throw error;
-          }
+          if (!isPasswordSubmitStateProbeError(error)) throw error;
           passwordResult = await recoverPasswordSubmitAfterTransportLoss(authTabId, visibleStep, error);
           if (passwordResult?.retryPasswordSubmit) {
             lastPasswordSubmitState = passwordResult;
-            if (submitAttempt >= 3) {
-              break;
-            }
-            await addStepLog(
-              visibleStep,
-              `设置 GPT 密码：页面状态 ${passwordResult.pageState || 'unknown'}，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`,
-              'warn'
-            );
+            if (submitAttempt >= 3) break;
+            await addStepLog(visibleStep, `设置 GPT 密码：页面状态 ${passwordResult.pageState || 'unknown'}，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`, 'warn');
             passwordResult = null;
             continue;
           }
           if (!passwordResult) {
-            if (submitAttempt >= 3) {
-              throw error;
-            }
-            await addStepLog(
-              visibleStep,
-              `设置 GPT 密码：页面通信恢复后仍停留在新密码页，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`,
-              'warn'
-            );
+            if (submitAttempt >= 3) throw error;
+            await addStepLog(visibleStep, `设置 GPT 密码：页面通信恢复后仍停留在新密码页，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`, 'warn');
             continue;
           }
         }
         if (passwordResult?.retryPasswordSubmit) {
           lastPasswordSubmitState = passwordResult;
-          if (submitAttempt >= 3) {
-            break;
-          }
-          await addStepLog(
-            visibleStep,
-            `设置 GPT 密码：页面状态 ${passwordResult.pageState || 'unknown'}，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`,
-            'warn'
-          );
+          if (submitAttempt >= 3) break;
+          await addStepLog(visibleStep, `设置 GPT 密码：页面状态 ${passwordResult.pageState || 'unknown'}，重新提交当前 GPT 密码（${submitAttempt + 1}/3）。`, 'warn');
           passwordResult = null;
           continue;
         }
         if (passwordResult?.passwordReused) {
-          await addStepLog(
-            visibleStep,
-            `设置 GPT 密码：OpenAI 拒绝重复使用当前密码，正在换一个新密码重试（${submitAttempt}/3）。`,
-            'warn'
-          );
-          if (submitAttempt >= 3) {
-            break;
-          }
+          await addStepLog(visibleStep, `设置 GPT 密码：OpenAI 拒绝重复使用当前密码，正在换一个新密码重试（${submitAttempt}/3）。`, 'warn');
+          if (submitAttempt >= 3) break;
           password = await generateReplacementGptPassword([...submittedPasswords], visibleStep, runtimeState);
           runtimeState.password = password;
           continue;
@@ -1622,29 +1669,21 @@
       }
 
       const gptPasswordSetAt = new Date().toISOString();
-      const patch = {
-        password,
-        gptPasswordSet: true,
-        gptPasswordSetAt,
-      };
+      const patch = { password, gptPasswordSet: true, gptPasswordSetAt, gptPasswordResetStage: 'password_set' };
       await setState(patch);
       if (typeof upsertUpiAccountCredentialBackup === 'function') {
-        await upsertUpiAccountCredentialBackup({
-          email,
-          ...patch,
-          sourceStep: 'set-gpt-password',
-        });
+        await upsertUpiAccountCredentialBackup({ email, ...patch, sourceStep: 'set-gpt-password' });
       }
-      await addStepLog(visibleStep, 'GPT 登录密码已设置成功，继续开通 2FA。', 'success');
+      await addStepLog(visibleStep, 'GPT 登录密码已设置成功，继续执行步骤 9。', 'success');
       await completeNodeFromBackground(state?.nodeId || 'set-gpt-password', patch);
       return patch;
     }
 
-    async function executeSetGptPassword(state = {}) {
+    async function executeFetchGptPasswordCode(state = {}) {
       const initialIdentity = resolvePasswordAccountIdentity(await getMergedState(state));
       for (let restartCount = 0; restartCount <= SET_GPT_PASSWORD_SESSION_RESTART_LIMIT; restartCount += 1) {
         try {
-          return await executeSetGptPasswordAttempt(state);
+          return await executeFetchGptPasswordCodeAttempt(state);
         } catch (error) {
           if (!isSetGptPasswordSessionExpiredError(error) || restartCount >= SET_GPT_PASSWORD_SESSION_RESTART_LIMIT) {
             throw error;
@@ -1655,16 +1694,32 @@
             throw error;
           }
           await addStepLog(
-            getVisibleStep(state),
-            `检测到第 6 步密码重置状态未建立或已失效，保留当前账号并重新启动步骤 6（${restartCount + 1}/${SET_GPT_PASSWORD_SESSION_RESTART_LIMIT}）。`,
+            getVisibleStep(state, 7),
+            `检测到第 7 步密码重置状态未建立或已失效，保留当前账号并重新启动步骤 7（${restartCount + 1}/${SET_GPT_PASSWORD_SESSION_RESTART_LIMIT}）。`,
             'warn'
           );
         }
       }
-      throw new Error('步骤 6：设置 GPT 密码会话恢复次数已耗尽。');
+      throw new Error('步骤 7：设置 GPT 密码验证码会话恢复次数已耗尽。');
+    }
+
+    async function executeSetGptPassword(state = {}) {
+      try {
+        return await executeSetGptPasswordAttempt(state);
+      } catch (error) {
+        if (isSetGptPasswordSessionExpiredError(error)) {
+          error.code = error.code || 'SET_GPT_PASSWORD_SESSION_EXPIRED';
+          error.retryable = true;
+          error.restartNodeId = 'fetch-gpt-password-code';
+          error.nodeId = 'set-gpt-password';
+          error.failedNodeId = 'set-gpt-password';
+        }
+        throw error;
+      }
     }
 
     return {
+      executeFetchGptPasswordCode,
       executeSetGptPassword,
     };
   }

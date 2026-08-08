@@ -235,10 +235,6 @@
       return normalizedValue.toLowerCase();
     }
 
-    function normalizeCdkeyRecordKey(value = '') {
-      return String(value || '').trim().toUpperCase();
-    }
-
     function resolveRecordIdentity(record = {}) {
       const rawEmail = String(record.email || '').trim().toLowerCase();
       const rawAccountIdentifier = String(record.accountIdentifier || '').trim().toLowerCase();
@@ -419,19 +415,6 @@
       const emailVerificationUrl = resolveRecordEmailVerificationUrl(record, email);
       const url = resolveRecordUrl(record) || emailVerificationUrl;
       const localhostUrl = normalizeRecordUrl(record.localhostUrl || url);
-      const upiRedeemSuccess = Boolean(record.upiRedeemSuccess);
-      const upiRedeemCdkey = String(record.upiRedeemCdkey || '').trim();
-      const upiRedeemAccessToken = String(
-        record.upiRedeemAccessToken
-        || record.accessToken
-        || record.chatGptAccessToken
-        || record.acToken
-        || record.token
-        || ''
-      ).trim();
-      const upiRedeemSubscriptionActive = Boolean(record.upiRedeemSubscriptionActive);
-      const upiRedeemSubscriptionPlanType = String(record.upiRedeemSubscriptionPlanType || '').trim();
-      const upiRedeemSubscriptionCheckedAt = String(record.upiRedeemSubscriptionCheckedAt || '').trim();
       const totpMfaEnabled = Boolean(record.totpMfaEnabled);
       const totpMfaSecret = String(record.totpMfaSecret || '').trim();
       const totpMfaSecretMasked = String(record.totpMfaSecretMasked || '').trim();
@@ -464,14 +447,7 @@
         failedStep: Number.isInteger(failedStep) && failedStep > 0 ? failedStep : null,
         source,
         autoRunContext: source === 'auto' ? autoRunContext : null,
-        plusModeEnabled: Boolean(record.plusModeEnabled),
         contributionMode: Boolean(record.contributionMode),
-        upiRedeemSuccess,
-        upiRedeemCdkey,
-        upiRedeemAccessToken,
-        upiRedeemSubscriptionActive,
-        upiRedeemSubscriptionPlanType,
-        upiRedeemSubscriptionCheckedAt,
         totpMfaEnabled,
         totpMfaSecret,
         totpMfaSecretMasked,
@@ -489,12 +465,10 @@
         record.accountIdentifier || record.email,
         'email'
       );
-      const upiRedeemCdkeyKey = normalizeCdkeyRecordKey(record.upiRedeemCdkey);
 
       if (recordId) keys.push(`record:${recordId}`);
       if (identifierKey) keys.push(`identifier:${identifierKey}`);
       if (emailKey) keys.push(`email:${emailKey}`);
-      if (upiRedeemCdkeyKey) keys.push(`upi-cdkey:${upiRedeemCdkeyKey}`);
 
       return [...new Set(keys)];
     }
@@ -597,18 +571,6 @@
       const emailVerificationUrl = resolveRecordEmailVerificationUrl(state, email);
       const url = resolveRecordUrl(state) || emailVerificationUrl;
       const localhostUrl = normalizeRecordUrl(state.localhostUrl || url);
-      const upiRedeemSuccess = Boolean(state.upiRedeemSuccess);
-      const upiRedeemCdkey = String(state.upiRedeemCdkey || '').trim();
-      const upiRedeemAccessToken = String(
-        state.upiRedeemAccessToken
-        || state.accessToken
-        || state.chatGptAccessToken
-        || state.acToken
-        || ''
-      ).trim();
-      const upiRedeemSubscriptionActive = Boolean(state.upiRedeemSubscriptionActive);
-      const upiRedeemSubscriptionPlanType = String(state.upiRedeemSubscriptionPlanType || '').trim();
-      const upiRedeemSubscriptionCheckedAt = String(state.upiRedeemSubscriptionCheckedAt || '').trim();
       const totpMfaEnabled = Boolean(state.totpMfaEnabled);
       const totpMfaSecret = String(state.totpMfaSecret || '').trim();
       const totpMfaSecretMasked = String(state.totpMfaSecretMasked || '').trim();
@@ -636,14 +598,7 @@
         failedStep: statusNodeId ? null : (Number.isInteger(failedStep) && failedStep > 0 ? failedStep : null),
         source,
         autoRunContext,
-        plusModeEnabled: Boolean(state.plusModeEnabled),
         contributionMode: Boolean(state.contributionMode),
-        upiRedeemSuccess,
-        upiRedeemCdkey,
-        upiRedeemAccessToken,
-        upiRedeemSubscriptionActive,
-        upiRedeemSubscriptionPlanType,
-        upiRedeemSubscriptionCheckedAt,
         totpMfaEnabled,
         totpMfaSecret,
         totpMfaSecretMasked,

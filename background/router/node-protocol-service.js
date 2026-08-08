@@ -6,23 +6,12 @@
   }
 })(typeof self !== 'undefined' ? self : globalThis, function createRouterNodeProtocolServiceModule(_rootScope) {
   const DEFAULT_OPENAI_NODE_BY_STEP = Object.freeze({
-    1: 'open-chatgpt',
-    2: 'submit-signup-email',
-    3: 'fill-password',
-    4: 'fetch-signup-code',
-    5: 'fill-profile',
-    6: 'wait-registration-success',
-    7: 'oauth-login',
-    8: 'fetch-login-code',
-    9: 'confirm-oauth',
-    10: 'confirm-oauth',
-    11: 'fetch-login-code',
-    12: 'confirm-oauth',
-    13: 'confirm-oauth',
-    14: 'platform-verify',
-    15: 'platform-verify',
-    16: 'confirm-oauth',
-    17: 'platform-verify',
+    1: 'open-chatgpt', 2: 'submit-signup-email', 3: 'fill-password',
+    4: 'fetch-signup-code', 5: 'fill-profile', 6: 'wait-registration-success',
+    7: 'oauth-login', 8: 'fetch-login-code', 9: 'confirm-oauth',
+    10: 'confirm-oauth', 11: 'fetch-login-code', 12: 'confirm-oauth',
+    13: 'confirm-oauth', 14: 'platform-verify', 15: 'platform-verify',
+    16: 'confirm-oauth', 17: 'platform-verify',
   });
   function createRouterNodeProtocolService(deps = {}) {
     const {
@@ -38,62 +27,58 @@
       executeNode = async () => {},
       executeNodeViaCompletionSignal = async () => {},
       finalizeIcloudAliasAfterSuccessfulFlow = async () => {},
-      getCurrentLuckmailPurchase = () => null,
-      getNodeIdsForState = null,
-      getState = async () => ({}),
-      getStepDefinitionForState = null,
-      getStepIdByNodeIdForState = null,
-      getStepIdsForState = null,
-      getTabId = null,
-      isAutoRunLockedState = () => false,
-      isHotmailProvider = () => false,
-      isLocalhostOAuthCallbackUrl = () => false,
-      isLuckmailProvider = () => false,
-      isTabAlive = async () => false,
-      markCurrentRegistrationAccountUsed = null,
-      normalizePlusPaymentMethod = () => 'legacyWallet',
-      patchHotmailAccount = async () => {},
-      patchMail2925Account = async () => {},
-      setEmailState = async () => {},
-      setLuckmailPurchaseUsedState = async () => {},
-      setNodeStatus = async () => {},
+      getCurrentLuckmailPurchase = () => null, getNodeDefinitionForState = null,
+      getNodeIdsForState = null, getState = async () => ({}),
+      getStepDefinitionForState = null, getStepIdByNodeIdForState = null,
+      getStepIdsForState = null, getTabId = null,
+      isAutoRunLockedState = () => false, isHotmailProvider = () => false,
+      isLocalhostOAuthCallbackUrl = () => false, isLuckmailProvider = () => false,
+      isTabAlive = async () => false, markCurrentRegistrationAccountUsed = null,
+      normalizePlusPaymentMethod = () => 'legacyWallet', patchHotmailAccount = async () => {},
+      patchMail2925Account = async () => {}, setEmailState = async () => {},
+      setLuckmailPurchaseUsedState = async () => {}, setNodeStatus = async () => {},
       setState = async () => {},
     } = deps;
     async function appendManualAccountRunRecordIfNeeded(status, stateOverride = null, reason = '') {
-      if (typeof appendAccountRunRecord !== 'function') {
-        return null;
-      }
-
+      if (typeof appendAccountRunRecord !== 'function') return null;
       const state = stateOverride || await getState();
-      if (isAutoRunLockedState(state)) {
-        return null;
-      }
-
+      if (isAutoRunLockedState(state)) return null;
       return appendAccountRunRecord(status, state, reason);
     }
     function isManualPrerequisiteDoneStatus(status = '') {
-      return status === 'completed'
-        || status === 'manual_completed'
-        || status === 'skipped';
+      return ['completed', 'manual_completed', 'skipped'].includes(status);
     }
-
+    function isConditionalNodeRequiredForManualExecute(nodeId = '', state = {}) {
+      const normalizedNodeId = String(nodeId || '').trim();
+      if (normalizedNodeId !== 'existing-totp-login') {
+        return false;
+      }
+      return state?.existingTotpLoginRequired === true;
+    }
+    function isManualPrerequisiteReady(nodeId = '', state = {}) {
+      const normalizedNodeId = String(nodeId || '').trim();
+      const status = String(state?.nodeStatuses?.[normalizedNodeId] || 'pending').trim();
+      if (isManualPrerequisiteDoneStatus(status)) {
+        return true;
+      }
+      const definition = typeof getNodeDefinitionForState === 'function'
+        ? getNodeDefinitionForState(normalizedNodeId, state)
+        : null;
+      return status === 'pending'
+        && String(definition?.applicability || '').trim() === 'conditional'
+        && !isConditionalNodeRequiredForManualExecute(normalizedNodeId, state);
+    }
     function getManualNodeSequenceForState(state = {}) {
       if (typeof getNodeIdsForState === 'function') {
         const nodeIds = getNodeIdsForState(state);
-        if (Array.isArray(nodeIds) && nodeIds.length) {
-          return nodeIds.map((nodeId) => String(nodeId || '').trim()).filter(Boolean);
-        }
+        if (Array.isArray(nodeIds) && nodeIds.length) return nodeIds.map((nodeId) => String(nodeId || '').trim()).filter(Boolean);
       }
       return [];
     }
-
     function getStepKeyForState(step, state = {}) {
-      if (typeof getStepDefinitionForState === 'function') {
-        return String(getStepDefinitionForState(step, state)?.key || '').trim();
-      }
+      if (typeof getStepDefinitionForState === 'function') return String(getStepDefinitionForState(step, state)?.key || '').trim();
       return DEFAULT_OPENAI_NODE_BY_STEP[Number(step)] || '';
     }
-
     function findStepByNodeId(nodeId, state = {}) {
       const normalizedNodeId = String(nodeId || '').trim();
       if (normalizedNodeId && typeof getStepIdByNodeIdForState === 'function') {
@@ -112,7 +97,6 @@
       }
       return 0;
     }
-
     function ensurePreviousNodesReadyForManualExecute(nodeId = '', state = {}) {
       const normalizedNodeId = String(nodeId || '').trim();
       const nodeIds = getManualNodeSequenceForState(state);
@@ -120,13 +104,18 @@
       if (currentIndex <= 0) {
         return;
       }
-      const nodeStatuses = state?.nodeStatuses && typeof state.nodeStatuses === 'object'
-        ? state.nodeStatuses
-        : {};
       const blockedPreviousNodes = nodeIds.slice(0, currentIndex)
-        .filter((prevNodeId) => !isManualPrerequisiteDoneStatus(String(nodeStatuses[prevNodeId] || 'pending').trim()));
+        .filter((prevNodeId) => !isManualPrerequisiteReady(prevNodeId, state));
       if (!blockedPreviousNodes.length) {
-        return;
+        return nodeIds.slice(0, currentIndex).filter((prevNodeId) => {
+          const status = String(state?.nodeStatuses?.[prevNodeId] || 'pending').trim();
+          if (status !== 'pending') return false;
+          const definition = typeof getNodeDefinitionForState === 'function'
+            ? getNodeDefinitionForState(prevNodeId, state)
+            : null;
+          return String(definition?.applicability || '').trim() === 'conditional'
+            && !isConditionalNodeRequiredForManualExecute(prevNodeId, state);
+        });
       }
       const blockedSteps = blockedPreviousNodes
         .map((prevNodeId) => findStepByNodeId(prevNodeId, state))
@@ -136,54 +125,49 @@
         `手动执行${currentStep ? `步骤 ${currentStep}` : `节点 ${normalizedNodeId}`}前，请先完成或跳过前置步骤${blockedSteps.length ? `：${blockedSteps.join('、')}` : ''}。`
       );
     }
-
     async function ensureManualStepPrerequisites(step, nodeId = '', state = {}) {
-      ensurePreviousNodesReadyForManualExecute(nodeId, state);
-      if (step !== 4) {
+      const bypassedConditionalNodes = ensurePreviousNodesReadyForManualExecute(nodeId, state) || [];
+      for (const conditionalNodeId of bypassedConditionalNodes) {
+        await setNodeStatus(conditionalNodeId, 'skipped');
+        const conditionalStep = findStepByNodeId(conditionalNodeId, state);
+        await addLog(
+          `手动执行步骤 ${step}：条件步骤${conditionalStep ? ` ${conditionalStep}` : ''}当前不适用，已自动跳过。`,
+          'info',
+          { step, stepKey: String(nodeId || '').trim(), nodeId: String(nodeId || '').trim() }
+        );
+      }
+      const normalizedNodeId = String(nodeId || getStepKeyForState(step, state) || '').trim();
+      if (normalizedNodeId !== 'fetch-signup-code') {
         return;
       }
-
       const signupTabId = typeof getTabId === 'function'
         ? await getTabId('signup-page')
         : null;
       const signupTabAlive = signupTabId && typeof isTabAlive === 'function'
         ? await isTabAlive('signup-page')
         : Boolean(signupTabId);
-
       if (!signupTabId || !signupTabAlive) {
-        throw new Error('手动执行步骤 4 前，请先执行步骤 1 或步骤 2，确保认证页仍然打开并停留在验证码页。');
+        throw new Error('手动执行步骤 5 前，请先完成步骤 1–4，确保认证页仍然打开并停留在注册验证码页。');
       }
     }
-
     function getNextNodeIdForState(nodeId, state = {}) {
       const normalizedNodeId = String(nodeId || '').trim();
-      if (!normalizedNodeId || typeof getNodeIdsForState !== 'function') {
-        return '';
-      }
+      if (!normalizedNodeId || typeof getNodeIdsForState !== 'function') return '';
       const nodeIds = Array.isArray(getNodeIdsForState(state)) ? getNodeIdsForState(state) : [];
       const currentIndex = nodeIds.indexOf(normalizedNodeId);
-      if (currentIndex < 0) {
-        return '';
-      }
+      if (currentIndex < 0) return '';
       return String(nodeIds[currentIndex + 1] || '').trim();
     }
-
     function getLastNodeIdForState(state = {}) {
-      if (typeof getNodeIdsForState !== 'function') {
-        return '';
-      }
+      if (typeof getNodeIdsForState !== 'function') return '';
       const nodeIds = Array.isArray(getNodeIdsForState(state)) ? getNodeIdsForState(state) : [];
       return String(nodeIds[nodeIds.length - 1] || '').trim();
     }
-
     function shouldAutoContinueManualNode(nodeId, state = {}) {
       const normalizedNodeId = String(nodeId || '').trim();
-      if (normalizedNodeId !== 'chatgpt-session-reader-create') {
-        return false;
-      }
+      if (normalizedNodeId !== 'chatgpt-session-reader-create') return false;
       return normalizePlusPaymentMethod(state?.plusPaymentMethod) === 'legacyWallet';
     }
-
     async function executeNodeForManualChain(nodeId) {
       const executionState = await getState();
       if (doesNodeUseCompletionSignal(nodeId, executionState)) {
@@ -192,19 +176,10 @@
         await executeNode(nodeId);
       }
     }
-
     async function normalizeNodeProtocolMessage(message = {}) {
       const type = String(message?.type || '').trim();
-      const nodeProtocolTypes = new Set([
-        'EXECUTE_NODE',
-        'NODE_COMPLETE',
-        'NODE_ERROR',
-        'SKIP_NODE',
-      ]);
-      if (!nodeProtocolTypes.has(type)) {
-        return message;
-      }
-
+      const nodeProtocolTypes = new Set(['EXECUTE_NODE', 'NODE_COMPLETE', 'NODE_ERROR', 'SKIP_NODE']);
+      if (!nodeProtocolTypes.has(type)) return message;
       const nodeId = String(message?.payload?.nodeId || message?.nodeId || '').trim();
       if (!nodeId) {
         throw new Error(`${type} 缺少 nodeId。`);
@@ -214,7 +189,12 @@
       if (!step) {
         throw new Error(`当前 flow 中未找到节点：${nodeId}`);
       }
-
+      const nodeDefinition = typeof getNodeDefinitionForState === 'function'
+        ? getNodeDefinitionForState(nodeId, state)
+        : null;
+      if (type === 'EXECUTE_NODE' && nodeDefinition?.applicability === 'route-skipped') {
+        throw new Error(`节点 ${nodeId} 在当前路线中不适用，已自动跳过。`);
+      }
       const payload = {
         ...(message.payload || {}),
         nodeId,
@@ -222,7 +202,6 @@
       };
       return { ...message, nodeId, step, payload };
     }
-
     function isStaleAutoRunNodeMessage(nodeId, state = {}) {
       const normalizedNodeId = String(nodeId || '').trim();
       if (!normalizedNodeId) {
@@ -231,17 +210,16 @@
       if (typeof isAutoRunLockedState !== 'function' || !isAutoRunLockedState(state)) {
         return false;
       }
-      const currentStatus = String(state?.nodeStatuses?.[normalizedNodeId] || '').trim();
-      if (currentStatus === 'running') {
-        return false;
-      }
       const currentNodeId = String(state?.currentNodeId || '').trim();
       if (currentNodeId && normalizedNodeId !== currentNodeId) {
         return true;
       }
+      const currentStatus = String(state?.nodeStatuses?.[normalizedNodeId] || '').trim();
+      if (currentStatus === 'running') {
+        return false;
+      }
       return ['completed', 'manual_completed', 'skipped', 'failed', 'stopped'].includes(currentStatus);
     }
-
     function resolveEmailIdentityPayload(payload = {}) {
       const directEmail = String(payload?.email || '').trim();
       if (directEmail) {
@@ -251,14 +229,10 @@
         ? String(payload?.accountIdentifier || '').trim()
         : '';
     }
-
     async function persistEmailIdentityFromStepPayload(email, payload = {}, source = 'step_payload') {
-      if (!email) {
-        return;
-      }
+      if (!email) return;
       await setEmailState(email, { source });
     }
-
     function normalizeAutomationWindowId(value) {
       if (value === null || value === undefined || value === '') {
         return null;
@@ -266,7 +240,6 @@
       const numeric = Number(value);
       return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
     }
-
     function resolveAutomationWindowIdFromMessage(message = {}, sender = {}) {
       return normalizeAutomationWindowId(
         message?.payload?.automationWindowId
@@ -277,7 +250,6 @@
         ?? null
       );
     }
-
     async function lockAutomationWindowFromMessage(message = {}, sender = {}) {
       const windowId = resolveAutomationWindowIdFromMessage(message, sender);
       if (windowId === null) {
@@ -286,7 +258,6 @@
       await setState({ automationWindowId: windowId });
       return windowId;
     }
-
     async function syncStepAccountIdentityFromPayload(payload = {}) {
       const identifierType = String(payload?.accountIdentifierType || '').trim().toLowerCase();
       const email = resolveEmailIdentityPayload(payload);
@@ -309,14 +280,12 @@
         }
       }
     }
-
     function isStepProtectedFromAutoSkip(status) {
       return status === 'running'
         || status === 'completed'
         || status === 'manual_completed'
         || status === 'skipped';
     }
-
     function findStepByKeyAfter(currentOrder, targetKey, state = {}) {
       const activeStepIds = typeof getStepIdsForState === 'function'
         ? getStepIdsForState(state)
@@ -334,12 +303,10 @@
         return targetKey === 'fetch-login-code' && Number(currentOrder) === 7 && numericStep === 8;
       }) || null;
     }
-
     function getNodeStatusByStep(step, state = {}) {
       const nodeId = getStepKeyForState(step, state);
       return nodeId ? (state.nodeStatuses?.[nodeId] || 'pending') : 'pending';
     }
-
     async function setNodeStatusByStep(step, status, state = {}) {
       const nodeId = getStepKeyForState(step, state);
       if (!nodeId) {
@@ -348,7 +315,6 @@
       await setNodeStatus(nodeId, status);
       return nodeId;
     }
-
     async function handlePlatformVerifyStepData(payload) {
       if (payload.localhostUrl) {
         await closeLocalhostCallbackTabs(payload.localhostUrl);
@@ -394,7 +360,6 @@
         await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
       }
     }
-
     async function handleStepData(step, payload) {
       if (step === 1) {
         const updates = {};
@@ -421,11 +386,9 @@
         }
         return;
       }
-
       const stateForStep = await getState();
       const stepKey = getStepKeyForState(step, stateForStep);
       const isLastNode = Boolean(stepKey) && stepKey === getLastNodeIdForState(stateForStep);
-
       if (stepKey === 'fill-profile') {
         const latestState = await getState();
         if (
@@ -446,7 +409,6 @@
           }
         }
       }
-
       if (stepKey === 'oauth-login') {
         await syncStepAccountIdentityFromPayload(payload);
         if (payload.skipLoginVerificationStep) {
@@ -472,7 +434,6 @@
         }
         return;
       }
-
       if (stepKey === 'fetch-login-code') {
         await setState({
           lastEmailTimestamp: payload.emailTimestamp || null,
@@ -480,7 +441,6 @@
         });
         return;
       }
-
       if (stepKey === 'confirm-oauth') {
         if (payload.localhostUrl) {
           if (!isLocalhostOAuthCallbackUrl(payload.localhostUrl)) {
@@ -491,12 +451,10 @@
         }
         return;
       }
-
       if (stepKey === 'platform-verify') {
         await handlePlatformVerifyStepData(payload);
         return;
       }
-
       if (stepKey === 'chatgpt-session-reader-create') {
         const latestState = await getState();
         if (getLastNodeIdForState(latestState) === 'chatgpt-session-reader-create') {
@@ -504,11 +462,119 @@
         }
         return;
       }
-
+      if (stepKey === 'fill-password') {
+        await syncStepAccountIdentityFromPayload(payload);
+        await setState({
+          existingTotpLogin: false,
+          existingTotpLoginEmail: '',
+          existingTotpLoginRequired: payload.existingTotpLoginRequired === true,
+        });
+        if (payload.signupVerificationRequestedAt) {
+          await setState({ signupVerificationRequestedAt: payload.signupVerificationRequestedAt });
+        }
+        if (payload.signupPasswordCreated === true) {
+          const gptPasswordSetAt = new Date().toISOString();
+          await setState({
+            gptPasswordSet: true,
+            gptPasswordSetAt,
+          });
+          const skippedPasswordSetupNodes = [];
+          for (const skippedNodeId of ['fetch-gpt-password-code', 'set-gpt-password']) {
+            const status = String((await getState())?.nodeStatuses?.[skippedNodeId] || 'pending').trim();
+            if (isStepProtectedFromAutoSkip(status)) continue;
+            await setNodeStatus(skippedNodeId, 'skipped');
+            skippedPasswordSetupNodes.push(skippedNodeId);
+          }
+          await addLog(
+            skippedPasswordSetupNodes.length
+              ? '步骤 3：注册密码已由官网页面确认创建，已自动跳过步骤 7、8。'
+              : '步骤 3：注册密码已由官网页面确认创建，后续密码步骤状态保持不变。',
+            'ok',
+            { step: 3, stepKey: 'fill-password' }
+          );
+        } else if (payload.skippedPasswordPage === true) {
+          await setState({
+            gptPasswordSet: false,
+            gptPasswordSetAt: null,
+          });
+        }
+        const latestState = await getState();
+        const totpNodeStatus = String(latestState?.nodeStatuses?.['existing-totp-login'] || 'pending').trim();
+        if (payload.existingTotpLoginRequired === true) {
+          if (!isStepProtectedFromAutoSkip(totpNodeStatus)) {
+            await setNodeStatus('existing-totp-login', 'pending');
+          }
+          await addLog('步骤 3：检测到已有账号 TOTP 挑战，交由独立步骤 4 继续登录。', 'info', {
+            step: 3,
+            stepKey: 'fill-password',
+          });
+        } else if (!isStepProtectedFromAutoSkip(totpNodeStatus)) {
+          await setNodeStatus('existing-totp-login', 'skipped');
+          await addLog('步骤 3：已确认当前账号无需已有账号 2FA 登录，步骤 4 自动跳过。', 'info', {
+            step: 3,
+            stepKey: 'fill-password',
+          });
+        }
+        if (payload.skipProfileStep) {
+          const profileStatus = String((await getState())?.nodeStatuses?.['fill-profile'] || 'pending').trim();
+          if (!isStepProtectedFromAutoSkip(profileStatus)) {
+            await setNodeStatus('fill-profile', 'skipped');
+          }
+        }
+        return;
+      }
+      if (stepKey === 'existing-totp-login') {
+        const latestState = await getState();
+        const email = String(payload.existingTotpLoginEmail || payload.email || latestState.email || '').trim().toLowerCase();
+        await setState({
+          existingTotpLogin: true,
+          existingTotpLoginEmail: email,
+          existingTotpLoginRequired: false,
+          twoFactorEnabled: true,
+          skipRegistrationAfterExistingTotp: true,
+        });
+        for (const skippedNodeId of ['fetch-signup-code', 'fill-profile', 'fetch-gpt-password-code', 'set-gpt-password']) {
+          const status = String((await getState())?.nodeStatuses?.[skippedNodeId] || 'pending').trim();
+          if (!isStepProtectedFromAutoSkip(status)) {
+            await setNodeStatus(skippedNodeId, 'skipped');
+          }
+        }
+        if (typeof markCurrentRegistrationAccountUsed === 'function') {
+          await markCurrentRegistrationAccountUsed(await getState(), {
+            logPrefix: '步骤 4 已有账号 2FA 登录完成',
+            level: 'ok',
+          });
+        }
+        await addLog('步骤 4：已有账号 2FA 登录成功，已跳过步骤 5–8，继续执行所选路线的步骤 9。', 'ok', {
+          step: 4,
+          stepKey: 'existing-totp-login',
+        });
+        return;
+      }
+      if (stepKey === 'fetch-signup-code') {
+        await setState({
+          lastEmailTimestamp: payload.emailTimestamp || null,
+          signupVerificationRequestedAt: null,
+        });
+        if (payload.passwordSubmittedAfterVerification) {
+          const latestState = await getState();
+          const passwordStatus = String(latestState?.nodeStatuses?.['fill-password'] || 'pending').trim();
+          if (!isStepProtectedFromAutoSkip(passwordStatus)) {
+            await setNodeStatus('fill-password', 'completed');
+          }
+        }
+        if (payload.skipProfileStep) {
+          const latestState = await getState();
+          const profileStatus = String(latestState?.nodeStatuses?.['fill-profile'] || 'pending').trim();
+          if (!isStepProtectedFromAutoSkip(profileStatus)) {
+            await setNodeStatus('fill-profile', 'skipped');
+          }
+        }
+        return;
+      }
       if (isLastNode) {
         await cleanupPaymentTabsAfterSuccessfulFlow();
       }
-
       switch (step) {
         case 1: {
           const updates = {};
@@ -549,17 +615,12 @@
             await addLog('步骤 2：检测到当前已登录会话，已自动跳过步骤 3/4/5，流程将直接进入步骤 6。', 'warn');
             break;
           }
-          if (payload.skippedPasswordStep) {
-            const latestState = await getState();
-            const step3Status = getNodeStatusByStep(3, latestState);
-            if (step3Status !== 'running' && step3Status !== 'completed' && step3Status !== 'manual_completed') {
-              await setNodeStatusByStep(3, 'skipped', latestState);
-              await addLog('步骤 2：提交邮箱后页面直接进入验证码页，已自动跳过步骤 3。', 'warn');
-            }
-          }
           break;
         case 3:
           await syncStepAccountIdentityFromPayload(payload);
+          await setState(payload.existingTotpLogin === true ? {
+            existingTotpLogin: true, existingTotpLoginEmail: String(payload.existingTotpLoginEmail || payload.email || '').trim().toLowerCase(), twoFactorEnabled: true,
+          } : { existingTotpLogin: false, existingTotpLoginEmail: '' });
           if (payload.signupVerificationRequestedAt) {
             await setState({ signupVerificationRequestedAt: payload.signupVerificationRequestedAt });
           }
@@ -577,7 +638,7 @@
             if (skippedSteps.includes(5) && typeof markCurrentRegistrationAccountUsed === 'function') {
               await markCurrentRegistrationAccountUsed(latestState, { logPrefix: '步骤 3 跳过步骤 5', level: 'ok' });
             }
-            const message = step6Key === 'set-gpt-password' ? '步骤 3.5：已有账号密码和 2FA 登录均已确认，已跳过未完成的步骤 4/5/6，直接进入步骤 7。' : '步骤 3.5：已有账号密码和 2FA 登录均已确认，已跳过未完成的步骤 4/5；当前步骤 6 不是设置密码节点，将继续按所选路线执行。';
+            const message = step6Key === 'set-gpt-password' ? '步骤 4：已有账号密码和 2FA 登录均已确认，已跳过后续重复注册节点。' : '步骤 4：已有账号密码和 2FA 登录均已确认，将继续按所选路线执行。';
             await addLog(message, 'ok', { step: 3, stepKey: 'fill-password' });
           } else if (payload.skipProfileStep) {
             const latestState = await getState();
@@ -594,8 +655,10 @@
           break;
         case 4:
           await setState({
-            lastEmailTimestamp: payload.emailTimestamp || null,
-            signupVerificationRequestedAt: null,
+            lastEmailTimestamp: payload.emailTimestamp || null, signupVerificationRequestedAt: null,
+            existingTotpLogin: payload.existingTotpLogin === true,
+            existingTotpLoginEmail: payload.existingTotpLogin === true ? String(payload.existingTotpLoginEmail || payload.email || '').trim().toLowerCase() : '',
+            ...(payload.existingTotpLogin === true ? { twoFactorEnabled: true } : {}),
           });
           if (payload.passwordSubmittedAfterVerification) {
             const latestState = await getState();
@@ -617,7 +680,7 @@
             const step6Key = getStepKeyForState(6, latestState), step6Status = getNodeStatusByStep(6, latestState);
             if (step6Key === 'set-gpt-password' && !isStepProtectedFromAutoSkip(step6Status)) {
               await setNodeStatusByStep(6, 'skipped', latestState);
-              await addLog('步骤 3.5：已有账号密码和 2FA 登录均已确认，步骤 4 已完成收尾并跳过步骤 6，直接进入步骤 7。', 'ok', { step: 4, stepKey: 'fetch-signup-code' });
+              await addLog('步骤 4：已有账号密码和 2FA 登录均已确认，已跳过后续重复注册节点。', 'ok', { step: 4, stepKey: 'existing-totp-login' });
             }
           }
           if (payload.skipProfileStep) {
@@ -625,12 +688,7 @@
             const step5Status = getNodeStatusByStep(5, latestState);
             if (step5Status !== 'running' && step5Status !== 'completed' && step5Status !== 'manual_completed') {
               await setNodeStatusByStep(5, 'skipped', latestState);
-              if (typeof markCurrentRegistrationAccountUsed === 'function') {
-                await markCurrentRegistrationAccountUsed(latestState, {
-                  logPrefix: '步骤 4 跳过步骤 5',
-                  level: 'ok',
-                });
-              }
+              if (typeof markCurrentRegistrationAccountUsed === 'function') await markCurrentRegistrationAccountUsed(latestState, { logPrefix: '步骤 4 跳过步骤 5', level: 'ok' });
               if (payload.skipProfileStepReason === 'combined_verification_profile') {
                 await addLog('步骤 4：当前验证码页已内嵌完成注册资料提交，已自动跳过步骤 5。', 'warn');
               } else {
@@ -677,7 +735,6 @@
           break;
       }
     }
-
     return {
       appendManualAccountRunRecordIfNeeded,
       ensureManualStepPrerequisites,
@@ -693,7 +750,6 @@
       shouldAutoContinueManualNode,
     };
   }
-
   return {
     createRouterNodeProtocolService,
   };

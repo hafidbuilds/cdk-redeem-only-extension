@@ -32,6 +32,8 @@
       'input[inputmode="numeric"]',
     ].join(', '),
     ONE_TIME_CODE_LOGIN_PATTERN: /使用一次性验证码登录|改用(?:一次性)?验证码(?:登录)?|使用验证码登录|一次性验证码|验证码登录|one[-\s]*time\s*(?:passcode|password|code)|use\s+(?:a\s+)?one[-\s]*time\s*(?:passcode|password|code)(?:\s+instead)?|use\s+(?:a\s+)?code(?:\s+instead)?|sign\s+in\s+with\s+(?:email|code)|email\s+(?:me\s+)?(?:a\s+)?code|(?:एक[-\s]*)?बार(?:\s+का)?\s+(?:कोड|पासकोड)|कोड\s+(?:से|का)\s+(?:लॉग\s*इन|साइन\s*इन)/i,
+    SIGNUP_PASSWORD_SWITCH_PATTERN: /^(?:使用密码继续|继续使用密码|使用密码|continue\s+with\s+password|use\s+(?:a\s+)?password(?:\s+instead)?|continuer\s+avec\s+(?:(?:un|le|votre)\s+)?mot\s+de\s+passe|utiliser\s+(?:(?:un|le|votre)\s+)?mot\s+de\s+passe|パスワードで続行|パスワードを使用して続行|पासवर्ड\s+से\s+जारी\s+रखें|पासवर्ड\s+का\s+उपयोग\s+करके\s+जारी\s+रखें)$/i,
+    SIGNUP_PASSWORD_SWITCH_PHRASE_PATTERN: /使用\s*密码\s*(?:继续)?|继续\s*(?:使用)?\s*密码|continue\s+with\s+password|use\s+(?:a\s+)?password(?:\s+instead)?|continuer\s+avec\s+(?:(?:un|le|votre)\s+)?mot\s+de\s+passe|utiliser\s+(?:(?:un|le|votre)\s+)?mot\s+de\s+passe|パスワード(?:を使用して)?で?続行|पासवर्ड\s+(?:से|का\s+उपयोग\s+करके)\s+जारी\s+रखें/i,
     HINDI_LOGIN_ENTRY_PATTERN: /लॉग\s*इन(?:\s*करें)?|साइन\s*इन(?:\s*करें)?/i,
     LOGIN_ENTRY_ACTION_PATTERN: /(?:^|\b)(?:log\s*in|sign\s*in|continue\s+(?:with|using)\s+(?:email|chatgpt)|use\s+(?:an?\s+)?email|email\s+address)(?:\b|$)|登录|登陆|邮箱|电子邮件|लॉग\s*इन(?:\s*करें)?|साइन\s*इन(?:\s*करें)?|ई-?मेल(?:\s+पता)?/i,
     LOGIN_MORE_OPTIONS_PATTERN: /更多(?:选项|登录方式|方式)|其他(?:登录方式|选项|方式)|显示更多|more\s+(?:login\s+|sign[-\s]*in\s+)?options|other\s+(?:login\s+|sign[-\s]*in\s+)?(?:options|ways)|show\s+more|(?:और|अन्य)\s+(?:विकल्प|तरीके)|ज़्यादा\s+दिखाएं/i,
@@ -152,6 +154,338 @@
       return null;
     }
 
+    function isSignupCreatePasswordHref(value = '') {
+      const rawHref = String(value || '').trim();
+      if (!rawHref) return false;
+      try {
+        const parsed = new URL(rawHref, locationRef.href || 'https://auth.openai.com/');
+        return /\/(?:u\/)?(?:create-account|signup)\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+      } catch {
+        return /\/(?:u\/)?(?:create-account|signup)\/password(?:[/?#]|$)/i.test(rawHref);
+      }
+    }
+
+    function isLoginPasswordHref(value = '') {
+      const rawHref = String(value || '').trim();
+      if (!rawHref) return false;
+      try {
+        const parsed = new URL(rawHref, locationRef.href || 'https://auth.openai.com/');
+        return /\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(parsed.pathname || '');
+      } catch {
+        return /\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(rawHref);
+      }
+    }
+
+    function normalizeSignupPasswordSwitchText(value = '') {
+      return String(value || '')
+        .normalize('NFKC')
+        .replace(/[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function getSignupPasswordSwitchTextCandidates(el) {
+      const values = [
+        getActionText(el),
+        el?.textContent,
+        el?.innerText,
+        el?.value,
+        el?.getAttribute?.('aria-label'),
+        el?.getAttribute?.('title'),
+        el?.getAttribute?.('data-dd-action-name'),
+        el?.getAttribute?.('data-testid'),
+      ];
+      return Array.from(new Set(values
+        .map(normalizeSignupPasswordSwitchText)
+        .filter(Boolean)));
+    }
+
+    function isSignupPasswordSwitchText(value = '') {
+      const normalized = normalizeSignupPasswordSwitchText(value);
+      if (!normalized) return false;
+      return constants.SIGNUP_PASSWORD_SWITCH_PATTERN.test(normalized)
+        || constants.SIGNUP_PASSWORD_SWITCH_PATTERN.test(normalized.replace(/[-_]+/g, ' '))
+        || (
+          normalized.length <= 220
+          && constants.SIGNUP_PASSWORD_SWITCH_PHRASE_PATTERN.test(normalized)
+        );
+    }
+
+    function getSignupPasswordSwitchSearchRoots() {
+      const roots = [];
+      const queued = [documentRef];
+      const seen = new Set();
+
+      while (queued.length && roots.length < 20) {
+        const rootNode = queued.shift();
+        if (!rootNode || seen.has(rootNode)) continue;
+        seen.add(rootNode);
+        roots.push(rootNode);
+
+        let descendants = [];
+        try {
+          descendants = Array.from(rootNode.querySelectorAll?.('*') || []).slice(0, 1500);
+        } catch {}
+
+        for (const element of descendants) {
+          if (element?.shadowRoot && !seen.has(element.shadowRoot)) {
+            queued.push(element.shadowRoot);
+          }
+          if (/^(?:iframe|frame)$/i.test(String(element?.tagName || ''))) {
+            try {
+              if (element.contentDocument && !seen.has(element.contentDocument)) {
+                queued.push(element.contentDocument);
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return roots;
+    }
+
+    function querySignupPasswordSwitchElements(selector) {
+      const matches = [];
+      const seen = new Set();
+      for (const rootNode of getSignupPasswordSwitchSearchRoots()) {
+        let candidates = [];
+        try {
+          candidates = Array.from(rootNode.querySelectorAll?.(selector) || []);
+        } catch {}
+        for (const candidate of candidates) {
+          if (!candidate || seen.has(candidate)) continue;
+          seen.add(candidate);
+          matches.push(candidate);
+        }
+      }
+      return matches;
+    }
+
+    function safelyCheckSignupPasswordSwitchVisibility(el) {
+      try {
+        return Boolean(isVisibleElement(el));
+      } catch {
+        return false;
+      }
+    }
+
+    function isSignupPasswordSwitchVisiblyRepresented(el) {
+      if (!el) return false;
+      let visibilityNode = el;
+      for (let depth = 0; visibilityNode && depth < 8; depth += 1, visibilityNode = visibilityNode.parentElement) {
+        const hiddenAttributePresent = typeof visibilityNode.hasAttribute === 'function'
+          ? visibilityNode.hasAttribute('hidden')
+          : /^(?:true|hidden)$/i.test(String(visibilityNode.getAttribute?.('hidden') || ''));
+        if (
+          visibilityNode.hidden === true
+          || hiddenAttributePresent
+          || visibilityNode.getAttribute?.('aria-hidden') === 'true'
+        ) {
+          return false;
+        }
+      }
+      if (safelyCheckSignupPasswordSwitchVisibility(el)) return true;
+
+      let descendants = [];
+      try {
+        descendants = Array.from(el.querySelectorAll?.('*') || []).slice(0, 200);
+      } catch {}
+      if (descendants.some(safelyCheckSignupPasswordSwitchVisibility)) return true;
+
+      let ancestor = el.parentElement || null;
+      for (let depth = 0; ancestor && depth < 5; depth += 1, ancestor = ancestor.parentElement) {
+        if (!safelyCheckSignupPasswordSwitchVisibility(ancestor)) continue;
+        const ancestorTexts = getSignupPasswordSwitchTextCandidates(ancestor);
+        if (ancestorTexts.some(isSignupPasswordSwitchText)) return true;
+      }
+
+      return false;
+    }
+
+    function resolveSignupPasswordSwitchAction(el) {
+      if (!el) return null;
+      const explicitClickableSelector = [
+        'a',
+        'button',
+        '[role="button"]',
+        '[role="link"]',
+        'input[type="button"]',
+        'input[type="submit"]',
+        '[onclick]',
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(', ');
+      if (el.matches?.(explicitClickableSelector)) return el;
+
+      const clickableAncestor = el.closest?.(explicitClickableSelector);
+      if (clickableAncestor) return clickableAncestor;
+
+      let clickableDescendants = [];
+      try {
+        clickableDescendants = Array.from(el.querySelectorAll?.(explicitClickableSelector) || []);
+      } catch {}
+      const matchingDescendant = clickableDescendants.find((candidate) => (
+        getSignupPasswordSwitchTextCandidates(candidate).some(isSignupPasswordSwitchText)
+      ));
+      if (matchingDescendant) return matchingDescendant;
+      if (clickableDescendants.length === 1) return clickableDescendants[0];
+
+      let ancestor = el.parentElement || null;
+      for (let depth = 0; ancestor && depth < 6; depth += 1, ancestor = ancestor.parentElement) {
+        const ancestorTexts = getSignupPasswordSwitchTextCandidates(ancestor);
+        if (!ancestorTexts.some(isSignupPasswordSwitchText)) continue;
+        let nestedActions = [];
+        try {
+          nestedActions = Array.from(ancestor.querySelectorAll?.(explicitClickableSelector) || []);
+        } catch {}
+        const matchingAction = nestedActions.find((candidate) => (
+          getSignupPasswordSwitchTextCandidates(candidate).some(isSignupPasswordSwitchText)
+        ));
+        if (matchingAction) return matchingAction;
+        if (nestedActions.length === 1) return nestedActions[0];
+        if (isSignupPasswordSwitchVisiblyRepresented(ancestor)) return ancestor;
+      }
+
+      return el;
+    }
+
+    function isAllowedSignupPasswordSwitchAction(el, { allowDisabled = false } = {}) {
+      if (!el || !isSignupPasswordSwitchVisiblyRepresented(el) || (!allowDisabled && !isActionEnabled(el))) {
+        return false;
+      }
+      const href = String(el.getAttribute?.('href') || el.href || '').trim();
+      return !isLoginPasswordHref(href);
+    }
+
+    function hasSignupPasswordSwitchTextHint() {
+      for (const rootNode of getSignupPasswordSwitchSearchRoots()) {
+        const rootText = normalizeSignupPasswordSwitchText(
+          rootNode?.body?.innerText
+          || rootNode?.body?.textContent
+          || rootNode?.host?.innerText
+          || rootNode?.textContent
+          || ''
+        );
+        if (!rootText) continue;
+        const lines = rootText.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
+        if (lines.some(isSignupPasswordSwitchText)) return true;
+        if (constants.SIGNUP_PASSWORD_SWITCH_PHRASE_PATTERN.test(rootText)) return true;
+      }
+      return false;
+    }
+
+    function findSignupPasswordSwitchTrigger({ allowDisabled = false } = {}) {
+      const primaryCandidates = querySignupPasswordSwitchElements([
+        'a',
+        'button',
+        '[role="button"]',
+        '[role="link"]',
+        'input[type="button"]',
+        'input[type="submit"]',
+        '[data-dd-action-name]',
+        '[data-testid]',
+        '[tabindex]',
+        '[onclick]',
+      ].join(', '));
+
+      const hrefMatch = primaryCandidates.find((el) => {
+        if (!isAllowedSignupPasswordSwitchAction(el, { allowDisabled })) return false;
+        return isSignupCreatePasswordHref(el.getAttribute?.('href') || el.href || '');
+      });
+      if (hrefMatch) return hrefMatch;
+
+      const primaryTextMatch = primaryCandidates.find((el) => {
+        if (!isAllowedSignupPasswordSwitchAction(el, { allowDisabled })) return false;
+        return getSignupPasswordSwitchTextCandidates(el).some(isSignupPasswordSwitchText);
+      });
+      if (primaryTextMatch) return primaryTextMatch;
+
+      const textNodes = querySignupPasswordSwitchElements('*')
+        .map((element) => {
+          const matchedLengths = getSignupPasswordSwitchTextCandidates(element)
+            .filter(isSignupPasswordSwitchText)
+            .map((value) => value.length);
+          return {
+            element,
+            matchedLength: matchedLengths.length ? Math.min(...matchedLengths) : Number.POSITIVE_INFINITY,
+          };
+        })
+        .filter((item) => Number.isFinite(item.matchedLength))
+        .sort((left, right) => left.matchedLength - right.matchedLength);
+      for (const { element: textNode } of textNodes) {
+        const action = resolveSignupPasswordSwitchAction(textNode);
+        if (isAllowedSignupPasswordSwitchAction(action, { allowDisabled })) return action;
+      }
+
+      return null;
+    }
+
+    function findLoginPasswordSwitchTrigger({ allowDisabled = false } = {}) {
+      const textNodes = querySignupPasswordSwitchElements('*')
+        .map((element) => {
+          const matchedLengths = getSignupPasswordSwitchTextCandidates(element)
+            .filter(isSignupPasswordSwitchText)
+            .map((value) => value.length);
+          return {
+            element,
+            matchedLength: matchedLengths.length ? Math.min(...matchedLengths) : Number.POSITIVE_INFINITY,
+          };
+        })
+        .filter((item) => Number.isFinite(item.matchedLength))
+        .sort((left, right) => left.matchedLength - right.matchedLength);
+
+      for (const { element } of textNodes) {
+        const action = resolveSignupPasswordSwitchAction(element);
+        if (
+          !action
+          || !isSignupPasswordSwitchVisiblyRepresented(action)
+          || (!allowDisabled && !isActionEnabled(action))
+        ) {
+          continue;
+        }
+        const href = String(action.getAttribute?.('href') || action.href || '').trim();
+        if (isLoginPasswordHref(href)) return action;
+      }
+
+      return null;
+    }
+
+    function buildSignupPasswordSwitchDiagnostic() {
+      const roots = getSignupPasswordSwitchSearchRoots();
+      const allElements = querySignupPasswordSwitchElements('*');
+      const candidates = [];
+
+      for (const element of allElements) {
+        const matchedValues = getSignupPasswordSwitchTextCandidates(element).filter(isSignupPasswordSwitchText);
+        if (!matchedValues.length) continue;
+        const action = resolveSignupPasswordSwitchAction(element);
+        const href = String(action?.getAttribute?.('href') || action?.href || '').trim();
+        candidates.push({
+          tag: String(element?.tagName || '').toLowerCase(),
+          role: String(element?.getAttribute?.('role') || ''),
+          visible: safelyCheckSignupPasswordSwitchVisibility(element),
+          represented: isSignupPasswordSwitchVisiblyRepresented(element),
+          enabled: Boolean(isActionEnabled(element)),
+          matchedLength: Math.min(...matchedValues.map((value) => value.length)),
+          actionTag: String(action?.tagName || '').toLowerCase(),
+          actionRole: String(action?.getAttribute?.('role') || ''),
+          actionVisible: safelyCheckSignupPasswordSwitchVisibility(action),
+          actionRepresented: isSignupPasswordSwitchVisiblyRepresented(action),
+          actionEnabled: Boolean(action && isActionEnabled(action)),
+          hrefKind: isSignupCreatePasswordHref(href)
+            ? 'signup-password'
+            : (isLoginPasswordHref(href) ? 'login-password' : 'none'),
+        });
+        if (candidates.length >= 12) break;
+      }
+
+      return {
+        rootCount: roots.length,
+        elementCount: allElements.length,
+        candidateCount: candidates.length,
+        candidates,
+      };
+    }
+
     function findResendVerificationCodeTrigger({ allowDisabled = false } = {}) {
       return getSignupVerificationPageHelpers().findResendVerificationCodeTrigger?.({ allowDisabled }) || null;
     }
@@ -257,6 +591,10 @@
       getActionText,
       isActionEnabled,
       findOneTimeCodeLoginTrigger,
+      findSignupPasswordSwitchTrigger,
+      findLoginPasswordSwitchTrigger,
+      hasSignupPasswordSwitchTextHint,
+      buildSignupPasswordSwitchDiagnostic,
       findResendVerificationCodeTrigger,
       isEmailVerificationPage,
       getVerificationErrorText,

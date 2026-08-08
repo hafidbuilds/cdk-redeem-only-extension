@@ -1,5 +1,6 @@
 {
-  "name": "cdk-redeem-only-extension",
+  "name": "free-account-tool",
+  "version": "3.0.0",
   "license": "MIT",
   "private": true,
   "scripts": {

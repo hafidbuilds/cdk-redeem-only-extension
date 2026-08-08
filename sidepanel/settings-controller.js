@@ -52,6 +52,9 @@
     const { appState = null, scopeValues = {} } = deps;
     const scope = createCombinedScope(appState, scopeValues);
     with (scope) {
+      let eventsBound = false;
+      let settingsSaveQueue = Promise.resolve();
+
       function markSettingsDirty(isDirty = true) {
         settingsDirty = isDirty;
         if (isDirty) {
@@ -93,8 +96,6 @@
           'input-custom-email-pool-search',
           'select-custom-email-pool-filter',
           'checkbox-custom-email-pool-select-all',
-          'input-upi-redeem-cdkey-pool',
-          'input-ideal-redeem-cdkey-pool',
         ].includes(String(target.id || '').trim());
       }
       
@@ -104,15 +105,19 @@
           return;
         }
         markSettingsDirty(true);
+        if (String(event?.type || '').toLowerCase() === 'change') {
+          clearTimeout(settingsAutoSaveTimer);
+          return saveSettings({ silent: true }).catch(() => {});
+        }
         scheduleSettingsAutoSave();
       }
       
       function flushDirtySettingsBeforePanelUnload() {
         clearTimeout(settingsAutoSaveTimer);
-        if (!settingsDirty || settingsSaveInFlight) {
-          return;
+        if (!settingsDirty) {
+          return Promise.resolve();
         }
-        saveSettings({ silent: true }).catch(() => { });
+        return saveSettings({ silent: true }).catch(() => { });
       }
       
       async function sendRuntimeMessageWithTimeout(message, timeoutMs = 20000, timeoutLabel = '请求') {
@@ -134,7 +139,7 @@
         }
       }
       
-      async function saveSettings(options = {}) {
+      async function performSettingsSave(options = {}) {
         const { silent = false, force = false } = options;
         clearTimeout(settingsAutoSaveTimer);
       
@@ -199,6 +204,23 @@
           settingsSaveInFlight = false;
           updateSaveButtonState();
         }
+      }
+
+      function saveSettings(options = {}) {
+        const run = () => performSettingsSave(options);
+        const pending = settingsSaveQueue.then(run, run);
+        settingsSaveQueue = pending.catch(() => {});
+        return pending;
+      }
+
+      function bindEvents() {
+        if (eventsBound) {
+          return;
+        }
+        eventsBound = true;
+        btnSaveSettings?.addEventListener?.('click', () => saveSettings({ force: true }).catch(() => {}));
+        settingsCard?.addEventListener?.('input', queueSettingsCardAutosaveFromEvent);
+        settingsCard?.addEventListener?.('change', queueSettingsCardAutosaveFromEvent);
       }
       
       function buildCustomEmailPoolSettingsPayload(extraPayload = {}) {
@@ -293,6 +315,7 @@
       }
 
       async function waitForSettingsSaveIdle() {
+        await settingsSaveQueue.catch(() => {});
         while (settingsSaveInFlight) {
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
@@ -332,6 +355,7 @@
         persistCustomEmailPoolSettings,
         persistCustomPasswordInput,
         saveSettings,
+        bindEvents,
         persistCurrentSettingsForAction,
       };
     }

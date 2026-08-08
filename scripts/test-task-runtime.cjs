@@ -1,89 +1,75 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-require('../shared/sensitive-data-redactor.js');
-require('../shared/task-schema.js');
-const repositoryApi = require('../background/task-repository.js');
-const eventStoreApi = require('../background/task-event-store.js');
-const lockApi = require('../background/task-lock-manager.js');
-const recoveryPolicy = require('../background/task-recovery-policy.js');
 const runtimeApi = require('../background/task-runtime.js');
 
-function createRuntime() {
-  const store = {};
-  const chromeApi = { storage: { local: {
-    async get(keys) { return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((key) => Object.hasOwn(store, key)).map((key) => [key, structuredClone(store[key])])); },
-    async set(values) { Object.assign(store, structuredClone(values)); },
-  } } };
-  const repository = repositoryApi.createTaskRepository({ chromeApi });
-  const eventStore = eventStoreApi.createTaskEventStore({ chromeApi });
-  const lockManager = lockApi.createTaskLockManager({ repository });
-  return { repository, eventStore, runtime: runtimeApi.createTaskRuntime({ repository, eventStore, lockManager, recoveryPolicy }) };
+function createHarness(status = 'interrupted') {
+  let task = {
+    taskId: 'task_fill_session',
+    type: 'fill_session',
+    status,
+    checkpoint: { nextIndex: 2, locksReleased: true },
+    recovery: { canRetry: true },
+    cancelRequested: false,
+    resourceKeys: ['free-session-fill:free'],
+  };
+  const events = [];
+  const locks = [];
+  const repository = {
+    async get(taskId) { return taskId === task.taskId ? structuredClone(task) : null; },
+    async patch(taskId, patch = {}) {
+      assert.equal(taskId, task.taskId);
+      task = {
+        ...task,
+        ...patch,
+        checkpoint: { ...task.checkpoint, ...(patch.checkpoint || {}) },
+      };
+      return structuredClone(task);
+    },
+    async listActive() { return []; },
+  };
+  const runtime = runtimeApi.createTaskRuntime({
+    repository,
+    eventStore: { async append(event) { events.push(event); return event; } },
+    lockManager: {
+      async acquire(taskId, resourceKeys) { locks.push(['acquire', taskId, resourceKeys]); return resourceKeys; },
+      async release(taskId) { locks.push(['release', taskId]); return true; },
+    },
+  });
+  return { events, getTask: () => task, locks, runtime };
 }
 
-test('task runtime persists checkpoints, result and terminal lock release', async () => {
-  const fixture = createRuntime();
-  const run = await fixture.runtime.runTask({ type: 'verify_membership', accountId: 'user@example.com' }, async (context) => {
-    await context.checkpoint({ nodeId: 'verify', progress: { current: 1, total: 1 } });
-    return { membership: 'free' };
+test('task runtime resumes an interrupted fill_session task with its checkpoint', async () => {
+  const harness = createHarness();
+  const result = await harness.runtime.resumeTask('task_fill_session', async (context) => {
+    await context.checkpoint({ progress: { current: 3, total: 5 }, nextIndex: 3 });
+    return { successCount: 3 };
+  }, ['free-session-fill:free']);
+
+  assert.equal(result.task.status, 'succeeded');
+  assert.equal(result.task.checkpoint.nextIndex, 3);
+  assert.deepEqual(result.result, { successCount: 3 });
+  assert.deepEqual(harness.locks[0], ['acquire', 'task_fill_session', ['free-session-fill:free']]);
+  assert.equal(harness.events.some((event) => event.code === 'TASK_RESUMED'), true);
+});
+
+test('task runtime rejects a terminal task that is not resumable', async () => {
+  const harness = createHarness('succeeded');
+  await assert.rejects(
+    harness.runtime.resumeTask('task_fill_session', async () => ({})),
+    /Task cannot be resumed/
+  );
+});
+
+test('task runtime finalizes a cancel-requested operation with its partial result', async () => {
+  const harness = createHarness('running');
+  const result = await harness.runtime.executeTask('task_fill_session', async (context) => {
+    await harness.runtime.requestCancel('task_fill_session');
+    assert.equal(await context.isCancelRequested(), true);
+    return { successCount: 2, stopped: true };
   });
-  assert.equal(run.task.status, 'succeeded');
-  assert.equal(run.task.checkpoint.nodeId, 'verify');
-  assert.equal(run.task.checkpoint.locksReleased, true);
-  assert.equal((await fixture.eventStore.list(run.taskId)).at(-1).code, 'TASK_SUCCEEDED');
-});
 
-test('cancel requested after remote submission waits for remote result', async () => {
-  const fixture = createRuntime();
-  const task = await fixture.runtime.startTask({ type: 'redeem', accountId: 'user@example.com', checkpoint: { remoteRequestSent: true } });
-  const canceled = await fixture.runtime.requestCancel(task.taskId);
-  assert.equal(canceled.status, 'waiting_remote');
-  assert.equal(canceled.cancelRequested, true);
-});
-
-test('unknown remote failure stays query-only and keeps locks', async () => {
-  const fixture = createRuntime();
-  const task = await fixture.runtime.startTask({ type: 'redeem', accountId: 'user@example.com' });
-  await assert.rejects(fixture.runtime.executeTask(task.taskId, async (context) => {
-    await context.checkpoint({ cdkSubmitted: true, remoteRequestSent: true });
-    throw new Error('network timeout');
-  }), /network timeout/);
-  const saved = await fixture.repository.get(task.taskId);
-  assert.equal(saved.status, 'waiting_remote');
-  assert.equal(saved.recovery.canResubmit, false);
-  assert.equal(saved.checkpoint.locksReleased, false);
-});
-
-test('startup recovery is deduplicated within one service worker instance', async () => {
-  const fixture = createRuntime();
-  await fixture.runtime.startTask({ type: 'register', checkpoint: { registrationEmailSubmitted: false } });
-  const first = await fixture.runtime.recoverActiveTasks();
-  const second = await fixture.runtime.recoverActiveTasks();
-  assert.deepEqual(second, first);
-  const taskId = first[0].task.taskId;
-  assert.equal((await fixture.eventStore.list(taskId)).filter((event) => event.code === 'TASK_RECOVERY_RESUME_SAFE').length, 1);
-});
-
-test('startup query-only recovery can confirm a remote task and release its locks', async () => {
-  const fixture = createRuntime();
-  const task = await fixture.runtime.startTask({
-    type: 'redeem',
-    accountId: 'user@example.com',
-    channel: 'upi',
-    checkpoint: { cdkSubmitted: true, remoteRequestSent: true },
-  });
-  let recoveryCalls = 0;
-  fixture.runtime.setRemoteRecoveryHandler(async ({ task: recoveringTask }) => {
-    recoveryCalls += 1;
-    const resolved = await fixture.runtime.resolveRemoteTask(recoveringTask.taskId, {
-      outcome: 'confirmed',
-      result: { externalEffectIds: ['effect-1'] },
-    });
-    return { outcome: 'confirmed', task: resolved };
-  });
-  const recovered = await fixture.runtime.recoverActiveTasks({ force: true });
-  assert.equal(recoveryCalls, 1);
-  assert.equal(recovered[0].task.status, 'succeeded');
-  assert.equal(recovered[0].task.checkpoint.locksReleased, true);
-  assert.equal(fixture.runtime.createContext(task.taskId) !== null, true);
+  assert.equal(result.task.status, 'canceled');
+  assert.deepEqual(result.task.result, { successCount: 2, stopped: true });
+  assert.equal(harness.locks.some((entry) => entry[0] === 'release'), true);
 });

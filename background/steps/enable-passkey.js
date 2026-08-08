@@ -128,8 +128,6 @@
         .replace(/\/api\/v1\/passkey\/enable$/i, '')
         .replace(/\/api\/v1\/totp\/(?:enable|lookup|code)$/i, '')
         .replace(/\/api\/v1\/subscription$/i, '')
-        .replace(/\/api\/external\/cdkey-redeems\/status$/i, '')
-        .replace(/\/api\/external\/cdkey-redeems$/i, '')
         .replace(/\/api\/?$/i, '')
         .replace(/\/+$/g, '');
       normalized = parsed.toString().replace(/\/+$/g, '');
@@ -140,8 +138,6 @@
       .replace(/\/api\/v1\/passkey\/enable$/i, '')
       .replace(/\/api\/v1\/totp\/(?:enable|lookup|code)$/i, '')
       .replace(/\/api\/v1\/subscription$/i, '')
-      .replace(/\/api\/external\/cdkey-redeems\/status$/i, '')
-      .replace(/\/api\/external\/cdkey-redeems$/i, '')
       .replace(/\/api\/?$/i, '')
       .replace(/\/+$/g, '');
     return normalized || DEFAULT_NERVER_API_BASE_URL;
@@ -176,7 +172,7 @@
     }
     const stamp = Math.max(1, Math.floor(Date.now())).toString(36);
     const randomPart = Math.random().toString(36).slice(2, 12) || 'local';
-    return `cdk-redeem-${stamp}-${randomPart}`;
+    return `free-account-tool-${stamp}-${randomPart}`;
   }
 
   function getCookieChunkValue(cookies = [], baseName = '') {
@@ -265,7 +261,6 @@
     const {
       addLog: rawAddLog = async () => {},
       appendAccountRunRecord = null,
-      checkRegistrationUpiTrialEligibility = null,
       chrome: chromeApi = globalThis.chrome,
       completeNodeFromBackground = async () => {},
       fetchImpl = typeof fetch === 'function' ? fetch.bind(globalThis) : null,
@@ -278,6 +273,7 @@
       setState = async () => {},
       sleepWithStop = async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       throwIfStopped = () => {},
+      upsertRegistrationResult = null,
       upsertUpiAccountCredentialBackup = null,
       waitForTabCompleteUntilStopped = async () => {},
     } = deps;
@@ -288,7 +284,7 @@
 
     function resolveVisibleStep(state = {}) {
       const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
-      return visibleStep > 0 ? visibleStep : 7;
+      return visibleStep > 0 ? visibleStep : 9;
     }
 
     function addStepLog(step, message, level = 'info') {
@@ -296,6 +292,50 @@
         step,
         stepKey: 'enable-passkey',
       });
+    }
+
+    async function persistFreeAccountWithoutEligibility({
+      runtimeState = {},
+      patch = {},
+      email = '',
+      accessToken = '',
+      session = null,
+    } = {}) {
+      if (typeof upsertRegistrationResult !== 'function') {
+        const error = new Error('第 9 步无法保存 Free 账号：账号保存能力尚未接入。');
+        error.code = 'FREE_ACCOUNT_PERSISTENCE_UNAVAILABLE';
+        error.preserveSignupSession = true;
+        throw error;
+      }
+      const savedAt = new Date().toISOString();
+      const eligibilityPatch = {
+        trialEligibilityStatus: 'unknown',
+        trialEligibilityReason: '注册流程已完成；自动 GCash 资格检测已停用，可稍后手动复检。',
+        trialEligibilityReasonCode: 'GCASH_ELIGIBILITY_DISABLED',
+        trialEligibilityCheckedAt: savedAt,
+      };
+      try {
+        await upsertRegistrationResult({
+          email: normalizeEmail(email || runtimeState.email || runtimeState.registrationEmailState?.current),
+          password: normalizeString(runtimeState.password || runtimeState.customPassword),
+          gptPassword: normalizeString(runtimeState.gptPassword || runtimeState.password || runtimeState.customPassword),
+          no2faFreeRoute: false,
+          twoFactorEnabled: true,
+          accessToken: normalizeString(accessToken || runtimeState.accessToken),
+          accessTokenUpdatedAt: normalizeString(accessToken || runtimeState.accessToken) ? savedAt : '',
+          session: session && typeof session === 'object' ? session : null,
+          sessionUpdatedAt: session && typeof session === 'object' ? savedAt : '',
+          verificationUrl: normalizeString(runtimeState.verificationUrl || runtimeState.emailVerificationUrl),
+          ...patch,
+          ...eligibilityPatch,
+          source: 'registration-step-9-passkey',
+        });
+      } catch (error) {
+        error.preserveSignupSession = true;
+        throw error;
+      }
+      await setState(eligibilityPatch);
+      return eligibilityPatch;
     }
 
     function formatLogPresence(label, value = '') {
@@ -373,7 +413,7 @@
       const targetEmail = resolveTargetAccountEmail(state);
       const sessionEmail = resolveSessionAccountEmail(session);
       if (targetEmail && sessionEmail && targetEmail !== sessionEmail) {
-        throw new Error(`步骤 7：当前 ChatGPT 登录态邮箱 ${sessionEmail} 与本轮目标邮箱 ${targetEmail} 不一致，已停止，避免把 Passkey/Free 分组写到错误账号。`);
+        throw new Error(`步骤 9：当前 ChatGPT 登录态邮箱 ${sessionEmail} 与本轮目标邮箱 ${targetEmail} 不一致，已停止，避免把 Passkey 凭据写到错误账号。`);
       }
       return sessionEmail || targetEmail;
     }
@@ -394,7 +434,7 @@
         && passwordAccountIdentifier === normalizedAccountEmail;
     }
 
-    async function resolveExecutionAccountEmail(state = {}, session = {}, visibleStep = 7) {
+    async function resolveExecutionAccountEmail(state = {}, session = {}, visibleStep = 9) {
       const targetEmail = resolveTargetAccountEmail(state);
       const sessionEmail = resolveSessionAccountEmail(session);
       const manualCurrentSessionMode = isManualEnablePasskeyCurrentSessionMode(state);
@@ -407,19 +447,19 @@
       }
 
       if (!sessionEmail) {
-        throw new Error(`步骤 ${visibleStep}：单独执行第 7 步未读取到 ChatGPT 登录邮箱，请先登录目标 ChatGPT 账号后再执行。`);
+        throw new Error(`步骤 ${visibleStep}：单独执行第 9 步未读取到 ChatGPT 登录邮箱，请先登录目标 ChatGPT 账号后再执行。`);
       }
 
       if (targetEmail && targetEmail !== sessionEmail) {
         await addStepLog(
           visibleStep,
-          `单独执行第 7 步：当前已登录 ChatGPT 账号为 ${sessionEmail}，旧目标邮箱为 ${targetEmail}，本次按当前已登录账号继续开通 Passkey。`,
+          `单独执行第 9 步：当前已登录 ChatGPT 账号为 ${sessionEmail}，旧目标邮箱为 ${targetEmail}，本次按当前已登录账号继续开通 Passkey。`,
           'warn'
         );
       } else {
         await addStepLog(
           visibleStep,
-          `单独执行第 7 步：本次按当前已登录 ChatGPT 账号 ${sessionEmail} 开通 Passkey。`,
+          `单独执行第 9 步：本次按当前已登录 ChatGPT 账号 ${sessionEmail} 开通 Passkey。`,
           'info'
         );
       }
@@ -478,7 +518,7 @@
       runtimeState = {},
       patch = {},
       email = '',
-      visibleStep = 7,
+      visibleStep = 9,
       nodeId = 'enable-passkey',
       success = false,
     } = {}) {
@@ -487,7 +527,7 @@
       }
       const accountEmail = normalizeString(email || runtimeState.email || runtimeState.registrationEmailState?.current).toLowerCase();
       if (!accountEmail) {
-        await addStepLog(visibleStep, '已到达第 7 步，但当前邮箱为空，无法写入账号记录。', 'warn');
+        await addStepLog(visibleStep, '已到达第 9 步，但当前邮箱为空，无法写入账号记录。', 'warn');
         return null;
       }
 
@@ -503,14 +543,14 @@
         currentNodeId: nodeId || 'enable-passkey',
       });
       const reason = success
-        ? `步骤 ${visibleStep}：已到达第 7 步并开通 Passkey，账号已记录，可后续查询。`
-        : `步骤 ${visibleStep}：已到达第 7 步，账号邮箱已记录，可后续查询。`;
+        ? `步骤 ${visibleStep}：已到达第 9 步并开通 Passkey，账号已记录，可后续查询。`
+        : `步骤 ${visibleStep}：已到达第 9 步，账号邮箱已记录，可后续查询。`;
       await appendAccountRunRecord('running', checkpointState, reason);
       await addStepLog(
         visibleStep,
         success
-          ? `已更新第 7 步 Passkey 账号记录，后续可按邮箱查询：${accountEmail}`
-          : `已记录到达第 7 步账号，后续可按邮箱查询：${accountEmail}`,
+          ? `已更新第 9 步 Passkey 账号记录，后续可按邮箱查询：${accountEmail}`
+          : `已记录到达第 9 步账号，后续可按邮箱查询：${accountEmail}`,
         'info'
       );
       return checkpointState;
@@ -754,7 +794,7 @@
       if (!runtimeState.gptPasswordSet) {
         await addStepLog(
           visibleStep,
-          '未检测到第 6 步“设置 GPT 密码”完成记录，仍按独立第 7 步继续开通 Passkey；如后端要求最近认证，请重新执行第 6 步后再试。',
+          '未检测到第 8 步“设置 GPT 密码”完成记录，仍按独立第 9 步继续开通 Passkey；如后端要求最近认证，请重新执行第 8 步后再试。',
           'warn'
         );
       }
@@ -770,7 +810,7 @@
         passkeyApiPersisted: false,
       });
 
-      await addStepLog(visibleStep, '正在通过 Nerver API 开通 ChatGPT Passkey，成功后检测 UPI 试用资格...', 'info');
+      await addStepLog(visibleStep, '正在通过 Nerver API 开通 ChatGPT Passkey...', 'info');
       const tabId = await resolveSessionTabId(runtimeState);
       const tab = await ensureChatGptSecurityTab(tabId, visibleStep);
       const authSession = await readAuthSessionInTab(tab.id);
@@ -801,7 +841,7 @@
       } catch (recordError) {
         await addStepLog(
           visibleStep,
-          `已到达第 7 步，但写入账号记录失败：${getErrorMessage(recordError)}`,
+          `已到达第 9 步，但写入账号记录失败：${getErrorMessage(recordError)}`,
           'warn'
         );
       }
@@ -866,6 +906,7 @@
         passkeyApiPersisted: payload.persisted !== false,
         twoFactorEnabled: true,
         no2faFreeRoute: false,
+        securityFactorReadyAt: new Date().toISOString(),
       };
       await setState(patch);
       if (typeof upsertUpiAccountCredentialBackup === 'function') {
@@ -876,6 +917,13 @@
           sourceStep: 'enable-passkey',
         });
       }
+      const eligibilityPatch = await persistFreeAccountWithoutEligibility({
+        runtimeState,
+        patch,
+        email: accountEmail,
+        accessToken,
+        session: authSession.session,
+      });
       try {
         await recordStep7AccountCheckpoint({
           runtimeState,
@@ -888,7 +936,7 @@
       } catch (recordError) {
         await addStepLog(
           visibleStep,
-          `第 7 步账号已开通 Passkey，但写入账号记录失败：${getErrorMessage(recordError)}`,
+          `第 9 步账号已开通 Passkey，但写入账号记录失败：${getErrorMessage(recordError)}`,
           'warn'
         );
       }
@@ -899,41 +947,28 @@
             ...patch,
             email: accountEmail || runtimeState.email,
             accessToken,
-            upiRedeemAccessToken: accessToken,
+            accessToken,
             accessTokenUpdatedAt: enabledAt,
             accountIdentifierType: runtimeState.accountIdentifierType || 'email',
             accountIdentifier: runtimeState.accountIdentifier || accountEmail || runtimeState.email,
           }, {
-            logPrefix: '第 7 步 Passkey 已完成',
+            logPrefix: '第 9 步 Passkey 已完成',
             level: 'ok',
             preferProvidedState: true,
           });
         } catch (markError) {
           await addStepLog(
             visibleStep,
-            `第 7 步 Passkey 已完成，但标记当前注册邮箱已用失败：${getErrorMessage(markError)}`,
+            `第 9 步 Passkey 已完成，但标记当前注册邮箱已用失败：${getErrorMessage(markError)}`,
             'warn'
           );
         }
       }
-      if (typeof checkRegistrationUpiTrialEligibility === 'function') {
-        await checkRegistrationUpiTrialEligibility({
-          state: {
-            ...runtimeState,
-            email: accountEmail || runtimeState.email,
-          },
-          patch,
-          session: authSession.session || authSession,
-          accessToken,
-          email: accountEmail,
-          visibleStep,
-        });
-      }
       await addStepLog(visibleStep, `ChatGPT Passkey 已通过 Nerver API 开通：${credentialId || 'already-enabled'}`, 'success');
       if (state?.suppressNodeCompletion !== true) {
-        await completeNodeFromBackground(state?.nodeId || 'enable-passkey', patch);
+        await completeNodeFromBackground(state?.nodeId || 'enable-passkey', { ...patch, ...eligibilityPatch });
       }
-      return patch;
+      return { ...patch, ...eligibilityPatch };
     }
 
     return {

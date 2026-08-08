@@ -43,7 +43,7 @@ test('settings export persists the visible custom email pool before reading back
 
   assert.equal(calls[0][0], 'confirm');
   assert.equal(calls[0][1].title, '导出安全配置');
-  assert.match(calls[0][1].message, /不包含邮箱池、完整 AT、密码或 2FA/);
+  assert.match(calls[0][1].message, /不包含邮箱池、完整 AT\/Session、密码或 2FA/);
   assert.deepEqual(calls.slice(1), ['flush', 'pool', 'export']);
 });
 
@@ -71,7 +71,7 @@ test('sensitive settings export explains complete recovery and sends explicit co
   await manager.exportSensitiveSettingsFile();
 
   assert.equal(calls[0][1].title, '导出完整备份');
-  assert.match(calls[0][1].message, /恢复邮箱池、账号、完整 AT、密码和 2FA/);
+  assert.match(calls[0][1].message, /恢复邮箱池、账号、完整 AT\/Session、密码和 2FA/);
   assert.equal(calls[1][1].payload.includeSensitiveRuntimeData, true);
   assert.equal(calls[1][1].payload.confirmed, true);
   assert.match(calls[2][1], /完整备份已导出/);
@@ -95,5 +95,5 @@ test('settings import identifies safe bundles before confirmation', async () => 
   });
 
   assert.match(confirmation.message, /这是安全配置/);
-  assert.match(confirmation.message, /不包含邮箱池、完整 AT、密码或 2FA/);
+  assert.match(confirmation.message, /不包含邮箱池、完整 AT\/Session、密码或 2FA/);
 });

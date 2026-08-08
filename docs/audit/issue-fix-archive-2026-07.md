@@ -4,6 +4,12 @@
 
 ## 目录
 
+- [步骤 6 直连取件 URL 返回缓存旧邮件](#2026-07-30-step6-direct-mail-cache-bust)
+- [步骤 6 取码耗尽后误重开整轮注册](#2026-07-30-step6-code-fetch-round-restart)
+- [步骤 3.5 可借用其他标签页 Session 误判登录成功](#2026-07-30-step3-5-current-tab-session-identity)
+- [步骤 3.5 登录失败后自动运行清理现场并换邮箱](#2026-07-30-step3-5-failure-session-preservation)
+- [已有 TOTP 账号经 Free 资格节点后被误记为免 2FA](#2026-07-30-existing-totp-free-persistence-semantics)
+- [步骤 3.5 分格输入日志泄露动态码](#2026-07-30-step3-5-totp-log-redaction)
 - [步骤 4 HTML 取件页误选隐藏六位数字](#2026-07-29-step4-generic-html-decoy-code)
 - [步骤 6 登录通知误终止验证码轮询](#2026-07-29-step6-signin-notification-polling)
 - [自定义邮箱验证码未通过却被步骤 4 当作成功](#2026-07-28-manual-signup-verification-confirmation)
@@ -32,6 +38,313 @@
 - [步骤 3.5 日志与侧边栏运行状态不一致](#2026-07-26-step3-5-ui-status-sync)
 - [无试用资格状态的统一记录恢复](#2026-07-27-ineligible-email-canonical-recovery)
 - [步骤 2 密码页等待与后台响应超时竞态](#2026-07-27-step2-password-page-response-timeout)
+
+---
+
+<a id="2026-07-30-step6-direct-mail-cache-bust"></a>
+
+## 步骤 6 直连取件 URL 返回缓存旧邮件
+
+日期：2026-07-30
+
+关联记录：[步骤 6 取码耗尽后误重开整轮](#2026-07-30-step6-code-fetch-round-restart)、[步骤 6 登录通知误终止验证码轮询](#2026-07-29-step6-signin-notification-polling)
+
+### 故障现象与证据
+
+用户提供的脱敏最近失败诊断显示，步骤 6 已确认进入邮箱验证码页，首次读取到的六码被 OpenAI 拒绝；点击 Resend 后，同一自定义取件 URL 连续返回旧 HTML 页面，后续 4 次均未获得可提交的新码。用户提供的邮件截图标题为 “Your temporary ChatGPT verification code”，正文包含 “Log in to ChatGPT” 和临时六码，说明这类邮件本身不是无验证码的登录通知。
+
+### 根因与影响范围
+
+普通自定义取件 URL 只依赖浏览器 `no-store` 请求指令；当上游服务或 CDN 忽略该指令时，旧邮件 HTML 仍可能作为最新响应返回。旧码被页面拒绝后，步骤 6 会按安全规则排除它，不会再次提交，因此在缓存刷新前表现为取码耗尽。现有解析器可识别截图所示的标题和正文，问题不在验证码格式匹配。
+
+### 实现与安全边界
+
+- 仅对未知格式的直连自定义取件 URL 添加一次性 `_mp_cache_bust` 查询值；Assurivo 和 LinlinFlow 的专用取件/刷新接口保持原路径。
+- 缓存键只用于当次网络请求，不写入邮箱池、设置导出、日志或诊断，也不替换用户保存的取件 URL。
+- 标题为 “New sign-in to your OpenAI account” 且不含验证码的真正登录通知仍会被拒绝；OpenAI 已明确拒绝的旧码仍在本轮排除，不降低验证码校验安全性。
+
+### 回归覆盖
+
+- `scripts/test-custom-email-latest-notification.cjs` 验证截图对应的临时码邮件可解析，以及直连请求带有缓存键。
+- `scripts/test-set-gpt-password-session-expiry.cjs`、`scripts/test-auto-run-email-guard.cjs` 和 `scripts/test-auto-run-session-runner.cjs` 保持步骤 6 会话保留和不重开整轮的边界。
+
+### 验证与提交影响
+
+- 上述四个定向测试文件：`34/34` 通过；相关 JavaScript 语法检查通过。
+- 一次性临时 Git 索引下的 `npm run check` 通过：语法 `398/398`，全量测试 `532/532`，隔离 Chrome for Testing E2E、文档审计、Smoke 审计、Removed Network 审计和 Phone/SMS 审计均通过；仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未修改 Manifest 版本，未创建标签或发布。
+
+---
+
+<a id="2026-07-30-step6-code-fetch-round-restart"></a>
+
+## 步骤 6 取码耗尽后误重开整轮注册
+
+日期：2026-07-30
+
+关联记录：[步骤 6 登录通知误终止验证码轮询](#2026-07-29-step6-signin-notification-polling)、[步骤 6 invalid_state 恢复耗尽后误重开整轮](#2026-07-26-step6-invalid-state-round-restart)
+
+### 故障现象与证据
+
+用户提供的脱敏“最近失败诊断”显示：第 7/18 轮在步骤 6 已进入设置 GPT 密码验证码页，对同一自定义邮箱连续取码 5 次；取件接口每次返回 HTML 页面而非有效验证码。第 5 次失败后，自动运行把普通错误作为可重试失败，三秒后启动第 7 轮第 2 次尝试，并从步骤 1 打开官网。用户手动停止前已经保留了这条错误链。
+
+### 根因与影响范围
+
+`set-gpt-password` 仅在取码循环内把该类返回识别为临时失败；达到循环上限时直接抛出原错误，丢失“当前认证会话必须保留”的语义。`auto-run/retry-policy` 因而选择通用 `retry_generic`，`session-runner` 清理当前尝试并重新开始整轮。该问题影响自定义邮箱的步骤 6 取码耗尽，不影响验证码明确被拒绝、密码重置状态失效或远端会员/兑换失败的既有处理。
+
+### 实现与安全边界
+
+- `set-gpt-password` 在可重试取码错误达到上限时抛出结构化 `SET_GPT_PASSWORD_CODE_FETCH_UNCERTAIN`，标记 `preserveSignupSession=true`、`retryable=false` 和失败节点。
+- 自动运行策略据此选择现有的保留会话终止动作，不清 Cookie、不换邮箱、不回到步骤 1；当前步骤 6 页面可供人工或后续继续执行。
+- 取件接口返回 HTML 时，循环日志使用“返回网页而非验证码”摘要；结构化错误不携带原始 HTML、验证码或取件链接。
+- 只改变可重试取码错误耗尽后的外层行为，保留单次取码最多 5 次、有限 Resend 和既有 `invalid_state` 原地恢复上限。
+
+### 回归覆盖
+
+- `scripts/test-custom-email-latest-notification.cjs` 验证取码耗尽后保留当前页面、错误不含 HTML。
+- `scripts/test-auto-run-email-guard.cjs` 验证重试策略停止当前轮且不请求新标签页。
+- `scripts/test-auto-run-session-runner.cjs` 与 `scripts/test-set-gpt-password-session-expiry.cjs` 覆盖现有保留会话和步骤 6 原地恢复边界。
+
+### 验证与提交影响
+
+- 上述四个定向测试文件：`32/32` 通过；相关 JavaScript 语法检查通过。
+- 一次性临时 Git 索引下的 `npm run check` 通过：语法 `398/398`，全量测试 `530/530`，隔离 Chrome for Testing E2E、文档审计、Smoke 审计、Removed Network 审计和 Phone/SMS 审计均通过；仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未修改 Manifest 版本，未创建标签或发布。
+
+---
+
+<a id="2026-07-30-step3-5-current-tab-session-identity"></a>
+
+## 步骤 3.5 可借用其他标签页 Session 误判登录成功
+
+日期：2026-07-30
+
+关联记录：[已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)、[步骤 3.5 失败保留现场](#2026-07-30-step3-5-failure-session-preservation)
+
+### 故障现象与证据
+
+步骤 3.5 复核中确认，`chatgpt.com/auth/login`、`/create-account/start` 和 `/login` 仍可被旧 URL 判定当作已登录页。同时，旧成功链没有同时约束 TOTP 页面显示邮箱、本轮工作流邮箱和成功后 Session 邮箱；通用 Session 读取器还可以选取其他 ChatGPT 标签页。因此，另一个已登录账号的 Session 可能为当前步骤 3.5 提供假成功证据。
+
+问题由静态调用链追踪和先失败的定向回归用例共同确认。测试只使用 `.test` 邮箱和固定虚构 Session，未读取真实账号、Cookie 或 AT。
+
+### 根因
+
+- 旧已登录 URL 判定只根据 ChatGPT 主机和宽泛路径识别，没有排除当前认证入口。
+- 提交 TOTP 前没有强制比较页面显示身份与本轮身份。
+- 登录结果主要依赖导航到已登录 URL，没有把 Session 读取锁定在正在执行步骤 3.5 的标签页，也没有将 Session 邮箱作为成功必要条件。
+
+### 修复
+
+- `isLikelyLoggedInChatgptHomeUrl()` 明确排除 `/auth`、`/create-account`、`/email-verification`、`/log-in` 和 `/login` 认证路由。
+- 内容页检测并上送 TOTP 页面显示邮箱；后台在查找本地密钥或提交动态码前先与工作流邮箱比较。
+- 成功复核仅对当前步骤 3.5 标签页请求 `/api/auth/session`；只有 Session 邮箱非空且与本轮目标邮箱一致时才返回成功。
+- 提交期间主 Frame 切换可在同一标签页复核；不会回退使用其他 ChatGPT 标签页。
+
+### 安全与兼容边界
+
+- 邮箱不一致或 Session 不可确认时返回结构化失败，不提交新动态码，不固定判成成功。
+- Session 仅在对应 ChatGPT 页面内读取，不写入日志、档案或测试夹具。
+- 未改动普通新账号注册、Provider、UPI/IDEAL/PIX 状态、CDK 幂等账本、Manifest 权限或版本号。
+
+### 修改文件
+
+- `background.js`
+- `background/navigation-utils.js`
+- `background/signup-flow-helpers.js`
+- `content/auth-page-detectors.js`
+- `scripts/test-auth-navigation-current-routes.cjs`
+- `scripts/test-auth-page-detectors.cjs`
+- `scripts/test-signup-existing-totp-login.cjs`
+
+### 回归覆盖
+
+- ChatGPT 首页仍可识别为已登录，三类当前认证路由均被排除。
+- TOTP 页面邮箱与本轮邮箱不一致时，不查找密钥、不提交动态码。
+- 当前标签页 Session 邮箱不一致时停止；同一标签页通信中断后可复核明确成功。
+
+### 验证与提交影响
+
+- 步骤 3.5 九个定向测试文件：`56/56` 通过。
+- 完整 `npm test`：`527/527` 通过；其中隔离 E2E 使用 `Chrome/150.0.7871.24`、Puppeteer 锁定浏览器、临时 Profile 和 pipe 传输。
+- 等价全目录 `node --check`：`398/398` 通过。官方 `npm run syntax` 已实际执行，但本目录没有 `.git`，因脚本固定调用 `git ls-files` 而无法运行；未将该基础设施失败记为通过。
+- 一次性临时 Git 索引下的官方 `npm run syntax`、`npm test`、`npm run docs:check` 和 `npm run audit` 均通过；5 个本次增量推高的文件已通过等价局部压缩恢复到既有行数阈值内，未提高阈值，仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未修改 Manifest 版本，未创建标签或发布。
+
+---
+
+<a id="2026-07-30-step3-5-failure-session-preservation"></a>
+
+## 步骤 3.5 登录失败后自动运行清理现场并换邮箱
+
+日期：2026-07-30
+
+关联记录：[步骤 3.5 节点失败竞态](#2026-07-26-step3-5-node-error-race)、[步骤 3.5 当前标签页身份绑定](#2026-07-30-step3-5-current-tab-session-identity)
+
+### 故障现象与证据
+
+步骤 3.5 的动态码被拒绝、页面身份不一致或成功状态无法确认时，底层已生成 `SIGNUP_EXISTING_TOTP_LOGIN_FAILED` 并设置 `retryable=false`、`preserveSignupSession=true`。复核发现该错误经内容脚本消息、节点分发器和工作流 waiter 后可退化为普通文本，自动运行因而可按通用失败清理 Cookie、换邮箱或启动新一轮。
+
+定向回归在修复前重建了属性丢失的错误链，确认会进入普通重试；修复后同一夹具只执行一次并保留当前邮箱。
+
+### 根因
+
+- `message-dispatcher` 抛出新的文本 `Error`，未继续传递原错误对象。
+- `background.js` 的 waiter 在非 `Error` 值标准化时没有复制保留现场所需的结构化字段。
+- 自动运行重试策略没有为已有账号 TOTP 登录失败定义专用终止动作。
+
+### 修复
+
+- 消息分发器直接抛出结构化 `Error`，内容脚本重建错误时同步传递 `code`、`retryable` 和 `preserveSignupSession`。
+- waiter 标准化非 `Error` 对象时保留上述字段以及资格/节点语义。
+- retry policy 对 `SIGNUP_EXISTING_TOTP_LOGIN_FAILED` 返回 `fail_signup_existing_totp_login`，并明确 `forceFreshTabsNextRun=false`。
+- session runner 收到该动作后立即标记本轮失败并停止，不重试、不选下一邮箱、不广播清理会话。
+
+### 安全与兼容边界
+
+- 只有结构化代码或稳定前缀明确表示步骤 3.5 失败时才使用专用终止动作。
+- 明确的邮箱验证码、密码提交、Session Frame 和 UPI 资格错误仍使用各自已有策略。
+- 保留现场不代表判定登录成功；用户仍需在当前页面核对真实远端状态。
+
+### 修改文件
+
+- `background.js`
+- `background/router/message-dispatcher.js`
+- `background/auto-run/retry-policy.js`
+- `background/auto-run/session-runner.js`
+- `background/steps/fetch-signup-code.js`
+- `background/signup-flow-helpers.js`
+- `content/signup-page-orchestrator.js`
+- `scripts/test-auto-run-session-runner.cjs`
+- `scripts/test-existing-totp-workflow-skip.cjs`
+- `scripts/test-signup-page-orchestrator.cjs`
+
+### 回归覆盖
+
+- 分发器与 waiter 跨消息链保留步骤 3.5 错误属性。
+- 即使开启“跳过失败”，已有账号 TOTP 登录失败也只尝试一次。
+- 自动运行停止后保留当前标签页和选中邮箱，日志明确说明不清 Cookie、不换邮箱、不重新注册。
+
+### 验证与提交影响
+
+- 步骤 3.5 九个定向测试文件：`56/56` 通过。
+- 完整 `npm test`：`527/527` 通过，隔离 Chrome for Testing E2E 同时通过。
+- 等价全目录 `node --check`：`398/398` 通过；官方 `npm run syntax` 因当前目录缺少 `.git` 而无法执行 `git ls-files`。
+- 临时 Git 索引下的官方语法、全量测试、文档审计和 Smoke 审计均通过；本次增量涉及的 5 个文件已通过等价局部压缩恢复到既有行数阈值内，未提高阈值，仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未改版本、未发布。
+
+---
+
+<a id="2026-07-30-existing-totp-free-persistence-semantics"></a>
+
+## 已有 TOTP 账号经 Free 资格节点后被误记为免 2FA
+
+日期：2026-07-30
+
+关联记录：[步骤 3.5 成功后跳过重复密码](#2026-07-26-step3-5-skip-redundant-password)、[免 2FA Free 导出兼容](#2026-07-25-no2fa-free-export-fix)
+
+### 故障现象与证据
+
+已有 TOTP 账号登录成功后，当工作流的步骤 6 为 `persist-no-2fa-free` 时仍需运行资格保存。旧 executor 把“执行免 2FA 节点”等同于“当前账号没有 2FA”，因而会向 Membership Free 结果写入空密码、空 TOTP、`no2faFreeRoute=true`、`twoFactorEnabled=false`。同时无条件写入 `no2faFreeRecordedAt`，后续迁移又会根据该时间戳推断免 2FA，形成持久语义污染。
+
+调用链复核还确认，旧实现在重新读取已有 TOTP 凭据前已执行 `setState()` 和第一次邮箱已用标记；密钥缺失时流程虽然报错，部分状态已被提前改写。
+
+### 根因
+
+- 资格保存的凭据 patch 固定使用免 2FA 格式，没有识别步骤 3/4 已确认的 `existingTotpLogin` 语义。
+- 本地统一账号、凭据备份、Membership 结果和运行态的密码/TOTP 可以互相不一致；若唯一密钥只存在 Membership 条目，旧写入还会覆盖该副本。
+- `no2faFreeRecordedAt` 被用作兼容性免 2FA 推断证据，不应属于已有 TOTP 路线。
+
+### 修复
+
+- 步骤 3 和步骤 4 将 `existingTotpLogin`、当前邮箱和 `twoFactorEnabled=true` 写入运行态。
+- Free 资格 executor 先读取并校验当前邮箱的本地 TOTP 凭据，确认密钥存在后才写运行态和邮箱标记。
+- 已有 TOTP 路线向 Free 结果写入 `no2faFreeRoute=false`、`twoFactorEnabled=true` 以及原密码/TOTP，并移除任何遗留 `no2faFreeRecordedAt`，只使用普通 `recordedAt`。
+- 真正免 2FA 路线仍保持空密码/TOTP、`no2faFreeRoute=true`、`twoFactorEnabled=false` 和 `no2faFreeRecordedAt`。
+- 保存前再次校验当前 ChatGPT Session 邮箱与工作流邮箱一致。
+
+### 安全与兼容边界
+
+- 凭据缺失或 Session 邮箱不一致时返回不可重试、保留会话的步骤 3.5 错误，不写 Free、不提前标记邮箱已用。
+- 远程资格仍必须明确为 eligible 才进入 Free；本修复不改变资格判定或 CDK 兑换。
+- 不在日志、档案或导出中增加密码、TOTP 密钥、动态码、完整 AT 或 Cookie。
+
+### 修改文件
+
+- `background.js`
+- `background/bootstrap/signup-executor-registry.js`
+- `background/router/node-protocol-service.js`
+- `background/steps/no-2fa-free-route.js`
+- `scripts/test-no-2fa-free-route.cjs`
+- `scripts/test-existing-totp-workflow-skip.cjs`
+- `scripts/test-signup-executor-registry.cjs`
+
+### 回归覆盖
+
+- 已有 TOTP 账号保留密码和 TOTP，记录 `twoFactorEnabled=true`，不写 `no2faFreeRecordedAt`。
+- 运行态中即使遗留免 2FA 标记和时间戳，已有 TOTP 资格写入也会显式清除该语义。
+- 已有 TOTP 密钥不可用时 `setState`、邮箱已用标记和资格检查的调用数均为零。
+- 普通免 2FA 路线继续写入空凭据和专用时间戳。
+
+### 验证与提交影响
+
+- `scripts/test-no-2fa-free-route.cjs`：`5/5` 通过；步骤 3.5 整组定向测试：`56/56` 通过。
+- 完整 `npm test`：`527/527` 通过，隔离 Chrome for Testing E2E 同时通过。
+- 等价全目录 `node --check`：`398/398` 通过；官方 `npm run syntax` 因当前目录缺少 `.git` 而无法执行 `git ls-files`。
+- 临时 Git 索引下的官方语法、全量测试、文档审计和 Smoke 审计均通过；本次增量涉及的 5 个文件已通过等价局部压缩恢复到既有行数阈值内，未提高阈值，仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未改版本、未发布。
+
+---
+
+<a id="2026-07-30-step3-5-totp-log-redaction"></a>
+
+## 步骤 3.5 分格输入日志泄露动态码
+
+日期：2026-07-30
+
+关联记录：[已有账号 TOTP 登录](#2026-07-26-existing-account-totp-login)、[最近失败诊断剪贴板导出](#2026-07-25-failure-diagnostics-clipboard)
+
+### 故障现象与证据
+
+步骤 3.5 向单一验证码输入框填写时已使用概括性日志，但分格六位输入分支仍在日志文本中插值完整动态码；若 React 未稳定回显，警告又会插值六个输入格当前值。这两条分支都会进入持久日志和最近失败诊断。
+
+回归夹具分别传入完整固定六位数字和部分分格值，修复前可从输出文本找到原值；修复后两者都只剩 `[REDACTED]` 或不含值的描述。夹具未使用真实 TOTP 密钥或动态码。
+
+### 根因
+
+- `suppressVerificationCodeLog=true` 只影响了部分上层日志，分格输入分支在调用统一日志函数前已经构造了含敏感值的字符串。
+- orchestrator 只负责重标步骤 3.5 日志，没有对传入消息执行最后一层敏感码清理。
+
+### 修复
+
+- `signup-page.js` 在隐藏验证码日志的步骤 3.5 分支中不再构造含完整码或分格当前值的消息。
+- `signup-page-orchestrator.js` 在 `suppressVerificationCodeLog=true` 时对所有验证码日志做集中清理：替换 4 至 8 位数字，并专门替换“当前页面值”后的分格内容。
+- 清理后仍保留步骤 3.5 和 `fill-password` 的日志归属，方便诊断流程阶段。
+
+### 安全与兼容边界
+
+- 只在调用方明确要求隐藏验证码日志时执行额外清理；不改变验证码填写、提交、拒绝判定或重试次数。
+- 普通日志、诊断和档案不保存 TOTP 密钥、完整/部分动态码、密码、AT 或 Cookie。
+- 未改动其他注册验证码语义、邮箱 Provider、账号存储、CDK 状态或 Manifest。
+
+### 修改文件
+
+- `content/signup-page.js`
+- `content/signup-page-orchestrator.js`
+- `scripts/test-signup-page-orchestrator.cjs`
+
+### 回归覆盖
+
+- 完整六位动态码不出现在步骤 3.5 日志。
+- 包含空格位的部分分格当前值不出现在警告日志。
+- 两条消息仍保留 `[REDACTED]` 和正确的步骤 3.5 元数据。
+
+### 验证与提交影响
+
+- 日志脱敏定向用例与步骤 3.5 整组用例共 `56/56` 通过。
+- 完整 `npm test`：`527/527` 通过，隔离 Chrome for Testing E2E 同时通过。
+- 等价全目录 `node --check`：`398/398` 通过；官方 `npm run syntax` 因当前目录缺少 `.git` 而无法执行 `git ls-files`。
+- 临时 Git 索引下的官方语法、全量测试、文档审计和 Smoke 审计均通过；本次增量涉及的 5 个文件已通过等价局部压缩恢复到既有行数阈值内，未提高阈值，仅保留既有 `background.js > 8000` 体积警告。
+- 当前目录不是 Git 仓库；未提交、未打包、未改版本、未发布。
 
 ---
 

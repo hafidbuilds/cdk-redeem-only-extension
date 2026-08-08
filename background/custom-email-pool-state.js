@@ -176,7 +176,7 @@
           continue;
         }
         seenEmails.add(email);
-        const accessToken = String(asObject.accessToken || asObject.access_token || asObject.upiRedeemAccessToken || '').trim();
+        const accessToken = String(asObject.accessToken || asObject.access_token || '').trim();
         const accessTokenMasked = String(asObject.accessTokenMasked || '').trim()
           || (accessToken ? maskCustomEmailPoolAccessToken(accessToken) : '');
         const note = String(asObject.note || '').trim();
@@ -277,7 +277,7 @@
         const merged = { ...incomingEntry };
         if (currentEntry.used === true && incomingEntry.used !== true) merged.used = true;
         if (Number(currentEntry.lastUsedAt) > Number(incomingEntry.lastUsedAt)) merged.lastUsedAt = currentEntry.lastUsedAt;
-        for (const key of ['manualSkipped', 'accessToken', 'accessTokenMasked', 'accessTokenUpdatedAt', 'trialEligibilityStatus', 'trialEligibilityReason', 'trialEligibilityReasonCode', 'trialEligibilityCheckedAt', 'trialEligibilityRetryable', 'trialEligibilityTransientFailure', 'trialEligibilityLastError']) {
+        for (const key of ['manualSkipped', 'accessToken', 'accessTokenMasked', 'accessTokenUpdatedAt', 'trialEligibilityStatus', 'trialEligibilityReason', 'trialEligibilityReasonCode', 'trialEligibilityCheckedAt', 'trialEligibilityRetryable', 'trialEligibilityTransientFailure', 'trialEligibilityLastError', 'registrationBlocked', 'registrationBlockedReason', 'registrationBlockedReasonCode', 'registrationBlockedAt']) {
           if ((merged[key] === undefined || merged[key] === '' || merged[key] === false) && currentEntry[key] !== undefined && currentEntry[key] !== '') merged[key] = currentEntry[key];
         }
         return merged;
@@ -341,7 +341,7 @@
       const reason = String(options.reason || options.trialEligibilityReason || '').trim();
       const reasonCode = String(options.reasonCode || options.trialEligibilityReasonCode || '').trim();
       const checkedAt = String(options.checkedAt || options.trialEligibilityCheckedAt || new Date().toISOString()).trim();
-      const accessToken = String(options.accessToken || options.token || options.access_token || latestState.accessToken || latestState.upiRedeemAccessToken || '').trim();
+      const accessToken = String(options.accessToken || options.token || options.access_token || latestState.accessToken || '').trim();
       const accessTokenMasked = String(options.accessTokenMasked || '').trim()
         || (accessToken ? maskCustomEmailPoolAccessToken(accessToken) : '');
       const accessTokenUpdatedAt = String(options.accessTokenUpdatedAt || checkedAt || '').trim();
@@ -360,7 +360,7 @@
         }
         matched = true;
         const nextEntry = { ...entry };
-        const entryAccessToken = accessToken || String(entry.accessToken || entry.token || entry.access_token || entry.upiRedeemAccessToken || '').trim();
+        const entryAccessToken = accessToken || String(entry.accessToken || entry.token || entry.access_token || '').trim();
         const canMarkUsed = Boolean(entryAccessToken) || options.manualSkipped === true;
         if (status) {
           nextEntry.trialEligibilityStatus = status;
@@ -481,9 +481,9 @@
 
       let changed = false;
       const now = Date.now();
-      const accessToken = String(latestState.accessToken || latestState.upiRedeemAccessToken || '').trim();
+      const accessToken = String(latestState.accessToken || '').trim();
       const currentEntry = entries.find((entry) => entry.email === currentEmail) || {};
-      const effectiveAccessToken = accessToken || String(currentEntry.accessToken || currentEntry.token || currentEntry.access_token || currentEntry.upiRedeemAccessToken || '').trim();
+      const effectiveAccessToken = accessToken || String(currentEntry.accessToken || currentEntry.token || currentEntry.access_token || '').trim();
       const accessTokenMasked = String(latestState.accessTokenMasked || currentEntry.accessTokenMasked || '').trim()
         || (effectiveAccessToken ? maskCustomEmailPoolAccessToken(effectiveAccessToken) : '');
       const manualSkipped = options.manualSkipped === true;
@@ -576,6 +576,8 @@
 
       const reason = String(options.reason || '当前邮箱已注册，不能继续用于注册流程。').trim();
       const reasonCode = String(options.reasonCode || options.registrationBlockedReasonCode || 'user_already_exists').trim();
+      const accountDeactivated = reasonCode.toLowerCase() === 'account_deactivated';
+      const blockedLabel = accountDeactivated ? '账号已封禁' : '已注册';
       const blockedAt = String(options.blockedAt || new Date().toISOString()).trim();
       const selectedEmail = String(latestState?.selectedCustomEmailPoolEmail || '').trim().toLowerCase();
       const shouldAdvanceSelectedEmail = options.clearSelectedEmail !== false && selectedEmail === currentEmail;
@@ -593,7 +595,7 @@
           registrationBlockedReason: reason,
           registrationBlockedReasonCode: reasonCode,
           registrationBlockedAt: blockedAt,
-          note: entry.note || '已注册',
+          note: accountDeactivated ? '账号已封禁' : (entry.note || blockedLabel),
         };
         changed = changed || JSON.stringify(entry) !== JSON.stringify(nextEntry);
         return nextEntry;
@@ -640,7 +642,7 @@
 
       if (options.log !== false) {
         const logPrefix = String(options.logPrefix || '').trim() || '自定义邮箱池';
-        await addLog(`${logPrefix}：${currentEmail} 已标记为已注册并从可注册邮箱池排除${reason ? `：${reason}` : ''}`, options.level || 'warn');
+        await addLog(`${logPrefix}：${currentEmail} 已标记为${blockedLabel}并从可注册邮箱池排除${reason ? `：${reason}` : ''}`, options.level || 'warn');
       }
 
       return {
@@ -648,6 +650,7 @@
         email: currentEmail,
         reason,
         reasonCode,
+        selectedCustomEmailPoolEmail: selectionUpdate.selectedCustomEmailPoolEmail || '',
         customEmailPoolEntries: nextEntries,
         customEmailPool: nextCustomEmailPool,
       };

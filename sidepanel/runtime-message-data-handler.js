@@ -55,31 +55,17 @@
           };
         }
         syncLatestState(message.payload);
-        if (message.payload.existingTotpLoginDisplayStatus !== undefined) {
-          renderStepStatuses(latestState);
-          updateStatusDisplay(latestState);
-        }
         if (
-          message.payload.upiCredentialMembershipCheckResults !== undefined
+          message.payload.freeAccountResults !== undefined
           || message.payload.accountRecordsV2 !== undefined
-          || message.payload.cdkPoolText !== undefined
-          || message.payload.cdkUsage !== undefined
-          || message.payload.upiRedeemCdkPoolText !== undefined
-          || message.payload.upiRedeemCdkUsage !== undefined
-          || message.payload.upiRedeemCdkeyPoolText !== undefined
-          || message.payload.upiRedeemCdkeyUsage !== undefined
-          || message.payload.pixRedeemCdkeyPoolText !== undefined
-          || message.payload.pixRedeemCdkeyUsage !== undefined
-          || message.payload.idealRedeemCdkeyPoolText !== undefined
-          || message.payload.idealRedeemCdkeyUsage !== undefined
           || message.payload.upiAccountCredentialBackups !== undefined
         ) {
           renderAccountRecords(latestState);
           if (
-            message.payload.upiCredentialMembershipCheckResults !== undefined
+            message.payload.freeAccountResults !== undefined
             || message.payload.accountRecordsV2 !== undefined
           ) {
-            syncCustomEmailPoolEntriesFromMembershipResults?.(latestState?.upiCredentialMembershipCheckResults);
+            syncCustomEmailPoolEntriesFromMembershipResults?.(latestState?.freeAccountResults);
             renderCustomEmailPoolEntries();
             queueCustomEmailPoolRefresh();
           }
@@ -286,26 +272,8 @@
         if (message.payload.upiSubscriptionApiBaseUrl !== undefined && inputUpiSubscriptionApiBaseUrl) {
           inputUpiSubscriptionApiBaseUrl.value = String(message.payload.upiSubscriptionApiBaseUrl || 'https://cha.nerver.cc').trim();
         }
-        if ((message.payload.upiRedeemExternalApiKey !== undefined || message.payload.pixRedeemExternalApiKey !== undefined) && inputUpiRedeemExternalApiKey) {
-          inputUpiRedeemExternalApiKey.value = String(message.payload.upiRedeemExternalApiKey ?? message.payload.pixRedeemExternalApiKey ?? '').trim();
-        }
-        if ((message.payload.upiRedeemClientId !== undefined || message.payload.pixRedeemClientId !== undefined) && inputUpiRedeemClientId) {
-          inputUpiRedeemClientId.value = String(message.payload.upiRedeemClientId ?? message.payload.pixRedeemClientId ?? '').trim();
-        }
-        if (message.payload.upiRedeemFailedAccountRetryLimit !== undefined && inputUpiRedeemFailedAccountRetryLimit) {
-          inputUpiRedeemFailedAccountRetryLimit.value = String(normalizeUpiRedeemFailedAccountRetryLimit(
-            message.payload.upiRedeemFailedAccountRetryLimit,
-            latestState?.upiRedeemFailedAccountRetryLimit
-          ));
-        }
-        if (
-          (message.payload.upiRedeemStopAfterRedeem !== undefined
-            || message.payload.upiRedeemContinueAfterRedeem !== undefined
-            || message.payload.pixRedeemStopAfterRedeem !== undefined
-            || message.payload.pixRedeemContinueAfterRedeem !== undefined)
-          && inputUpiRedeemStopAfterRedeem
-        ) {
-          syncUpiRedeemAfterModeControls((message.payload.upiRedeemContinueAfterRedeem ?? message.payload.pixRedeemContinueAfterRedeem) === true ? false : true);
+        if (message.payload.gcashEligibilityApiToken !== undefined && inputGcashEligibilityApiToken) {
+          inputGcashEligibilityApiToken.value = String(message.payload.gcashEligibilityApiToken || '').trim();
         }
         if (message.payload.totpMfaAfterProfileEnabled !== undefined && inputTotpMfaAfterProfileEnabled) {
           inputTotpMfaAfterProfileEnabled.checked = message.payload.totpMfaAfterProfileEnabled !== false;
@@ -326,31 +294,11 @@
           );
         }
         if (
-          message.payload.upiCredentialMembershipCheckResults !== undefined
-          || message.payload.cdkPoolText !== undefined
-          || message.payload.cdkUsage !== undefined
-          || message.payload.upiRedeemCdkPoolText !== undefined
-          || message.payload.upiRedeemCdkUsage !== undefined
-          || message.payload.upiRedeemCdkeyPoolText !== undefined
-          || message.payload.upiRedeemCdkeyUsage !== undefined
-          || message.payload.pixRedeemCdkeyPoolText !== undefined
-          || message.payload.pixRedeemCdkeyUsage !== undefined
-          || message.payload.idealRedeemCdkeyPoolText !== undefined
-          || message.payload.idealRedeemCdkeyUsage !== undefined
-        ) {
-          updateAllUpiRedeemCdkeyPoolSummaries(latestState);
-          scheduleUpiRedeemCdkeyStatusAutoRefresh();
-        }
-        if (
           message.payload.plusModeEnabled !== undefined
           || message.payload.plusPaymentMethod !== undefined
           || message.payload.plusAccountAccessStrategy !== undefined
-          || message.payload.upiRedeemStopAfterRedeem !== undefined
-          || message.payload.upiRedeemContinueAfterRedeem !== undefined
           || message.payload.totpMfaAfterProfileEnabled !== undefined
           || message.payload.registrationFreeRoute !== undefined
-          || message.payload.pixRedeemStopAfterRedeem !== undefined
-          || message.payload.pixRedeemContinueAfterRedeem !== undefined
           || message.payload.legacyPayHelperAutoModeEnabled !== undefined
           || message.payload.legacyPayHelperOtpChannel !== undefined
         ) {
@@ -369,8 +317,6 @@
               render: true,
               signupMethod: stepDefinitionState.signupMethod,
               plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
-              upiRedeemStopAfterRedeem: getSelectedUpiRedeemStopAfterRedeem(latestState),
-              upiRedeemContinueAfterRedeem: Boolean(latestState?.upiRedeemContinueAfterRedeem ?? latestState?.pixRedeemContinueAfterRedeem),
               totpMfaAfterProfileEnabled: getSelectedTotpMfaAfterProfileEnabled(latestState),
               registrationFreeRoute: getSelectedRegistrationFreeRoute(latestState),
             }
@@ -437,7 +383,7 @@
             ...message.payload,
           });
           setCustomEmailPoolEntriesState(restoredCustomEmailPoolEntries);
-          syncCustomEmailPoolEntriesFromMembershipResults?.(latestState?.upiCredentialMembershipCheckResults);
+          syncCustomEmailPoolEntriesFromMembershipResults?.(latestState?.freeAccountResults);
           renderCustomEmailPoolEntries();
           syncRunCountFromConfiguredEmailPool();
           queueCustomEmailPoolRefresh();

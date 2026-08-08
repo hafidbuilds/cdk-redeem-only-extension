@@ -40,7 +40,13 @@
 
   function formatSignupExistingTotpLoginMessage(message = '') {
     const text = String(message || '').trim().replace(/步骤\s*-?\d+\s*[：:]\s*/g, '');
-    return text.startsWith('步骤 3.5：') ? text : `步骤 3.5：2FA 登录：${text}`;
+    return text.startsWith('步骤 4：') ? text : `步骤 4：已有账号 2FA 登录：${text}`;
+  }
+
+  function sanitizeSuppressedVerificationCodeLogMessage(message = '') {
+    return String(message || '')
+      .replace(/(当前页面值为)\s*[^，,。.;；\s]+/g, '$1 [REDACTED]')
+      .replace(/\b\d{4,8}\b/g, '[REDACTED]');
   }
 
   function getOAuthLoginLogOptions(payload = {}, visibleStep = 7) {
@@ -196,15 +202,18 @@
     }
 
     function logVerificationCode(step, payload = {}, message = '', level = 'info') {
+      const safeMessage = payload?.suppressVerificationCodeLog === true
+        ? sanitizeSuppressedVerificationCodeLogMessage(message)
+        : message;
       if (step === 8 && isSignupExistingTotpLoginPayload(payload)) {
-        log(formatSignupExistingTotpLoginMessage(message), level, { step: 3, stepKey: 'fill-password' });
+        log(formatSignupExistingTotpLoginMessage(safeMessage), level, { step: 4, stepKey: 'existing-totp-login' });
         return;
       }
       if (step === 8 && isMembershipCheckAuthPayload(payload)) {
-        log(formatMembershipAuthLogMessage(payload, message), level, { stepKey: 'upi-membership-token' });
+        log(formatMembershipAuthLogMessage(payload, safeMessage), level, { stepKey: 'upi-membership-token' });
         return;
       }
-      log(message, level);
+      log(safeMessage, level);
     }
 
     return {
@@ -217,6 +226,7 @@
       getMembershipAuthLogLabel,
       formatMembershipAuthLogMessage,
       formatSignupExistingTotpLoginMessage,
+      sanitizeSuppressedVerificationCodeLogMessage,
       getOAuthLoginLogOptions,
       logOAuthLogin,
       logVerificationCode,
@@ -232,6 +242,7 @@
     shouldReportCommandErrorToWorkflow,
     getMembershipAuthLogLabel,
     formatMembershipAuthLogMessage,
+    sanitizeSuppressedVerificationCodeLogMessage,
     getOAuthLoginLogOptions,
   };
   root.SignupPageOrchestrator = root.MultiPageSignupPageOrchestrator;

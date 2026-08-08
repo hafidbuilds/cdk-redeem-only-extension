@@ -16,6 +16,7 @@
       generateRandomName,
       ensureMail2925MailboxSession,
       ensureIcloudMailSession,
+      executeExistingTotpLogin = null,
       getMailConfig,
       getState,
       getTabId,
@@ -31,13 +32,14 @@
       OUTLOOK_EMAIL_PLUS_PROVIDER = 'outlook-email-plus',
       resolveCustomEmailVerificationStep = null,
       resolveVerificationStep,
-      recoverRegisteredTotpLogin = null,
       reuseOrCreateTab,
       sendToContentScript,
       sendToContentScriptResilient,
+      setNodeStatus,
       setState,
       setPasswordState,
       isRetryableContentScriptTransportError = () => false,
+      markCurrentRegistrationAccountDeactivated = null,
       shouldUseCustomRegistrationEmail,
       STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS,
       throwIfStopped,
@@ -84,13 +86,71 @@
         || Boolean(snapshot?.verificationVisible);
     }
 
+    function isAccountDeactivatedState(snapshot = null) {
+      const stateName = String(snapshot?.state || '').trim().toLowerCase();
+      const errorCode = String(snapshot?.errorCode || snapshot?.code || '').trim().toLowerCase();
+      const message = String(snapshot?.error || snapshot?.message || '').trim();
+      return stateName === 'account_deactivated_page'
+        || stateName === 'account_deactivated'
+        || snapshot?.accountDeactivated === true
+        || errorCode === 'account_deactivated'
+        || errorCode === 'account_deactivated_page'
+        || errorCode === 'account_deactivated_error'
+        || /ACCOUNT_DEACTIVATED::|account[_\s-]*deactivated|account\s+has\s+been\s+(?:deleted|deactivated)|账号.*(?:删除|停用|封禁)/i.test(message);
+    }
+
+    function resolveStep4AccountEmail(state = {}) {
+      return String(
+        state?.email
+        || state?.registrationEmailState?.current
+        || state?.selectedCustomEmailPoolEmail
+        || ''
+      ).trim().toLowerCase();
+    }
+
+    function buildAccountDeactivatedError(state = {}, snapshot = null) {
+      const error = new Error('ACCOUNT_DEACTIVATED::账号已删除或停用，已标记为封禁并停止使用');
+      error.code = 'ACCOUNT_DEACTIVATED';
+      error.retryable = false;
+      error.accountEmail = resolveStep4AccountEmail(state);
+      error.pageState = String(snapshot?.state || '').trim() || 'account_deactivated_page';
+      return error;
+    }
+
+    async function throwAccountDeactivated(state = {}, snapshot = null) {
+      const error = buildAccountDeactivatedError(state, snapshot);
+      await addLog('步骤 5：检测到账号已删除或停用，正在标记为封禁；不会重试当前账号或继续获取验证码。', 'warn');
+      if (typeof markCurrentRegistrationAccountDeactivated === 'function') {
+        try {
+          const markResult = await markCurrentRegistrationAccountDeactivated(state, {
+            email: error.accountEmail,
+            reason: 'OpenAI 认证页返回 account_deactivated，账号已删除或停用。',
+            reasonCode: 'ACCOUNT_DEACTIVATED',
+            checkedAt: new Date().toISOString(),
+            logPrefix: '步骤 5',
+            level: 'warn',
+          });
+          error.nextAccountEmail = String(markResult?.nextEmail || '').trim().toLowerCase();
+          error.accountSourceExhausted = markResult?.poolUpdated === true && !error.nextAccountEmail;
+        } catch (markError) {
+          await addLog(`步骤 5：账号封禁状态写入失败，但仍会停止当前账号：${markError?.message || markError}`, 'warn');
+          error.accountStateUpdateFailed = true;
+        }
+      }
+      throw error;
+    }
+
     async function getLoginAuthStateFromSignupPage(options = {}) {
       const silent = Boolean(options?.silent);
       const request = {
         type: 'GET_LOGIN_AUTH_STATE',
         step: 4,
         source: 'background',
-        payload: { backgroundOwnsWorkflowOutcome: true },
+        payload: {
+          visibleStep: 5,
+          nodeId: 'fetch-signup-code',
+          backgroundOwnsWorkflowOutcome: true,
+        },
       };
       try {
         if (typeof sendToContentScript === 'function') {
@@ -103,12 +163,15 @@
             timeoutMs: 8000,
             responseTimeoutMs: 8000,
             retryDelayMs: 500,
-            logMessage: '步骤 4：正在确认当前认证页是否误入登录二次验证页...',
+            logMessage: '步骤 5：正在确认当前认证页是否误入登录二次验证页...',
           });
         }
       } catch (error) {
+        if (isAccountDeactivatedState(error)) {
+          return error;
+        }
         if (!silent) {
-          await addLog(`步骤 4：登录验证页预检查未完成，将继续使用注册验证码页检测。${error?.message || error}`, 'warn');
+          await addLog(`步骤 5：登录验证页预检查未完成，将继续使用注册验证码页检测。${error?.message || error}`, 'warn');
         }
       }
       return null;
@@ -139,7 +202,7 @@
       if (!isReloadableAuthHttpErrorUrl(url)) {
         return false;
       }
-      await addLog(`步骤 4：认证验证码页返回 HTTP 500，正在刷新页面后重试。${context ? `原因：${context}` : ''}`, 'warn');
+      await addLog(`步骤 5：认证验证码页返回 HTTP 500，正在刷新页面后重试。${context ? `原因：${context}` : ''}`, 'warn');
       await chrome.tabs.reload(tabId, { bypassCache: true }).catch(() => {});
       if (typeof waitForTabStableComplete === 'function') {
         await waitForTabStableComplete(tabId, {
@@ -164,7 +227,7 @@
     function buildRegisteredLoginVerificationError(authState = {}) {
       const url = String(authState?.url || '').trim();
       const suffix = url ? ` URL: ${url}` : '';
-      return new Error(`SIGNUP_USER_ALREADY_EXISTS::步骤 4：注册流程进入登录 TOTP 二次验证页，说明当前邮箱已注册并启用 2FA，当前邮箱将标记为已注册并排除，随后切换下一个。${suffix}`);
+      return new Error(`SIGNUP_USER_ALREADY_EXISTS::步骤 5：注册流程进入登录 TOTP 二次验证页，说明当前邮箱已注册并启用 2FA，当前邮箱将交回正式步骤 4 处理。${suffix}`);
     }
 
     function normalizePasswordAccountIdentifierType(value = '') {
@@ -225,7 +288,7 @@
       if (typeof setPasswordState === 'function') {
         await setPasswordState(password, identity);
       }
-      await addLog('步骤 4：步骤 3 已跳过且未设置自定义密码，已自动生成 GPT 密码用于注册后的密码页。', 'info');
+      await addLog('步骤 5：步骤 3 已跳过且未设置自定义密码，已自动生成注册密码用于验证码页恢复。', 'info');
       return password;
     }
 
@@ -264,7 +327,7 @@
           if (!authHttpErrorReloadLimitLogged) {
             authHttpErrorReloadLimitLogged = true;
             await addLog(
-              `步骤 4：验证码页连续出现 HTTP 500，已达到自动刷新上限 ${STEP4_AUTH_HTTP_ERROR_RELOAD_LIMIT} 次，将继续等待邮箱验证码或最终按取码超时处理。`,
+              `步骤 5：验证码页连续出现 HTTP 500，已达到自动刷新上限 ${STEP4_AUTH_HTTP_ERROR_RELOAD_LIMIT} 次，将继续等待邮箱验证码或最终按取码超时处理。`,
               'warn'
             );
           }
@@ -280,7 +343,7 @@
           authHttpErrorReloadCount += 1;
           lastAuthHttpErrorReloadAt = Date.now();
           await addLog(
-            `步骤 4：取码轮询期间检测到 OpenAI 验证码页 HTTP 500，已刷新认证页后继续等待邮件（${authHttpErrorReloadCount}/${STEP4_AUTH_HTTP_ERROR_RELOAD_LIMIT}）。`,
+            `步骤 5：取码轮询期间检测到 OpenAI 验证码页 HTTP 500，已刷新认证页后继续等待邮件（${authHttpErrorReloadCount}/${STEP4_AUTH_HTTP_ERROR_RELOAD_LIMIT}）。`,
             'warn'
           );
         }
@@ -297,6 +360,8 @@
         : stepStartedAt;
       if (typeof resolveCustomEmailVerificationStep === 'function') {
         const customResult = await resolveCustomEmailVerificationStep(4, stateForVerification, {
+          completionStep: 5,
+          nodeId: 'fetch-signup-code',
           signupProfile,
           password: stateForVerification.password || stateForVerification.customPassword || password,
           filterAfterTimestamp: verificationFilterAfterTimestamp,
@@ -308,14 +373,14 @@
       }
 
       if (shouldUseCustomRegistrationEmail(state)) {
-        await confirmCustomVerificationStepBypass(4);
+        await confirmCustomVerificationStepBypass(4, { completionStep: 5, nodeId: 'fetch-signup-code' });
         return;
       }
 
       const mail = getMailConfig(state);
       if (mail.error) throw new Error(mail.error);
       if (mail.source === 'icloud-mail') {
-        throw new Error('步骤 4：当前邮箱是 iCloud 网页邮箱，但已禁止自动打开 iCloud Mail；请为该邮箱配置自定义取码 URL/Assurivo 查询码。');
+        throw new Error('步骤 5：当前邮箱是 iCloud 网页邮箱，但已禁止自动打开 iCloud Mail；请为该邮箱配置自定义取码 URL/Assurivo 查询码。');
       }
 
       const mailVerificationFilterAfterTimestamp = mail.provider === '2925'
@@ -334,23 +399,23 @@
         || mail.provider === YYDSMAIL_PROVIDER
         || mail.provider === OUTLOOK_EMAIL_PLUS_PROVIDER
       ) {
-        await addLog(`步骤 4：正在通过 ${mail.label} 轮询验证码...`);
+        await addLog(`步骤 5：正在通过 ${mail.label} 轮询验证码...`);
       } else if (mail.provider === '2925') {
-        await addLog(`步骤 4：正在打开${mail.label}...`);
+        await addLog(`步骤 5：正在打开${mail.label}...`);
         if (typeof ensureMail2925MailboxSession === 'function') {
           await ensureMail2925MailboxSession({
             accountId: state.currentMail2925AccountId || null,
             forceRelogin: false,
             allowLoginWhenOnLoginPage: Boolean(state?.mail2925UseAccountPool),
             expectedMailboxEmail: getExpectedMail2925MailboxEmail(state),
-            actionLabel: '步骤 4：确认 2925 邮箱登录态',
+            actionLabel: '步骤 5：确认 2925 邮箱登录态',
           });
         } else {
           await focusOrOpenMailTab(mail);
         }
-        await addLog(`步骤 4：将直接使用当前已登录的 ${mail.label} 轮询验证码。`, 'info');
+        await addLog(`步骤 5：将直接使用当前已登录的 ${mail.label} 轮询验证码。`, 'info');
       } else {
-        await addLog(`步骤 4：正在打开${mail.label}...`);
+        await addLog(`步骤 5：正在打开${mail.label}...`);
         await focusOrOpenMailTab(mail);
       }
 
@@ -366,6 +431,8 @@
         OUTLOOK_EMAIL_PLUS_PROVIDER,
       ].includes(mail.provider);
       await resolveVerificationStep(4, state, mail, {
+        completionStep: 5,
+        nodeId: 'fetch-signup-code',
         filterAfterTimestamp: mailVerificationFilterAfterTimestamp,
         sessionKey: verificationSessionKey,
         disableTimeBudgetCap: mail.provider === '2925',
@@ -409,7 +476,7 @@
       const signupTabId = await getTabId('signup-page');
 
       if (!signupTabId) {
-        throw new Error('认证页面标签页已关闭，无法继续步骤 4。请先执行步骤 1 或步骤 2，重新打开认证页后再试。');
+        throw new Error('认证页面标签页已关闭，无法继续步骤 5。请先完成步骤 1–4，重新打开认证页后再试。');
       }
 
       const signupPassword = await ensureSignupPasswordForStep4(state);
@@ -420,7 +487,7 @@
       await chrome.tabs.update(signupTabId, { active: true });
       throwIfStopped();
       if (typeof waitForTabStableComplete === 'function') {
-        await addLog('步骤 4：等待注册验证码页面完成加载后再继续...', 'info');
+        await addLog('步骤 5：等待注册验证码页面完成加载后再继续...', 'info');
         await waitForTabStableComplete(signupTabId, {
           timeoutMs: 45000,
           retryDelayMs: 300,
@@ -431,45 +498,44 @@
       throwIfStopped();
 
       const loginAuthState = await getLoginAuthStateFromSignupPage();
+      if (isAccountDeactivatedState(loginAuthState)) {
+        await throwAccountDeactivated(stateWithPassword, loginAuthState);
+      }
       if (isAuthHttpErrorPageState(loginAuthState)) {
         const reloaded = await reloadSignupAuthHttpErrorPage(signupTabId, 'auth_http_error_page');
         if (reloaded) {
-          await addLog('步骤 4：HTTP 500 页面已刷新，继续重新检测注册验证码页。', 'warn');
+          await addLog('步骤 5：HTTP 500 页面已刷新，继续重新检测注册验证码页。', 'warn');
         }
       }
       if (isRegisteredLoginTotpVerificationState(loginAuthState)) {
-        if (typeof recoverRegisteredTotpLogin === 'function') {
-          const recovered = await recoverRegisteredTotpLogin({
-            tabId: signupTabId,
-            state: stateWithPassword,
-            authState: loginAuthState,
+        if (typeof executeExistingTotpLogin === 'function') {
+          const delegatedResult = await executeExistingTotpLogin({
+            ...stateWithPassword,
+            nodeId: 'existing-totp-login',
+            visibleStep: 4,
           });
-          if (recovered?.handled) {
+          if (!delegatedResult?.skipped) {
             await setState?.({ step4VerificationRenderResumeCount: 0 });
-            await completeNodeFromBackground('fetch-signup-code', {
-              skipProfileStep: true,
-              skipProfileStepReason: 'existing_totp_login',
-              skipSetPasswordStep: recovered.skipSetPasswordStep === true,
-              skipSetPasswordStepReason: recovered.skipSetPasswordStepReason || '',
-              existingTotpLogin: true,
-            });
+            await setNodeStatus?.('fetch-signup-code', 'skipped');
             return;
           }
+        } else {
+          throw new Error('SIGNUP_EXISTING_TOTP_LOGIN_FAILED::正式步骤 4 执行器未接入，已保留当前认证页面。');
         }
-        await addLog('步骤 4：检测到当前页是登录 TOTP 二次验证页，判定当前邮箱已注册，将标记为已用并切换下一个。', 'warn');
-        throw buildRegisteredLoginVerificationError(loginAuthState);
       }
 
-      await addLog('步骤 4：正在确认注册验证码页面是否就绪，必要时自动恢复密码页超时报错...');
+      await addLog('步骤 5：正在确认注册验证码页面是否就绪，必要时自动恢复密码页超时报错...');
 
       const prepareRequest = {
         type: 'PREPARE_SIGNUP_VERIFICATION',
         step: 4,
         source: 'background',
         payload: {
+          visibleStep: 5,
+          nodeId: 'fetch-signup-code',
           password: signupPassword,
           prepareSource: 'step4_execute',
-          prepareLogLabel: '步骤 4 执行',
+          prepareLogLabel: '步骤 5 执行',
           timeoutMs: 75000,
           maxPasswordRecoverySubmits: 0,
           backgroundOwnsWorkflowOutcome: true,
@@ -485,14 +551,17 @@
             timeoutMs: prepareTimeoutMs,
             responseTimeoutMs: prepareResponseTimeoutMs,
             retryDelayMs: 700,
-            logMessage: '步骤 4：认证页正在切换，等待页面重新就绪后继续检测...',
+            logMessage: '步骤 5：认证页正在切换，等待页面重新就绪后继续检测...',
           })
           : await sendToContentScript('signup-page', prepareRequest, {
             responseTimeoutMs: prepareResponseTimeoutMs,
           });
       } catch (error) {
+        if (isAccountDeactivatedState(error)) {
+          await throwAccountDeactivated(stateWithPassword, error);
+        }
         if (!isRetryableContentScriptTransportError(error)) throw error;
-        const uncertainError = new Error(`SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::步骤 4 等待验证码页面就绪期间认证页通信超时；当前注册页面状态未知，请保持页面打开并从验证码步骤继续。原因：${error?.message || error}`);
+        const uncertainError = new Error(`SIGNUP_PASSWORD_SUBMIT_UNCERTAIN::步骤 5 等待验证码页面就绪期间认证页通信超时；当前注册页面状态未知，请保持页面打开并从验证码步骤继续。原因：${error?.message || error}`);
         uncertainError.code = 'SIGNUP_PASSWORD_SUBMIT_UNCERTAIN';
         uncertainError.retryable = false;
         uncertainError.preserveSignupSession = true;
@@ -500,7 +569,11 @@
       }
 
       if (!prepareResult) {
-        throw new Error('步骤 4：等待注册验证码页面就绪超时，请刷新认证页后重试。');
+        throw new Error('步骤 5：等待注册验证码页面就绪超时，请刷新认证页后重试。');
+      }
+
+      if (isAccountDeactivatedState(prepareResult)) {
+        await throwAccountDeactivated(stateWithPassword, prepareResult);
       }
 
       if (prepareResult && prepareResult.error) {

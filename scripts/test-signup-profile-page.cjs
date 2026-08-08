@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { createAuthPageRecovery } = require('../content/auth-page-recovery.js');
 
 globalThis.window = globalThis;
 require('../content/signup-profile-page.js');
@@ -122,4 +123,36 @@ test('real step 5 flow refills cleared fields and background refuses blank-form 
   assert.match(backgroundSource, /资料页重建后字段被清空/);
   assert.match(backgroundSource, /fullName: profileDraft\.fullName/);
   assert.match(backgroundSource, /检测到资料字段为空/);
+});
+
+test('step 5 user_already_exists diagnostics identify the profile step and exclusion outcome', async () => {
+  const originalDocument = globalThis.document;
+  const originalLocation = globalThis.location;
+  try {
+    globalThis.document = {
+      title: 'Authentication error',
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    globalThis.location = {
+      pathname: '/error',
+      href: 'https://auth.openai.com/error',
+    };
+    const recovery = createAuthPageRecovery({
+      getPageTextSnapshot: () => 'user_already_exists',
+      isVisibleElement: () => true,
+      isActionEnabled: () => true,
+      sleep: async () => {},
+    });
+
+    await assert.rejects(
+      recovery.recoverAuthRetryPage({ step: 5 }),
+      (error) => error.message === 'SIGNUP_USER_ALREADY_EXISTS::步骤 5：资料提交后检测到 user_already_exists，说明当前邮箱已经注册，当前轮将结束并排除该邮箱。'
+    );
+    assert.match(signupPageSource, /STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE/);
+    assert.equal((signupPageSource.match(/createSignupUserAlreadyExistsError\(STEP5_SIGNUP_USER_ALREADY_EXISTS_MESSAGE\)/g) || []).length, 3);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.location = originalLocation;
+  }
 });

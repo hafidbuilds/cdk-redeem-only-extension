@@ -104,6 +104,7 @@
           }
 
           case 'AUTO_RUN_RESET': {
+            const resetPayload = message.payload || {};
             syncLatestState({
               oauthUrl: null,
               lastLoginCode: null,
@@ -115,8 +116,9 @@
               removedPaymentWorkerCurrentAttempt: 0,
               removedPaymentWorkerPauseRequested: false,
               removedPaymentWorkerLastLogIndex: 0,
-              existingTotpLoginDisplayStatus: 'pending',
-              nodeStatuses: NODE_DEFAULT_STATUSES,
+              registrationFreeRoute: resetPayload.registrationFreeRoute ?? latestState?.registrationFreeRoute,
+              currentNodeId: resetPayload.currentNodeId ?? '',
+              nodeStatuses: resetPayload.nodeStatuses || NODE_DEFAULT_STATUSES,
               logs: [],
               scheduledAutoRunAt: null,
               autoRunCountdownAt: null,

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CDK Redeem Only V2.3.0</title>
+  <title>Free Account Tool V3.0.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -13,7 +13,6 @@
   <script src="theme.js"></script>
   <link rel="stylesheet" href="sidepanel.css">
   <link rel="stylesheet" href="styles/settings.css">
-  <link rel="stylesheet" href="styles/cdk-pools.css">
   <link rel="stylesheet" href="styles/account-records.css">
 </head>
 
@@ -55,6 +54,17 @@
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </svg>
       </button>
+      <button id="btn-open-account-records" class="btn btn-ghost btn-sm header-account-records-btn" type="button"
+        title="查看 Free 账号分组" aria-label="查看 Free 账号分组">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+        Free 账号
+      </button>
       <button id="btn-theme" class="theme-toggle" type="button" aria-label="切换主题" aria-pressed="true" title="切换主题">
         <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -79,14 +89,14 @@
           aria-expanded="false">配置</button>
         <div id="config-menu" class="header-dropdown" role="menu" aria-labelledby="btn-config-menu" hidden>
           <button id="btn-export-settings" class="header-dropdown-item" type="button" role="menuitem"
-            title="可恢复设置、账号邮箱、Free/Plus 分组和历史；不包含邮箱池、完整 AT、密码或 2FA。">
+            title="可恢复设置、账号邮箱、Free 分组和历史；不包含邮箱池、完整 AT、完整 Session、密码、2FA 或 Passkey 私钥。">
             <span class="header-dropdown-item-label">安全导出</span>
-            <span class="header-dropdown-item-hint">不含邮箱池、AT、密码、2FA</span>
+            <span class="header-dropdown-item-hint">不含邮箱池、AT/Session、密码、2FA</span>
           </button>
           <button id="btn-export-sensitive-settings" class="header-dropdown-item" type="button" role="menuitem"
-            title="完整恢复邮箱池、账号、AT、密码和 2FA；导出文件包含敏感数据。">
+            title="完整恢复邮箱池、账号、AT/Session、密码和 2FA；导出文件包含敏感数据。">
             <span class="header-dropdown-item-label">导出完整备份</span>
-            <span class="header-dropdown-item-hint">含邮箱池、AT、密码、2FA</span>
+            <span class="header-dropdown-item-hint">含邮箱池、AT/Session、密码、2FA</span>
           </button>
           <button id="btn-export-failure-diagnostics" class="header-dropdown-item" type="button" role="menuitem">导出最近一次失败诊断</button>
           <button id="btn-import-settings" class="header-dropdown-item" type="button" role="menuitem">导入配置</button>
@@ -94,6 +104,57 @@
       </div>
     </div>
   </header>
+
+  <nav class="online-tools-bar" aria-label="在线工具">
+    <span class="online-tools-label">在线工具</span>
+    <div class="online-tools-links">
+      <a id="link-gcash-eligibility" class="online-tool-link is-gcash" data-online-tool="gcash"
+        href="https://gcash.20000408.xyz/" target="_blank" rel="noopener noreferrer"
+        aria-label="打开 GCash 资格查询网站" title="打开 GCash 资格查询网站">
+        <span class="online-tool-icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+            <path d="M16 11h5v4h-5a2 2 0 0 1 0-4Z" />
+            <path d="M5 7V5a2 2 0 0 1 2-2h10" />
+          </svg>
+        </span>
+        <span class="online-tool-copy">
+          <strong class="online-tool-title">GCash 资格查询</strong>
+          <span class="online-tool-hint">检查账号资格</span>
+        </span>
+        <svg class="online-tool-external" width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 3h6v6" />
+          <path d="M10 14 21 3" />
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        </svg>
+      </a>
+      <a id="link-cdk-redeem" class="online-tool-link is-cdk" data-online-tool="cdk"
+        href="https://cdk.334401.xyz/" target="_blank" rel="noopener noreferrer"
+        aria-label="打开 CDK 兑换中心网站" title="打开 CDK 兑换中心网站">
+        <span class="online-tool-icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 9a3 3 0 0 0 0 6v4h20v-4a3 3 0 0 0 0-6V5H2v4Z" />
+            <path d="M13 5v2" />
+            <path d="M13 17v2" />
+            <path d="M13 11v2" />
+          </svg>
+        </span>
+        <span class="online-tool-copy">
+          <strong class="online-tool-title">CDK 兑换中心</strong>
+          <span class="online-tool-hint">前往在线兑换</span>
+        </span>
+        <svg class="online-tool-external" width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 3h6v6" />
+          <path d="M10 14 21 3" />
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        </svg>
+      </a>
+    </div>
+  </nav>
 
   <div id="contribution-update-layer" class="contribution-update-layer" hidden>
     <div id="contribution-update-hint" class="contribution-update-hint" aria-live="polite" hidden>
@@ -118,7 +179,7 @@
           <button id="btn-open-release" class="btn btn-primary btn-sm" type="button">前往更新</button>
         </div>
       </div>
-      <p class="update-card-reminder">更新前请导出“完整备份”；安全导出不包含邮箱池、AT、密码和 2FA</p>
+      <p class="update-card-reminder">更新前请导出“完整备份”；安全导出不包含邮箱池、AT/Session、密码和 2FA</p>
       <div id="update-release-list" class="update-release-list"></div>
     </div>
   </section>
@@ -272,58 +333,22 @@
           <button id="btn-toggle-password" class="input-icon-btn" type="button" aria-label="显示密码" title="显示密码"></button>
         </div>
       </div>
-      <div class="data-row" id="row-plus-mode">
-        <span class="data-label">Plus 模式</span>
-        <div class="data-inline setting-pair">
-          <div class="setting-group setting-group-primary">
-            <label class="toggle-switch" for="input-plus-mode-enabled" title="UPI-only 固定开启">
-              <input type="checkbox" id="input-plus-mode-enabled" checked disabled />
-              <span class="toggle-switch-track" aria-hidden="true">
-                <span class="toggle-switch-thumb"></span>
-              </span>
-            </label>
-          </div>
-          <div class="setting-group setting-group-secondary"><span class="setting-caption">UPI-only 固定开启</span></div>
-        </div>
-      </div>
-      <div class="data-row" id="row-plus-payment-method" style="display:none;">
-        <span class="data-label">Plus 支付</span>
-        <div class="data-inline">
-          <select id="select-plus-payment-method" class="data-select plus-payment-method-select">
-            <option value="upi" selected>UPI</option>
-          </select>
-          <span class="setting-caption" id="plus-payment-method-caption">UPI 资格检测与手动 CDK 兑换链路</span>
-        </div>
-      </div>
       <div class="data-row" id="row-upi-subscription-api-base-url" style="display:none;">
-        <span class="data-label">订阅 API</span>
+        <span class="data-label">GCash 资格 API</span>
         <input type="text" id="input-upi-subscription-api-base-url" class="data-input"
           value="https://cha.nerver.cc" placeholder="https://cha.nerver.cc" autocomplete="off"
-          title="查询 ChatGPT 账号会员状态，系统会固定请求 /api/v1/subscription" />
+          title="查询 ChatGPT 账号 GCash 资格" />
       </div>
-      <div class="data-row" id="row-upi-redeem-external-api-key" style="display:none;">
-        <span class="data-label">UPI Key</span>
+      <div class="data-row" id="row-gcash-eligibility-api-token" style="display:none;">
+        <span class="data-label">GCash 授权令牌</span>
         <div class="input-with-icon">
-          <input type="password" id="input-upi-redeem-external-api-key" class="data-input data-input-with-icon"
-            placeholder="X-External-Api-Key" autocomplete="off" />
-          <button id="btn-toggle-upi-redeem-external-api-key" class="input-icon-btn" type="button"
-            data-password-toggle="input-upi-redeem-external-api-key" data-show-label="显示 UPI API Key"
-            data-hide-label="隐藏 UPI API Key" aria-label="显示 UPI API Key"
-            title="显示 UPI API Key"></button>
+          <input type="password" id="input-gcash-eligibility-api-token" class="data-input data-input-with-icon"
+            placeholder="请输入资格服务 Bearer 令牌" autocomplete="off" />
+          <button id="btn-toggle-gcash-eligibility-api-token" class="input-icon-btn" type="button"
+            data-password-toggle="input-gcash-eligibility-api-token" data-show-label="显示 GCash 授权令牌"
+            data-hide-label="隐藏 GCash 授权令牌" aria-label="显示 GCash 授权令牌"
+            title="显示 GCash 授权令牌"></button>
         </div>
-      </div>
-      <div class="data-row" id="row-upi-redeem-client-id" style="display:none;">
-        <span class="data-label">UPI Client ID</span>
-        <input type="text" id="input-upi-redeem-client-id" class="data-input"
-          placeholder="可留空自动生成；保存在扩展本地" autocomplete="off"
-          title="UPI 后台按 X-Client-Id 分组记录；留空时扩展会自动生成并保存在扩展本地设置中" />
-      </div>
-      <div class="data-row" id="row-upi-redeem-failed-account-retry-limit" style="display:none;">
-        <span class="data-label">兑换轮数</span>
-        <input type="number" id="input-upi-redeem-failed-account-retry-limit" class="data-input"
-          min="0" max="20" step="1" value="3"
-          title="失败账号最多参与的总兑换轮数；0 表示只跑首轮" />
-        <span class="setting-caption">0=只跑首轮；3=最多 3 轮</span>
       </div>
       <div class="data-row" id="row-totp-mfa-after-profile-enabled" style="display:none;">
         <span class="data-label">第7步 2FA + 资格检测</span>
@@ -333,23 +358,23 @@
             <span class="toggle-switch-thumb"></span>
           </span>
         </label>
-        <span class="setting-caption">第 7 步开通 2FA 后检测是否有试用资格，不自动兑换 CDK</span>
+        <span class="setting-caption">第 9 步开通或校验 2FA，并保存为未检测资格的 Free 账号</span>
       </div>
       <div class="data-row" id="row-registration-free-route">
         <span class="data-label">主流程路线</span>
         <select id="select-registration-free-route" class="data-input"
-          title="完整 2FA 路线会继续设置 GPT 密码并开通 2FA；Passkey 路线会设置 GPT 密码并开通 Passkey；免 2FA Free 路线会在第 5 步后检测资格并写入 Free">
+          title="完整 2FA 路线会继续设置 GPT 密码并开通 2FA；Passkey 路线会设置 GPT 密码并开通 Passkey；免 2FA Free 路线会在第 9 步保存 Free 账号">
           <option value="full-2fa">完整 2FA 路线</option>
           <option value="passkey-free">Passkey Free 路线</option>
           <option value="no-2fa-free">免 2FA Free 路线</option>
         </select>
-        <span class="setting-caption">Passkey 路线：第 6 步设置 GPT 密码，第 7 步通过 Nerver API 开通 Passkey 后检测资格</span>
+        <span class="setting-caption">三条路线均在第 9 步结束；GCash 资格可在 Free 账号列表中手动复检</span>
       </div>
       <div class="data-row" id="row-set-gpt-password-verification-wait-seconds">
         <span class="data-label">第4/6步取码等待</span>
         <input type="number" id="input-set-gpt-password-verification-wait-seconds" class="data-input"
           min="0" max="300" step="1" value="10"
-          title="第 4 步注册验证码和第 6 步设置 GPT 密码验证码每次读取前等待多少秒；接口刷新慢可以改大，0 表示不等待" />
+          title="第 5 步注册验证码和第 7 步设置 GPT 密码验证码每次读取前等待多少秒；接口刷新慢可以改大，0 表示不等待" />
         <span class="setting-caption">注册/设置密码取码前等待秒数，默认 10；接口刷新慢可改大</span>
       </div>
       <div class="data-row" id="row-upi-credential-membership-totp-api-base-url" style="display:none;">
@@ -363,99 +388,6 @@
         <input type="password" id="input-upi-credential-membership-totp-lookup-key" class="data-input"
           placeholder="可空；强保护模式才需要" autocomplete="off"
           title="Nerver /api/v1/totp/lookup 强保护模式的查询密钥" />
-      </div>
-      <div class="data-row" id="row-upi-redeem-stop-after-redeem" style="display:none;">
-        <span class="data-label">资格通过后</span>
-        <select id="select-upi-redeem-after-mode" class="data-select">
-          <option value="stop" selected>停止</option>
-          <option value="continue">继续后续 OAuth</option>
-        </select>
-        <input type="checkbox" id="input-upi-redeem-stop-after-redeem" hidden checked />
-        <span class="setting-caption">选择继续后会在第 7 步资格通过后执行 OAuth、验证码和平台回调</span>
-      </div>
-      <div class="data-row data-check-row" id="row-upi-redeem-cdkey-pool" style="display:none;">
-        <span class="data-label">CDK 池</span>
-        <div class="hotmail-import-box">
-          <div class="upi-redeem-cdkey-channel-grid">
-            <div class="upi-redeem-cdkey-channel-panel" data-cdk-channel="upi">
-              <div class="upi-redeem-cdkey-channel-title">UPI 卡密池</div>
-              <textarea id="input-upi-redeem-cdkey-pool" class="data-textarea mono" rows="5"
-                placeholder="每行一个 UPI CDK，例如&#10;UPI-CDK-001&#10;UPI-CDK-002"></textarea>
-              <div class="upi-redeem-cdkey-pool-toolbar">
-                <button id="btn-import-cdk-pool" class="btn btn-primary btn-sm btn-cdk-import" type="button">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 3v12" />
-                    <path d="m7 8 5-5 5 5" />
-                    <path d="M5 21h14" />
-                    <path d="M5 16v5" />
-                    <path d="M19 16v5" />
-                  </svg>
-                  <span>导入 UPI</span>
-                </button>
-                <button id="btn-delete-all-cdk-pool" class="btn btn-danger btn-sm" type="button" disabled>一键删除</button>
-                <button id="btn-upi-redeem-cdkey-status-refresh" class="btn btn-outline btn-sm" type="button">刷新全部状态</button>
-                <div id="upi-redeem-cdkey-pool-summary" class="icloud-summary">总数 0 / 已用 0 / 可用 0</div>
-              </div>
-              <div class="upi-redeem-cdkey-status-header">
-                <span>启用</span>
-                <span>CDK</span>
-                <span>状态</span>
-                <span>操作</span>
-              </div>
-              <div id="upi-redeem-cdkey-status-list" class="upi-redeem-cdkey-status-list"></div>
-            </div>
-            <div class="upi-redeem-cdkey-channel-panel" data-cdk-channel="ideal">
-              <div class="upi-redeem-cdkey-channel-title">IDEAL 卡密池</div>
-              <textarea id="input-ideal-redeem-cdkey-pool" class="data-textarea mono" rows="5"
-                placeholder="每行一个 IDEAL CDK，例如&#10;IDEAL-CDK-001&#10;IDEAL-CDK-002"></textarea>
-              <div class="upi-redeem-cdkey-pool-toolbar">
-                <button id="btn-import-ideal-cdk-pool" class="btn btn-primary btn-sm btn-cdk-import" type="button">导入 IDEAL</button>
-                <button id="btn-delete-all-ideal-cdk-pool" class="btn btn-danger btn-sm" type="button" disabled>一键删除</button>
-                <div id="ideal-redeem-cdkey-pool-summary" class="icloud-summary">总数 0 / 已用 0 / 可用 0</div>
-              </div>
-              <div class="upi-redeem-cdkey-status-header">
-                <span>启用</span>
-                <span>CDK</span>
-                <span>状态</span>
-                <span>操作</span>
-              </div>
-              <div id="ideal-redeem-cdkey-status-list" class="upi-redeem-cdkey-status-list"></div>
-            </div>
-            <div class="upi-redeem-cdkey-channel-panel" data-cdk-channel="pix">
-              <div class="upi-redeem-cdkey-channel-title">PIX 卡密池</div>
-              <textarea id="input-pix-redeem-cdkey-pool" class="data-textarea mono" rows="5"
-                placeholder="每行一个 PIX CDK，例如&#10;PIX-CDK-001&#10;PIX-CDK-002"></textarea>
-              <div class="upi-redeem-cdkey-pool-toolbar">
-                <button id="btn-import-pix-cdk-pool" class="btn btn-primary btn-sm btn-cdk-import" type="button">导入 PIX</button>
-                <button id="btn-delete-all-pix-cdk-pool" class="btn btn-danger btn-sm" type="button" disabled>一键删除</button>
-                <div id="pix-redeem-cdkey-pool-summary" class="icloud-summary">总数 0 / 已用 0 / 可用 0</div>
-              </div>
-              <div class="upi-redeem-cdkey-status-header">
-                <span>启用</span>
-                <span>CDK</span>
-                <span>状态</span>
-                <span>操作</span>
-              </div>
-              <div id="pix-redeem-cdkey-status-list" class="upi-redeem-cdkey-status-list"></div>
-            </div>
-          </div>
-          <input type="file" id="input-upi-credential-membership-txt" accept=".txt,text/plain" hidden />
-          <div class="data-inline upi-credential-backup-actions">
-            <button id="btn-show-upi-credential-backups" class="btn btn-ghost btn-xs" type="button">查看全部已存密码2FA</button>
-            <button id="btn-export-upi-credential-backups" class="btn btn-ghost btn-xs" type="button">导出当前 CDK 成功密码2FA</button>
-            <button id="btn-export-upi-redeem-success-records" class="btn btn-ghost btn-xs" type="button">导出已开通会员密码2FA</button>
-            <button id="btn-check-upi-credential-membership-local" class="btn btn-ghost btn-xs" type="button">核验启用已存备份</button>
-            <button id="btn-import-upi-credential-membership-txt" class="btn btn-ghost btn-xs" type="button">导入备份TXT并核验</button>
-            <button id="btn-import-upi-credential-membership-free-txt" class="btn btn-ghost btn-xs" type="button">导入 Free TXT</button>
-            <button id="btn-stop-upi-credential-membership-check" class="btn btn-danger btn-xs" type="button">停止核验</button>
-          </div>
-          <div id="upi-credential-backup-preview-wrap" hidden>
-            <textarea id="upi-credential-backup-preview" class="data-textarea mono" rows="4" readonly
-              placeholder="点击“查看全部已存密码2FA”后显示：邮箱---GPT密码---2FA密钥"></textarea>
-          </div>
-          <div id="upi-credential-membership-check-results" class="upi-credential-membership-check-results" hidden></div>
-        </div>
       </div>
       <div class="data-row module-divider-start" id="row-mail-provider">
         <span class="data-label">邮箱服务</span>
@@ -521,7 +453,7 @@
             placeholder="每行一个邮箱，或 邮箱----取码URL/查询码，例如&#10;alias001@gmail.com&#10;alias002@gmail.com----https://example.com/code&#10;alias003@icloud.com----mail-query-code"></textarea>
           <div class="data-inline">
             <button id="btn-custom-email-pool-import" class="btn btn-primary btn-sm" type="button">导入邮箱</button>
-            <label class="inline-setting-field" title="第 4 步注册验证码和第 6 步设置 GPT 密码验证码获取前等待多少秒；0 表示不等待">
+            <label class="inline-setting-field" title="第 5 步注册验证码和第 7 步设置 GPT 密码验证码获取前等待多少秒；0 表示不等待">
               <span class="setting-caption">第4/6步取码等待</span>
               <input type="number" id="input-signup-verification-code-wait-seconds"
                 class="data-input auto-delay-input" value="10" min="0" max="300" step="1" />
@@ -926,7 +858,7 @@
       </div>
       <div class="data-row" id="row-outlook-email-plus-caller-id-prefix" style="display:none;">
         <span class="data-label">调用方</span>
-        <input type="text" id="input-outlook-email-plus-caller-id-prefix" class="data-input" placeholder="cdk-redeem" />
+        <input type="text" id="input-outlook-email-plus-caller-id-prefix" class="data-input" placeholder="free-account-tool" />
       </div>
       <div class="data-row" id="row-outlook-email-plus-alias-max" style="display:none;">
         <span class="data-label">别名上限</span>
@@ -1348,7 +1280,6 @@
     <div class="log-header">
       <span class="section-label">日志</span>
       <div class="log-header-actions">
-        <button id="btn-open-account-records" class="btn btn-ghost btn-xs" title="查看账号记录">记录</button>
         <button id="btn-clear-log" class="btn btn-ghost btn-xs" title="清空日志">清空</button>
       </div>
     </div>
@@ -1359,39 +1290,28 @@
     <div class="account-records-panel">
       <div class="account-records-panel-header">
         <div class="account-records-panel-copy">
-          <span class="account-records-panel-title">账号记录</span>
-          <span id="account-records-meta" class="account-records-panel-meta">暂无账号记录</span>
+          <span class="account-records-panel-title">Free 账号分组</span>
+          <span id="account-records-meta" class="account-records-panel-meta">暂无 Free 账号</span>
         </div>
         <div class="account-records-panel-actions">
           <button id="btn-close-account-records" class="modal-close" type="button" aria-label="关闭">×</button>
         </div>
       </div>
-      <div class="account-records-toolbar">
-        <div id="account-records-stats" class="account-records-stats" role="group" aria-label="账号记录筛选"></div>
-        <div class="account-records-toolbar-actions">
-          <button id="btn-export-success-account-records" class="btn btn-ghost btn-xs" type="button">导出已开通邮箱密码2FA</button>
-          <button id="btn-toggle-account-records-selection" class="btn btn-ghost btn-xs" type="button">多选</button>
-          <button id="btn-delete-selected-account-records" class="btn btn-ghost btn-xs" type="button" hidden
-            disabled>删除选中</button>
-          <button id="btn-clear-account-records" class="btn btn-ghost btn-xs" type="button">清理记录</button>
-        </div>
-      </div>
-      <div id="account-records-list" class="account-records-list"></div>
-      <div class="account-records-pagination">
-        <button id="btn-account-records-prev" class="btn btn-outline btn-xs" type="button">上一页</button>
-        <span id="account-records-page-label" class="account-records-page-label mono">0 / 0</span>
-        <button id="btn-account-records-next" class="btn btn-outline btn-xs" type="button">下一页</button>
-      </div>
+      <input type="file" id="input-upi-credential-membership-txt" accept=".txt,.json,text/plain,application/json" hidden />
+      <div id="upi-credential-membership-check-results" class="upi-credential-membership-check-results"></div>
       <section class="account-task-section" aria-labelledby="account-task-title">
         <div class="account-task-header">
           <div>
             <span id="account-task-title" class="account-task-title">任务</span>
             <span id="account-task-meta" class="account-task-meta">暂无任务</span>
           </div>
-          <button id="btn-refresh-account-tasks" class="btn btn-ghost btn-xs account-task-refresh" type="button" title="刷新任务" aria-label="刷新任务">↻</button>
+          <div class="account-task-header-actions">
+            <button id="btn-clear-account-tasks" class="btn btn-ghost btn-xs" type="button" title="删除全部已结束任务">清空</button>
+            <button id="btn-refresh-account-tasks" class="btn btn-ghost btn-xs account-task-refresh" type="button" title="刷新任务" aria-label="刷新任务">↻</button>
+          </div>
         </div>
+        <div id="account-task-events" class="account-task-events" tabindex="-1" hidden></div>
         <div id="account-task-list" class="account-task-list"></div>
-        <div id="account-task-events" class="account-task-events" hidden></div>
       </section>
     </div>
   </div>
@@ -1445,6 +1365,7 @@
   <script src="../shared/flow-capabilities.js"></script>
   <script src="../shared/account-record-schema.js"></script>
   <script src="../shared/account-compatibility-adapter.js"></script>
+  <script src="../shared/free-account-results.js"></script>
   <script src="../shared/trial-eligibility-api.js"></script>
   <script src="../data/step-definitions.js"></script>
   <script src="update-service.js"></script>
@@ -1468,42 +1389,7 @@
   <script src="sidepanel-runtime-bridge.js"></script>
   <script src="cloudflare-domain-ui.js"></script>
   <script src="workflow-controls-manager.js"></script>
-  <script src="../shared/redeem-channel-state.js"></script>
-  <script src="cdk-pool-manager.js"></script>
-  <script src="../shared/membership-credential-format.js"></script>
-  <script src="membership-view-model.js"></script>
-  <script src="membership-row-policy.js"></script>
-  <script src="membership-renderer.js"></script>
-  <script src="membership-redeem-progress.js"></script>
-  <script src="account-records-view-model.js"></script>
-  <script src="account-records-export.js"></script>
-  <script src="account-records-subscription.js"></script>
-  <script src="account-records-membership-groups.js"></script>
-  <script src="account-records-redeem-status.js"></script>
-  <script src="account-records-cdk-pool-text.js"></script>
-  <script src="account-records-deletion-state.js"></script>
-  <script src="account-records-export-builders.js"></script>
-  <script src="account-records-redeem-policy.js"></script>
-  <script src="account-records-passkey-helpers.js"></script>
-  <script src="account-records-credential-parser.js"></script>
-  <script src="account-records-status-meta.js"></script>
-  <script src="account-records-display-model.js"></script>
-  <script src="account-records-flow-view.js"></script>
   <script src="account-records-membership-results-renderer.js"></script>
-  <script src="account-records-renderer.js"></script>
-  <script src="account-records-membership-helpers.js"></script>
-  <script src="account-records-membership-pool-ops.js"></script>
-  <script src="account-records-membership-result-ops.js"></script>
-  <script src="account-records-panel-events.js"></script>
-  <script src="account-records-membership-actions.js"></script>
-  <script src="account-records-membership-access-token-actions.js"></script>
-  <script src="account-records-redeem-actions.js"></script>
-  <script src="account-records-dom-helpers.js"></script>
-  <script src="account-records-membership-state-sync.js"></script>
-  <script src="account-records-trial-eligibility.js"></script>
-  <script src="account-records-run-history.js"></script>
-  <script src="account-records-settings-payload.js"></script>
-  <script src="account-records-free-export-preferences.js"></script>
   <script src="account-records-manager.js"></script>
   <script src="task-event-view-model.js"></script>
   <script src="task-event-renderer.js"></script>
@@ -1516,8 +1402,6 @@
   <script src="workflow-status-display.js"></script>
   <script src="workflow-controller.js"></script>
   <script src="auto-run-normalizers.js"></script>
-  <script src="../background/membership/redeem-attempt-history.js"></script>
-  <script src="cdk-pool-state.js"></script>
   <script src="settings-normalization.js"></script>
   <script src="custom-email-pool-membership-sync.js"></script>
   <script src="chatgpt-session-reader-settings.js"></script>
@@ -1533,9 +1417,6 @@
   <script src="runtime-message-data-handler.js"></script>
   <script src="runtime-message-handlers.js"></script>
   <script src="runtime-message-controller.js"></script>
-<script src="upi-redeem-cdk-state.js"></script>
-<script src="upi-redeem-cdk-status-view.js"></script>
-<script src="upi-redeem-cdk-controller.js"></script>
 <script src="account-records-panel-controller.js"></script>
 <script src="panel-display-controller.js"></script>
 <script src="registration-email-ui-copy.js"></script>

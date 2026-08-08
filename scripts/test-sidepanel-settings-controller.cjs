@@ -7,10 +7,25 @@ const appStateModule = require('../sidepanel/app-state.js');
 const settingsControllerModule = require('../sidepanel/settings-controller.js');
 
 function createButton() {
+  const listeners = new Map();
   return {
     disabled: false,
     textContent: '',
+    addEventListener(type, listener) {
+      const entries = listeners.get(type) || [];
+      entries.push(listener);
+      listeners.set(type, entries);
+    },
+    async dispatch(type, event = {}) {
+      for (const listener of listeners.get(type) || []) {
+        await listener({ type, target: this, ...event });
+      }
+    },
   };
+}
+
+function createSettingsCard() {
+  return createButton();
 }
 
 test('sidepanel wires custom email pool readers into the settings controller', () => {
@@ -113,6 +128,136 @@ test('settings controller saves settings through runtime bridge and clears dirty
   assert.equal(appState.get('settingsDirty'), false);
   assert.equal(appState.get('settingsSaveInFlight'), false);
   assert.equal(btnSaveSettings.textContent, '保存');
+});
+
+test('settings save button is bound and persists the current form payload', async () => {
+  const appState = appStateModule.createSidepanelAppState({
+    latestState: {},
+    settingsDirty: true,
+    settingsSaveInFlight: false,
+    settingsAutoSaveTimer: null,
+    settingsSaveRevision: 1,
+    customPasswordSaveRevision: 0,
+  });
+  const btnSaveSettings = createButton();
+  const sentMessages = [];
+  const controller = settingsControllerModule.createSettingsController({
+    appState,
+    scopeValues: {
+      btnSaveSettings,
+      settingsCard: createSettingsCard(),
+      collectSettingsPayload: () => ({ registrationFreeRoute: 'no-2fa-free' }),
+      applySettingsState: () => appState.set('settingsDirty', false),
+      syncLatestState: () => appState.set('settingsDirty', false),
+      updatePanelModeUI: () => {},
+      updateMailProviderUI: () => {},
+      updateButtonStates: () => {},
+      updateConfigMenuControls: () => {},
+      showToast: () => {},
+      currentAutoRun: { autoRunning: false },
+      chrome: { runtime: { sendMessage: async (message) => { sentMessages.push(message); return {}; } } },
+    },
+  });
+
+  controller.bindEvents();
+  await btnSaveSettings.dispatch('click');
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].type, 'SAVE_SETTING');
+  assert.equal(sentMessages[0].payload.registrationFreeRoute, 'no-2fa-free');
+});
+
+test('settings card change immediately persists fields without dedicated listeners', async () => {
+  const appState = appStateModule.createSidepanelAppState({
+    latestState: {},
+    settingsDirty: false,
+    settingsSaveInFlight: false,
+    settingsAutoSaveTimer: null,
+    settingsSaveRevision: 0,
+    customPasswordSaveRevision: 0,
+  });
+  const settingsCard = createSettingsCard();
+  const sentMessages = [];
+  const target = {
+    id: 'fixture-select',
+    type: 'select-one',
+    matches: (selector) => selector === 'input, select, textarea',
+  };
+  const controller = settingsControllerModule.createSettingsController({
+    appState,
+    scopeValues: {
+      btnSaveSettings: createButton(),
+      settingsCard,
+      collectSettingsPayload: () => ({ mailProvider: 'cloudmail' }),
+      applySettingsState: () => appState.set('settingsDirty', false),
+      syncLatestState: () => appState.set('settingsDirty', false),
+      updatePanelModeUI: () => {},
+      updateMailProviderUI: () => {},
+      updateButtonStates: () => {},
+      updateConfigMenuControls: () => {},
+      showToast: () => {},
+      currentAutoRun: { autoRunning: false },
+      chrome: { runtime: { sendMessage: async (message) => { sentMessages.push(message); return {}; } } },
+    },
+  });
+
+  controller.bindEvents();
+  await settingsCard.dispatch('change', { target });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].payload.mailProvider, 'cloudmail');
+});
+
+test('panel unload queues the latest dirty settings behind an in-flight save', async () => {
+  const appState = appStateModule.createSidepanelAppState({
+    latestState: {},
+    settingsDirty: true,
+    settingsSaveInFlight: false,
+    settingsAutoSaveTimer: null,
+    settingsSaveRevision: 1,
+    customPasswordSaveRevision: 0,
+  });
+  let payloadValue = 'first';
+  let releaseFirstSave;
+  const firstSaveBlocked = new Promise((resolve) => { releaseFirstSave = resolve; });
+  const sentMessages = [];
+  const controller = settingsControllerModule.createSettingsController({
+    appState,
+    scopeValues: {
+      btnSaveSettings: createButton(),
+      settingsCard: createSettingsCard(),
+      collectSettingsPayload: () => ({ fixture: payloadValue }),
+      applySettingsState: () => appState.set('settingsDirty', false),
+      syncLatestState: () => appState.set('settingsDirty', false),
+      updatePanelModeUI: () => {},
+      updateMailProviderUI: () => {},
+      updateButtonStates: () => {},
+      updateConfigMenuControls: () => {},
+      showToast: () => {},
+      currentAutoRun: { autoRunning: false },
+      chrome: {
+        runtime: {
+          sendMessage: async (message) => {
+            sentMessages.push(message);
+            if (sentMessages.length === 1) await firstSaveBlocked;
+            return {};
+          },
+        },
+      },
+    },
+  });
+
+  const firstSave = controller.saveSettings({ silent: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  payloadValue = 'latest';
+  controller.markSettingsDirty(true);
+  const unloadSave = controller.flushDirtySettingsBeforePanelUnload();
+  releaseFirstSave();
+  await firstSave;
+  await unloadSave;
+
+  assert.equal(sentMessages.length, 2);
+  assert.equal(sentMessages[1].payload.fixture, 'latest');
 });
 
 test('settings controller does not overwrite custom email pool selection during automatic runs', async () => {

@@ -17,7 +17,6 @@
       normalizePlusPaymentMethod = () => 'upi',
       plusStepDefinitions = [],
       plusStepIds = [],
-      plusUpiRedeemOnlyStepDefinitions = [],
       signupMethodEmail = 'email',
     } = deps;
 
@@ -39,8 +38,6 @@
           plusPaymentMethod: normalizePlusPaymentMethod(state?.plusPaymentMethod),
           plusAccountAccessStrategy: normalizePlusAccountAccessStrategyForState(state),
           signupMethod: signupMethodEmail,
-          upiRedeemStopAfterRedeem: Boolean(state?.upiRedeemStopAfterRedeem ?? state?.pixRedeemStopAfterRedeem),
-          upiRedeemContinueAfterRedeem: Boolean(state?.upiRedeemContinueAfterRedeem ?? state?.pixRedeemContinueAfterRedeem),
           totpMfaAfterProfileEnabled: state?.totpMfaAfterProfileEnabled !== false,
           registrationFreeRoute: state?.registrationFreeRoute,
         });
@@ -55,9 +52,6 @@
       }
       if (!isPlusModeState(state)) {
         return normalStepDefinitions;
-      }
-      if ((state?.upiRedeemContinueAfterRedeem ?? state?.pixRedeemContinueAfterRedeem) !== true) {
-        return plusUpiRedeemOnlyStepDefinitions;
       }
       return plusStepDefinitions;
     }

@@ -49,7 +49,7 @@
         apiKey: String(state.outlookEmailPlusApiKey || '').trim(),
         provider: normalizeOutlookEmailPlusProvider(state.outlookEmailPlusProvider) || 'outlook',
         projectKey: normalizeOutlookEmailPlusProjectKey(state.outlookEmailPlusProjectKey) || 'openai',
-        callerIdPrefix: normalizeOutlookEmailPlusCallerIdPrefix(state.outlookEmailPlusCallerIdPrefix) || 'cdk-redeem',
+        callerIdPrefix: normalizeOutlookEmailPlusCallerIdPrefix(state.outlookEmailPlusCallerIdPrefix) || 'free-account-tool',
       };
     }
 
@@ -236,8 +236,8 @@
 
     function buildCallerId(config, state = {}, options = {}, taskId = '') {
       const prefix = normalizeOutlookEmailPlusCallerIdPrefix(
-        options.callerIdPrefix || config.callerIdPrefix || state.outlookEmailPlusCallerIdPrefix || 'cdk-redeem'
-      ) || 'cdk-redeem';
+        options.callerIdPrefix || config.callerIdPrefix || state.outlookEmailPlusCallerIdPrefix || 'free-account-tool'
+      ) || 'free-account-tool';
       const explicitCallerId = normalizeIdentifierPart(options.callerId || state.currentOutlookEmailPlusClaim?.callerId);
       if (explicitCallerId) {
         return explicitCallerId;
@@ -836,6 +836,5 @@
     createOutlookEmailPlusProvider,
   };
 });
-
 
 

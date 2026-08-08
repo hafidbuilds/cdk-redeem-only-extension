@@ -1,361 +1,158 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-delete globalThis.SidepanelAccountRecordsViewModel;
-delete globalThis.SidepanelAccountRecordsExport;
-delete globalThis.SidepanelAccountRecordsFreeExportPreferences;
-delete globalThis.SidepanelAccountRecordsSubscription;
-delete globalThis.SidepanelAccountRecordsMembershipGroups;
-delete globalThis.SidepanelAccountRecordsRedeemStatus;
-delete globalThis.SidepanelAccountRecordsCdkPoolText;
-delete globalThis.SidepanelAccountRecordsDeletionState;
-delete globalThis.SidepanelAccountRecordsExportBuilders;
-delete globalThis.SidepanelAccountRecordsRedeemPolicy;
-delete globalThis.SidepanelAccountRecordsPasskeyHelpers;
-delete globalThis.SidepanelAccountRecordsCredentialParser;
-delete globalThis.SidepanelAccountRecordsStatusMeta;
-delete globalThis.SidepanelAccountRecordsDisplayModel;
-delete globalThis.SidepanelAccountRecordsFlowView;
-delete globalThis.SidepanelAccountRecordsMembershipResultsRenderer;
-delete globalThis.SidepanelAccountRecordsRenderer;
-delete globalThis.SidepanelAccountRecordsMembershipHelpers;
-delete globalThis.SidepanelAccountRecordsMembershipPoolOps;
-delete globalThis.SidepanelAccountRecordsMembershipResultOps;
-delete globalThis.SidepanelAccountRecordsPanelEvents;
-delete globalThis.SidepanelAccountRecordsMembershipActions;
-delete globalThis.SidepanelAccountRecordsMembershipAccessTokenActions;
-delete globalThis.SidepanelAccountRecordsRedeemActions;
-delete globalThis.SidepanelAccountRecordsDomHelpers;
-delete globalThis.SidepanelAccountRecordsMembershipStateSync;
-delete globalThis.SidepanelAccountRecordsTrialEligibility;
-delete globalThis.SidepanelAccountRecordsRunHistory;
-delete globalThis.SidepanelAccountRecordsSettingsPayload;
-delete globalThis.SidepanelMembershipRedeemProgress;
-delete globalThis.SidepanelAccountRecordsManager;
-delete require.cache[require.resolve('../sidepanel/account-records-export.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-free-export-preferences.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-subscription.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-groups.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-redeem-status.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-cdk-pool-text.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-deletion-state.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-export-builders.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-redeem-policy.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-passkey-helpers.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-credential-parser.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-status-meta.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-display-model.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-flow-view.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-results-renderer.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-renderer.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-helpers.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-pool-ops.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-result-ops.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-panel-events.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-actions.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-access-token-actions.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-redeem-actions.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-dom-helpers.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-membership-state-sync.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-trial-eligibility.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-run-history.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-settings-payload.js')];
-delete require.cache[require.resolve('../shared/membership-credential-format.js')];
-delete require.cache[require.resolve('../sidepanel/account-records-manager.js')];
-require('../sidepanel/account-records-export.js');
-require('../sidepanel/account-records-free-export-preferences.js');
-require('../sidepanel/account-records-subscription.js');
-require('../sidepanel/account-records-membership-groups.js');
-require('../sidepanel/account-records-redeem-status.js');
-require('../sidepanel/account-records-cdk-pool-text.js');
-require('../sidepanel/account-records-deletion-state.js');
-require('../sidepanel/account-records-export-builders.js');
-require('../sidepanel/account-records-redeem-policy.js');
-require('../sidepanel/account-records-passkey-helpers.js');
-require('../shared/membership-credential-format.js');
-require('../sidepanel/account-records-credential-parser.js');
-require('../sidepanel/account-records-status-meta.js');
-require('../sidepanel/account-records-display-model.js');
-require('../sidepanel/account-records-flow-view.js');
-require('../sidepanel/account-records-membership-results-renderer.js');
-require('../sidepanel/account-records-renderer.js');
-require('../sidepanel/account-records-membership-helpers.js');
-require('../sidepanel/account-records-membership-pool-ops.js');
-require('../sidepanel/account-records-membership-result-ops.js');
-require('../sidepanel/account-records-panel-events.js');
-require('../sidepanel/account-records-membership-actions.js');
-require('../sidepanel/account-records-membership-access-token-actions.js');
-require('../sidepanel/account-records-redeem-actions.js');
-require('../sidepanel/account-records-dom-helpers.js');
-require('../sidepanel/account-records-membership-state-sync.js');
-require('../sidepanel/account-records-trial-eligibility.js');
-require('../sidepanel/account-records-run-history.js');
-require('../sidepanel/account-records-settings-payload.js');
-require('../sidepanel/account-records-manager.js');
+globalThis.MultiPageFreeAccountResults = require('../shared/free-account-results.js');
+const { createAccountRecordsMembershipResultsRenderer } = require('../sidepanel/account-records-membership-results-renderer.js');
+const { createAccountRecordsManager } = require('../sidepanel/account-records-manager.js');
 
-function createDisplayModel(overrides = {}) {
-  return globalThis.SidepanelAccountRecordsDisplayModel.createAccountRecordsDisplayModel({
-    createAccountRecordsStatusMeta: () => ({
-      getUpiCredentialMembershipRowStatusMeta: () => ({}),
-    }),
-    buildMembershipViewModelRows: (rows) => rows,
-    getMembershipCredentialFormatHelpers: () => ({
-      isLikelyTimestamp: () => false,
-    }),
-    ...overrides,
-  });
-}
-
-function createStubElement() {
-  const listeners = new Map();
-  const childNodes = new Map();
+function createContainer() {
   return {
-    addEventListener(type, handler) {
-      listeners.set(type, handler);
-    },
-    removeEventListener(type) {
-      listeners.delete(type);
-    },
-    dispatchEvent(event) {
-      const handler = listeners.get(event.type);
-      if (handler) handler(event);
-    },
-    querySelector(selector) {
-      if (!childNodes.has(selector)) {
-        childNodes.set(selector, createStubElement());
-      }
-      return childNodes.get(selector);
-    },
-    querySelectorAll() {
-      return [];
-    },
-    setAttribute() {},
-    getAttribute() { return null; },
-    removeAttribute() {},
-    focus() {},
-    classList: {
-      add() {},
-      remove() {},
-      toggle() { return false; },
-      contains() { return false; },
-    },
-    style: {},
-    dataset: {},
-    scrollTop: 0,
+    hidden: true,
     innerHTML: '',
     textContent: '',
-    value: '',
-    disabled: false,
-    hidden: false,
-    checked: false,
+    addEventListener() {},
+    querySelector() { return null; },
   };
 }
 
-function createDomStub() {
-  const elements = new Map();
-  const dom = new Proxy({}, {
-    get(_target, prop) {
-      if (typeof prop !== 'string') {
-        return undefined;
-      }
-      if (!elements.has(prop)) {
-        elements.set(prop, createStubElement());
-      }
-      return elements.get(prop);
-    },
-  });
-  return {
-    dom,
-    getElement(name) {
-      if (!elements.has(name)) {
-        elements.set(name, createStubElement());
-      }
-      return elements.get(name);
-    },
-  };
-}
-
-test('account records credential parser exposes the expected factory helpers', () => {
-  const parser = globalThis.SidepanelAccountRecordsCredentialParser.createAccountRecordsCredentialParser({
-    getMembershipCredentialFormatHelpers: () => require('../shared/membership-credential-format.js'),
-  });
-
-  assert.equal(typeof parser.parseUpiCredentialMembershipText, 'function');
-  assert.equal(typeof parser.normalizeUpiCredentialMembershipCredential, 'function');
-  assert.equal(typeof parser.parseUpiCredentialMembershipParts, 'function');
-  assert.equal(typeof parser.normalizeUpiCredentialMembershipTotpSecret, 'function');
-  assert.equal(typeof parser.parseUpiCredentialMembershipPasskeyMarker, 'function');
+test('Free account renderer exposes the V3 renderer factory', () => {
+  assert.equal(typeof createAccountRecordsMembershipResultsRenderer, 'function');
 });
 
-test('account records renderer exposes the expected factory helpers', () => {
-  const rendererApi = globalThis.SidepanelAccountRecordsRenderer;
-  assert.equal(typeof rendererApi?.createAccountRecordsRenderer, 'function');
-
-  const renderer = rendererApi.createAccountRecordsRenderer();
-  assert.equal(typeof renderer.renderAccountRecordsPanel, 'function');
-  assert.equal(typeof renderer.renderUpiCredentialMembershipCheckResults, 'function');
-  assert.equal(typeof renderer.updateHeader, 'function');
-  assert.equal(typeof renderer.updateStats, 'function');
-  assert.equal(typeof renderer.updatePagination, 'function');
-});
-
-test('account records runtime action modules expose the expected factory helpers', () => {
-  assert.equal(typeof globalThis.SidepanelAccountRecordsMembershipHelpers?.createAccountRecordsMembershipHelpers, 'function');
-  assert.equal(typeof globalThis.SidepanelAccountRecordsMembershipPoolOps?.createAccountRecordsMembershipPoolOps, 'function');
-  assert.equal(typeof globalThis.SidepanelAccountRecordsMembershipResultOps?.createAccountRecordsMembershipResultOps, 'function');
-  assert.equal(typeof globalThis.SidepanelAccountRecordsPanelEvents?.createAccountRecordsPanelEvents, 'function');
-  assert.equal(typeof globalThis.SidepanelAccountRecordsMembershipActions?.createAccountRecordsMembershipActions, 'function');
-  assert.equal(typeof globalThis.SidepanelAccountRecordsRedeemActions?.createAccountRecordsRedeemActions, 'function');
-});
-
-test('display model does not backfill source passkey state when result already enables passkey', () => {
-  const displayModel = createDisplayModel();
-
-  const merged = displayModel.mergeUpiCredentialMembershipDisplayCredentialResult(
-    {
-      email: 'alpha@example.com',
-      passkeyEnabled: true,
-      passkeyCredentialId: 'credential-passkey',
-      passkeyFactorId: 'source-factor',
-      persisted: true,
-    },
-    {
-      email: 'alpha@example.com',
-      passkeyEnabled: true,
-      twoFactorEnabled: false,
-    }
-  );
-
-  assert.equal(merged.twoFactorEnabled, false);
-  assert.equal(merged.passkeyApiPersisted, undefined);
-});
-
-test('display model marks deleted row keys as seen before filtering duplicates', () => {
-  const displayModel = createDisplayModel({
-    getUpiCredentialMembershipPoolRows: () => [
-      { email: 'duplicate@example.com', source: 'pool' },
+test('Free account renderer shows exactly the two eligibility groups and V3 summary', () => {
+  const container = createContainer();
+  const results = {
+    schemaVersion: 3,
+    items: [
+      { email: 'eligible@example.com', status: 'free', trialEligibilityStatus: 'eligible', accessToken: 'at' },
+      { email: 'unknown@example.com', status: 'free', trialEligibilityStatus: 'unknown' },
+      { email: 'failed@example.com', status: 'free', trialEligibilityStatus: 'failed' },
+      { email: 'ineligible@example.com', status: 'free', trialEligibilityStatus: 'ineligible' },
     ],
-    getUpiCredentialMembershipCheckResults: () => ({
-      items: [
-        { email: 'duplicate@example.com', source: 'results', status: 'free' },
-      ],
-    }),
-    buildUpiCredentialMembershipDisplayRowKey: (row, email) => String(row.email || email || '').trim().toLowerCase(),
-    isRedeemPlusDeletedDisplayRow: (row) => row.source === 'pool',
+  };
+  const renderer = createAccountRecordsMembershipResultsRenderer({
+    dom: { upiCredentialMembershipCheckResults: container },
+    state: { getLatestState: () => ({ autoRunning: false }) },
+    getUpiCredentialMembershipCheckResults: () => results,
+    buildUpiCredentialMembershipDisplayRows: () => results.items,
+    getUpiCredentialMembershipRowStatusMeta: (row) => ({ className: 'pending', label: row.trialEligibilityStatus, detail: '' }),
   });
 
-  assert.deepEqual(displayModel.buildUpiCredentialMembershipDisplayRows(), []);
+  renderer.renderUpiCredentialMembershipCheckResults();
+
+  assert.match(container.innerHTML, />Free 组</);
+  assert.match(container.innerHTML, />无资格 Free 组</);
+  assert.match(container.innerHTML, /有资格 1 · 待检测 1 · 检测失败 1 · 无资格 1 · 缺 AT 3 · 缺 Session 4/);
+  assert.match(container.innerHTML, /缺 AT 2 · 缺 Session 3/);
+  assert.match(container.innerHTML, /data-free-account-fill-session="free"[^>]*>补充 Session\(3\)/);
+  assert.match(container.innerHTML, /data-free-account-fill-session="free-ineligible"[^>]*>补充 Session\(1\)/);
+  assert.match(container.innerHTML, /data-free-account-export-credential-mode/);
+  assert.match(container.innerHTML, /<option value="access-token" selected>AT<\/option>/);
+  assert.match(container.innerHTML, /<option value="session" >Session<\/option>/);
+  assert.match(container.innerHTML, /data-free-account-common-actions="free"/);
+  assert.match(container.innerHTML, /data-free-account-common-actions="free-ineligible"/);
+  assert.match(container.innerHTML, /data-free-account-group-actions="free"/);
+  assert.equal((container.innerHTML.match(/data-free-account-group-actions=/g) || []).length, 1);
+  const freeCommonActions = container.innerHTML.match(/data-free-account-common-actions="free">([\s\S]*?)<\/div>/)?.[1] || '';
+  assert.ok(freeCommonActions.indexOf('data-free-account-export-credential-mode') < freeCommonActions.indexOf('data-upi-membership-export="free"'));
+  assert.ok(freeCommonActions.indexOf('data-upi-membership-export="free"') < freeCommonActions.indexOf('data-upi-membership-delete-group="free"'));
+  assert.doesNotMatch(freeCommonActions, /data-upi-membership-import-free|data-upi-membership-toggle-export-verification-url/);
+  assert.doesNotMatch(container.innerHTML, /Plus 组|兑换|移动/);
 });
 
-test('display model does not classify backup-only credentials as Free', () => {
-  const displayModel = createDisplayModel({
-    getUpiCredentialMembershipPoolRows: () => [
-      { email: 'unknown@example.com', password: 'fixture-password' },
-      { email: 'confirmed@example.com', password: 'fixture-password' },
-    ],
-    getUpiCredentialMembershipCheckResults: () => ({
-      items: [
-        { email: 'confirmed@example.com', status: 'free', planType: 'free' },
-      ],
-    }),
+test('automatic registration keeps exports enabled and disables mutations', () => {
+  const container = createContainer();
+  const results = {
+    schemaVersion: 3,
+    items: [{ email: 'eligible@example.com', status: 'free', trialEligibilityStatus: 'eligible', password: 'pw', no2faFreeRoute: true }],
+  };
+  const renderer = createAccountRecordsMembershipResultsRenderer({
+    dom: { upiCredentialMembershipCheckResults: container },
+    state: { getLatestState: () => ({ autoRunning: true }) },
+    getUpiCredentialMembershipCheckResults: () => results,
+    buildUpiCredentialMembershipDisplayRows: () => results.items,
+    getUpiCredentialMembershipRowStatusMeta: () => ({ className: 'success', label: '有试用资格', detail: '' }),
+    hasUpiCredentialMembershipLoginMaterial: () => true,
+    isAutoRunRecordDisplayRunning: () => true,
   });
 
-  assert.deepEqual(
-    displayModel.buildUpiCredentialMembershipDisplayRows().map((row) => row.email),
-    ['confirmed@example.com']
-  );
+  renderer.renderUpiCredentialMembershipCheckResults();
+
+  assert.match(container.innerHTML, /自动注册运行中，只允许查看和导出/);
+  assert.match(container.innerHTML, /data-upi-membership-export="free"/);
+  assert.match(container.innerHTML, /data-upi-membership-delete-group="free" disabled/);
+  assert.match(container.innerHTML, /data-upi-membership-login="eligible@example\.com" disabled/);
+  assert.match(container.innerHTML, /data-free-account-fill-session="free" disabled/);
+  assert.match(container.innerHTML, /data-upi-membership-import-free disabled/);
 });
 
-test('createAccountRecordsManager fails loudly when redeem progress module is unavailable', () => {
-  assert.throws(
-    () => globalThis.SidepanelAccountRecordsManager.createAccountRecordsManager({}),
-    /Membership redeem progress module is not loaded/
-  );
-});
-
-test('account records manager exposes the Free export verification URL preference', () => {
-  const values = new Map();
-  globalThis.localStorage = {
-    getItem: (key) => values.has(key) ? values.get(key) : null,
-    setItem: (key, value) => values.set(key, value),
+test('Session fill task renders progress and stop while disabling other account mutations', () => {
+  const container = createContainer();
+  const results = {
+    schemaVersion: 3,
+    items: [{ email: 'missing@example.com', status: 'free', trialEligibilityStatus: 'unknown', password: 'pw' }],
   };
-  globalThis.SidepanelMembershipRedeemProgress = {
-    clampRedeemProgressPercent: () => 0,
-    getUpiCredentialMembershipRedeemProgressMeta: () => ({}),
-    renderUpiCredentialMembershipRedeemProgress: () => '',
+  const task = {
+    taskId: 'task_fill',
+    type: 'fill_session',
+    status: 'running',
+    payload: { group: 'free' },
+    progress: { current: 17, total: 120 },
   };
-
-  const manager = globalThis.SidepanelAccountRecordsManager.createAccountRecordsManager({});
-
-  assert.equal(manager.getFreeExportIncludeVerificationUrl(), true);
-  assert.equal(manager.toggleFreeExportIncludeVerificationUrl(), false);
-  assert.equal(values.get('upiFreeExportIncludeVerificationUrl'), 'false');
-});
-
-test('summarizeAccountRunHistory preserves counts when view model global is unavailable', () => {
-  assert.equal(globalThis.SidepanelAccountRecordsViewModel, undefined);
-  globalThis.SidepanelMembershipRedeemProgress = {
-    clampRedeemProgressPercent: () => 0,
-    getUpiCredentialMembershipRedeemProgressMeta: () => ({}),
-    renderUpiCredentialMembershipRedeemProgress: () => '',
-  };
-  const manager = globalThis.SidepanelAccountRecordsManager.createAccountRecordsManager({});
-
-  assert.deepEqual(manager.summarizeAccountRunHistory([
-    { displayStatus: 'success', retryCount: 0 },
-    { finalStatus: 'running', retryCount: '2' },
-    { displayStatus: 'failed', retryCount: 1 },
-    { finalStatus: 'stopped', retryCount: -1 },
-    { displayStatus: 'unknown', retryCount: 'bad' },
-  ]), {
-    total: 5,
-    success: 1,
-    running: 1,
-    failed: 1,
-    stopped: 1,
-    retryRecordCount: 2,
-    retryTotal: 3,
+  const renderer = createAccountRecordsMembershipResultsRenderer({
+    dom: { upiCredentialMembershipCheckResults: container },
+    state: { getLatestState: () => ({ autoRunning: false }) },
+    getUpiCredentialMembershipCheckResults: () => results,
+    buildUpiCredentialMembershipDisplayRows: () => results.items,
+    getFreeSessionFillTask: (group) => group === 'free' ? task : null,
+    isFreeSessionFillActive: () => true,
   });
+
+  renderer.renderUpiCredentialMembershipCheckResults();
+
+  assert.match(container.innerHTML, /补充 Session 17\/120/);
+  assert.match(container.innerHTML, /data-free-account-stop-session="task_fill"/);
+  assert.match(container.innerHTML, /data-upi-membership-delete-group="free" disabled/);
+  assert.match(container.innerHTML, /data-upi-membership-export="free"/);
 });
 
-test('login-only membership flow renders the login title in the status header', () => {
-  globalThis.SidepanelMembershipRedeemProgress = {
-    clampRedeemProgressPercent: () => 0,
-    getUpiCredentialMembershipRedeemProgressMeta: () => ({}),
-    renderUpiCredentialMembershipRedeemProgress: () => '',
+test('interrupted Session fill task exposes a continue action for still-missing rows', () => {
+  const container = createContainer();
+  const results = {
+    schemaVersion: 3,
+    items: [{ email: 'missing@example.com', status: 'free', trialEligibilityStatus: 'unknown' }],
   };
+  const renderer = createAccountRecordsMembershipResultsRenderer({
+    dom: { upiCredentialMembershipCheckResults: container },
+    state: { getLatestState: () => ({ autoRunning: false }) },
+    getUpiCredentialMembershipCheckResults: () => results,
+    buildUpiCredentialMembershipDisplayRows: () => results.items,
+    getFreeSessionFillTask: () => ({ taskId: 'task_interrupted', type: 'fill_session', status: 'interrupted', payload: { group: 'free' } }),
+  });
 
-  const state = {
-    getLatestState: () => ({
-      accountRunHistory: [],
-      upiCredentialMembershipCheckResults: {
-        items: [
-          {
-            email: 'alpha@example.com',
-            status: 'free',
-          },
-        ],
-        flowMode: 'login-only',
-        flowStage: 'login',
-        flowStageEmail: 'alpha@example.com',
-        running: true,
-        total: 1,
-        completed: 1,
-      },
-    }),
+  renderer.renderUpiCredentialMembershipCheckResults();
+
+  assert.match(container.innerHTML, /data-free-account-resume-session="task_interrupted"[^>]*>继续补充 Session\(1\)/);
+});
+
+test('account records manager reads freeAccountResults and renders through the V3 manager', () => {
+  const container = createContainer();
+  const stateValue = {
+    autoRunning: false,
+    freeAccountResults: {
+      schemaVersion: 3,
+      items: [{ email: 'sample@example.com', status: 'free', trialEligibilityStatus: 'unknown' }],
+    },
   };
-  const domStub = createDomStub();
-  const manager = globalThis.SidepanelAccountRecordsManager.createAccountRecordsManager({
-    state,
-    dom: domStub.dom,
-    helpers: {},
-    runtime: {},
-    constants: {},
+  const manager = createAccountRecordsManager({
+    state: { getLatestState: () => stateValue, syncLatestState() {} },
+    dom: { upiCredentialMembershipCheckResults: container, accountRecordsMeta: createContainer() },
   });
 
   manager.render();
 
-  const rendered = domStub.getElement('upiCredentialMembershipCheckResults').innerHTML;
-  assert.match(rendered, /当前 alpha@example\.com · 登录/);
-  assert.doesNotMatch(rendered, /当前 alpha@example\.com · 处理中/);
+  assert.match(container.innerHTML, /sample@example\.com/);
+  assert.match(container.innerHTML, /未检测资格/);
+  assert.equal(manager.getFreeExportIncludeVerificationUrl(), true);
+  assert.equal(manager.getFreeExportCredentialMode(), 'access-token');
 });

@@ -33,3 +33,33 @@ test('task event store compacts early events per task', async () => {
   assert.equal(saved[0].code, 'EVENTS_COMPACTED');
   assert.deepEqual(saved.slice(1).map((event) => event.code), ['E3', 'E4']);
 });
+
+test('task event compaction preserves earlier account failure reasons', async () => {
+  const storage = createStorage();
+  let tick = 0;
+  const events = eventStoreApi.createTaskEventStore({
+    chromeApi: storage.chromeApi,
+    maxPerTask: 5,
+    now: () => new Date(1721894400000 + tick++).toISOString(),
+  });
+  await events.append({ taskId: 'task_a', level: 'error', code: 'LOGIN_PAGE_TIMEOUT', message: '等待登录页面超时。' });
+  for (let index = 0; index < 8; index += 1) {
+    await events.append({ taskId: 'task_a', level: 'info', code: `PROGRESS_${index}`, message: `进度 ${index}` });
+  }
+
+  const saved = await events.list('task_a');
+  assert.equal(saved.some((event) => event.code === 'LOGIN_PAGE_TIMEOUT' && event.message.includes('等待登录页面超时')), true);
+  assert.equal(saved.length <= 5, true);
+  assert.equal(saved[0].code, 'EVENTS_COMPACTED');
+  assert.equal(saved[0].detail.compactedCount, 5);
+});
+
+test('task event store removes events for deleted tasks only', async () => {
+  const storage = createStorage();
+  const events = eventStoreApi.createTaskEventStore({ chromeApi: storage.chromeApi });
+  await events.append({ taskId: 'task_a', code: 'A' });
+  await events.append({ taskId: 'task_b', code: 'B' });
+  assert.equal((await events.removeMany(['task_a'])).deletedCount, 1);
+  assert.deepEqual(await events.list('task_a'), []);
+  assert.equal((await events.list('task_b')).length, 1);
+});

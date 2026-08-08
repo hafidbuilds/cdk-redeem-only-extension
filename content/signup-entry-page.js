@@ -124,10 +124,12 @@
       const pollInterval = Math.max(25, Math.floor(Number(options.pollInterval) || 100));
       const sleepBetweenPolls = typeof options.sleep === 'function' ? options.sleep : sleep;
       const checkStopped = typeof options.throwIfStopped === 'function' ? options.throwIfStopped : throwIfStopped;
+      const onPoll = typeof options.onPoll === 'function' ? options.onPoll : null;
       const startedAt = Date.now();
 
       while (true) {
         checkStopped();
+        if (onPoll) await onPoll();
         const candidate = getSignupEmailContinueButton({ allowDisabled: true });
         if (candidate && isActionEnabled(candidate)) {
           return candidate;
@@ -138,6 +140,30 @@
         }
         await sleepBetweenPolls(Math.min(pollInterval, Math.max(1, timeout - elapsed)));
       }
+    }
+
+    function submitSignupEmailWithEnter(input) {
+      if (!input || !isVisibleElement(input) || !isActionEnabled(input)) return false;
+      const KeyboardEventCtor = windowRef?.KeyboardEvent || root.KeyboardEvent;
+      if (typeof KeyboardEventCtor !== 'function' || typeof input.dispatchEvent !== 'function') return false;
+      const eventInit = {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        charCode: 13,
+        bubbles: true,
+        cancelable: true,
+      };
+      input.focus?.();
+      const keydownAllowed = input.dispatchEvent(new KeyboardEventCtor('keydown', eventInit));
+      const keypressAllowed = input.dispatchEvent(new KeyboardEventCtor('keypress', eventInit));
+      const form = input.form || input.closest?.('form') || null;
+      if (keydownAllowed && keypressAllowed && typeof form?.requestSubmit === 'function') {
+        form.requestSubmit();
+      }
+      input.dispatchEvent(new KeyboardEventCtor('keyup', eventInit));
+      return true;
     }
 
     function isExcludedSignupEntryActionText(text = '') {
@@ -212,6 +238,7 @@
       findSignupMoreOptionsTrigger,
       getSignupEmailContinueButton,
       waitForEnabledSignupEmailContinueButton,
+      submitSignupEmailWithEnter,
       isExcludedSignupEntryActionText,
       isSignupEntryTriggerText,
       isSignupAuthEntryTriggerText,

@@ -17,7 +17,6 @@
       DEFAULT_MAIL_2925_MODE = '',
       DEFAULT_OUTLOOK_EMAIL_PLUS_BASE_URL = '',
       DEFAULT_PANEL_MODE = '',
-      DEFAULT_PLUS_PAYMENT_METHOD = '',
       DEFAULT_SIGNUP_METHOD = '',
       DEFAULT_SUB2API_ACCOUNT_PRIORITY = 1,
       DEFAULT_SUB2API_GROUP_NAME = '',
@@ -33,7 +32,6 @@
       HOTMAIL_SERVICE_MODE_LOCAL = 'local',
       HOTMAIL_PROVIDER = '',
       OUTLOOK_ALIAS_DEFAULT_MAX_PER_ACCOUNT = 5,
-      PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth',
     } = context;
 
     const PERSISTED_SETTING_DEFAULTS = {
@@ -52,27 +50,14 @@
       codex2apiUrl: DEFAULT_CODEX2API_URL,
       codex2apiAdminKey: '',
       customPassword: '',
-      plusModeEnabled: true,
-      plusPaymentMethod: DEFAULT_PLUS_PAYMENT_METHOD,
-      plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH,
-      upiRedeemApiBaseUrl: '',
       upiSubscriptionApiBaseUrl: 'https://cha.nerver.cc',
-      upiRedeemExternalApiKey: '',
-      upiRedeemClientId: '',
-      upiRedeemStopAfterRedeem: true,
-      upiRedeemContinueAfterRedeem: false,
+      gcashEligibilityApiToken: '',
       totpMfaAfterProfileEnabled: true,
       registrationFreeRoute: 'full-2fa',
       upiCredentialMembershipCheckTotpApiBaseUrl: 'https://cha.nerver.cc',
       upiCredentialMembershipCheckTotpLookupKey: '',
       setGptPasswordVerificationWaitSeconds: 10,
       signupVerificationCodeWaitSeconds: 10,
-      upiRedeemCdkeyPoolText: '',
-      upiRedeemCdkeyUsage: {},
-      idealRedeemCdkeyPoolText: '',
-      idealRedeemCdkeyUsage: {},
-      pixChannelRedeemCdkeyPoolText: '',
-      pixChannelRedeemCdkeyUsage: {},
       autoRunSkipFailures: true,
       autoRunRetryNonFreeTrial: false,
       autoRunFallbackThreadIntervalMinutes: 0,
@@ -151,7 +136,7 @@
       outlookEmailPlusApiKey: '',
       outlookEmailPlusProvider: 'outlook',
       outlookEmailPlusProjectKey: 'openai',
-      outlookEmailPlusCallerIdPrefix: 'cdk-redeem',
+      outlookEmailPlusCallerIdPrefix: 'free-account-tool',
       outlookEmailPlusAliasMaxPerMailbox: OUTLOOK_ALIAS_DEFAULT_MAX_PER_ACCOUNT,
       hotmailAccounts: [],
       hotmailAliasEnabled: false,
@@ -166,13 +151,6 @@
       sub2apiDefaultProxyName: DEFAULT_SUB2API_PROXY_NAME,
       chatgptSessionReaderMode: 'us_pp',
       chatgptSessionReaderProfiles: {},
-      upiRedeemFailedAccountRetryLimit: 3,
-      cdkPoolText: '',
-      upiRedeemCdkPoolText: '',
-      pixRedeemCdkeyPoolText: '',
-      cdkUsage: {},
-      upiRedeemCdkUsage: {},
-      pixRedeemCdkeyUsage: {},
       legacyWalletEmail: '',
       legacyWalletPassword: '',
       currentLegacyWalletAccountId: '',
@@ -188,7 +166,6 @@
       legacyPayHelperOtpChannel: 'whatsapp',
       autoRunRetryLegacyWalletCallback: false,
       autoRunRetryShortLinkError: true,
-      plusRemovedContactOauthDelaySeconds: 0,
       chatgptSessionReaderCloudConversionEnabled: false,
       chatgptSessionReaderCloudConversionApiUrl: BUILTIN_CHATGPT_SESSION_READER_CLOUD_CONVERSION_API_URL,
       chatgptSessionReaderCloudConversionApiKey: BUILTIN_CHATGPT_SESSION_READER_CLOUD_CONVERSION_API_KEY,
@@ -219,22 +196,10 @@
       removedPaymentWorkerProviderProxy: '',
     });
 
-    const LEGACY_UPI_REDEEM_SETTING_KEY_MAP = Object.freeze({
-      upiRedeemApiBaseUrl: 'pixRedeemApiBaseUrl',
-      upiRedeemExternalApiKey: 'pixRedeemExternalApiKey',
-      upiRedeemClientId: 'pixRedeemClientId',
-      upiRedeemStopAfterRedeem: 'pixRedeemStopAfterRedeem',
-      upiRedeemContinueAfterRedeem: 'pixRedeemContinueAfterRedeem',
-      upiRedeemCdkeyPoolText: 'pixRedeemCdkeyPoolText',
-      upiRedeemCdkeyUsage: 'pixRedeemCdkeyUsage',
-    });
-    const LEGACY_UPI_REDEEM_SETTING_KEYS = Object.values(LEGACY_UPI_REDEEM_SETTING_KEY_MAP);
-    const SETTINGS_EXPORT_SCHEMA_VERSION = 2;
+    const SETTINGS_EXPORT_SCHEMA_VERSION = 3;
 
     return {
       PERSISTED_SETTING_DEFAULTS,
-      LEGACY_UPI_REDEEM_SETTING_KEY_MAP,
-      LEGACY_UPI_REDEEM_SETTING_KEYS,
       SETTINGS_EXPORT_SCHEMA_VERSION,
     };
   }

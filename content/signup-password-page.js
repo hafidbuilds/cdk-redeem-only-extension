@@ -35,8 +35,23 @@
         : async (_metadata, operation) => operation();
     }
 
+    function getPasswordPageKind() {
+      const path = String(locationRef.pathname || '');
+      if (/\/(?:u\/)?(?:create-account|signup)\/password(?:[/?#]|$)/i.test(path)) {
+        return 'signup_create';
+      }
+      if (/\/(?:u\/)?log-in\/password(?:[/?#]|$)/i.test(path)) {
+        return 'login';
+      }
+      return '';
+    }
+
     function detectPasswordPage() {
-      return /\/(?:create-account|log-in)\/password(?:[/?#]|$)/i.test(locationRef.pathname || '');
+      return Boolean(getPasswordPageKind());
+    }
+
+    function detectSignupCreatePasswordPage() {
+      return getPasswordPageKind() === 'signup_create';
     }
 
     function getSignupPasswordDisplayedEmail() {
@@ -180,12 +195,33 @@
       throw new Error('等待进入密码页超时。URL: ' + locationRef.href);
     }
 
+    async function ensureSignupCreatePasswordPageReady(timeout = 20000) {
+      const start = Date.now();
+
+      while (Date.now() - start < timeout) {
+        throwIfStopped();
+        const passwordInput = getSignupPasswordInput();
+        if (detectSignupCreatePasswordPage() && passwordInput) {
+          return {
+            ready: true,
+            state: 'password_page',
+            passwordPageKind: 'signup_create',
+            url: locationRef.href,
+          };
+        }
+        await sleep(200);
+      }
+
+      throw new Error('等待进入注册密码创建页超时。URL: ' + locationRef.href);
+    }
+
     async function fillSignupPasswordPageAndSubmit(snapshot, password, options = {}) {
       const {
         contextLabel = '步骤 3',
         deferredSubmit = true,
         requireSubmitButton = false,
         fillLabel = 'signup-password',
+        operationStepKey = 'fill-password',
         submitLabel = 'submit-signup-password',
         submitDelayMs = 120,
         submitInitialSleepMs = 500,
@@ -210,7 +246,7 @@
       }
 
       await humanPause(600, 1500);
-      await performOperationWithDelay({ stepKey: 'fill-password', kind: 'fill', label: fillLabel }, async () => {
+      await performOperationWithDelay({ stepKey: operationStepKey, kind: 'fill', label: fillLabel }, async () => {
         fillInput(activeSnapshot.passwordInput, password);
       });
       log(`${contextLabel}：密码已填写`);
@@ -242,7 +278,7 @@
           await sleep(submitInitialSleepMs);
         }
         await humanPause(500, 1300);
-        await performOperationWithDelay({ stepKey: 'fill-password', kind: 'submit', label: submitLabel }, async () => {
+        await performOperationWithDelay({ stepKey: operationStepKey, kind: 'submit', label: submitLabel }, async () => {
           submitSignupPasswordButton(submitBtn);
         });
         log(`${contextLabel}：表单已提交`);
@@ -282,7 +318,10 @@
     return {
       setPassword,
       detectPasswordPage,
+      detectSignupCreatePasswordPage,
+      getPasswordPageKind,
       ensureSignupPasswordPageReady,
+      ensureSignupCreatePasswordPageReady,
       fillSignupPasswordPageAndSubmit,
       getSignupPasswordDisplayedEmail,
       getSignupPasswordInput,

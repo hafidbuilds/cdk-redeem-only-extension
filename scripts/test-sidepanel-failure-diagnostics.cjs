@@ -60,6 +60,20 @@ test('failure diagnostics prefers the current direct error over a later archived
   assert.equal(selected.failure.message, logs[1].message);
 });
 
+test('failure diagnostics ignores a node error that later completed successfully', () => {
+  const logs = [
+    { timestamp: 1, level: 'error', nodeId: 'submit-signup-email', message: '失败：入口尚未就绪' },
+    { timestamp: 2, level: 'info', nodeId: 'submit-signup-email', message: '正在恢复认证入口' },
+    { timestamp: 3, level: 'ok', nodeId: 'submit-signup-email', message: '已完成' },
+    { timestamp: 4, level: 'warn', nodeId: 'fetch-signup-code', message: '已被用户停止' },
+  ];
+
+  const result = diagnostics.selectFailureLogWindow(logs, 100);
+
+  assert.equal(result.failureFound, false);
+  assert.equal(result.failure, null);
+});
+
 test('failure diagnostics falls back to an archived snapshot when no direct failure exists', () => {
   const logs = [
     { timestamp: 1, level: 'info', message: '流程启动。' },
@@ -82,6 +96,17 @@ test('failure diagnostics redacts credentials, verification codes, emails, and U
   assert.match(sanitized, /u\*\*\*@example\.com/);
   assert.match(sanitized, /NAME_REDACTED/);
   assert.match(sanitized, /REDACTED/);
+});
+
+test('failure diagnostics preserves structured error codes while redacting real tokens', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefghijklmnopqrstuv.zyxwvutsrqponmlkjihg';
+  const sanitized = diagnostics.sanitizeDiagnosticText(
+    `SIGNUP_USER_ALREADY_EXISTS::步骤 5：资料提交失败 access_token=secret-access-value ${jwt} longtokenvalue1234567890`
+  );
+
+  assert.match(sanitized, /^SIGNUP_USER_ALREADY_EXISTS::步骤 5/);
+  assert.doesNotMatch(sanitized, /secret-access-value|eyJhbGci|abcdefghijklmnopqrstuv|longtokenvalue1234567890/);
+  assert.match(sanitized, /JWT_REDACTED|TOKEN_REDACTED|REDACTED/);
 });
 
 test('copy diagnostics writes safe JSON to clipboard and shows the success toast', async () => {

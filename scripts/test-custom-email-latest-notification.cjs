@@ -40,6 +40,49 @@ test('generic mail HTML uses the prompt-bound code and never falls through to hi
   });
 });
 
+test('step 6 login-code email is accepted when the body contains a temporary code', () => {
+  const extractor = createVerificationCodeExtractor();
+  const client = createAssurivoFeedClient({
+    collectCustomEmailVerificationCodes: extractor.collectCustomEmailVerificationCodes,
+    getStrictVerificationBodyCodeDetails: extractor.getStrictVerificationBodyCodeDetails,
+    isAssurivoVerificationPayload: () => false,
+  });
+  const html = `<!DOCTYPE html><html><head><title>Your temporary ChatGPT verification code</title></head><body>
+    <p>Log in to ChatGPT with the button below.</p><p>You can also enter this temporary code:</p><strong>246810</strong>
+  </body></html>`;
+
+  assert.deepEqual(client.extractCustomEmailVerificationCodeDetails(html), {
+    code: '246810',
+    source: 'generic-strict',
+  });
+});
+
+test('custom direct mail fetch adds a cache-busting query value', async () => {
+  const extractor = createVerificationCodeExtractor();
+  const requests = [];
+  const client = createAssurivoFeedClient({
+    addLog: async () => {},
+    collectCustomEmailVerificationCodes: extractor.collectCustomEmailVerificationCodes,
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return { ok: true, status: 200, text: async () => '<title>Your temporary ChatGPT verification code</title>Enter this temporary code: 246810' };
+    },
+    getCompletionStep: (step) => step,
+    getStrictVerificationBodyCodeDetails: extractor.getStrictVerificationBodyCodeDetails,
+    getVerificationCodeLabel: () => '设置 GPT 密码',
+    isAssurivoVerificationPayload: () => false,
+    resolveInitialVerificationRequestedAt: () => 0,
+  });
+
+  const result = await client.fetchCustomEmailVerificationCode(6, {
+    email: 'user@example.test',
+    customEmailPoolEntries: [{ email: 'user@example.test', verificationUrl: 'https://mail.example.test/latest?token=redacted' }],
+  });
+
+  assert.equal(result.code, '246810');
+  assert.equal(new URL(requests[0]).searchParams.has('_mp_cache_bust'), true);
+});
+
 test('custom email fetch classifies an OpenAI sign-in notification without logging raw HTML', async () => {
   const client = createAssurivoFeedClient({
     constants: {
@@ -138,7 +181,7 @@ test('step 4 requests one fresh code after the latest custom email stays a sign-
   assert.deepEqual(sentMessages, ['RESEND_VERIFICATION_CODE']);
 });
 
-test('step 6 keeps polling after a sign-in notification instead of restarting registration', async () => {
+test('step 7 keeps polling after a sign-in notification without setting the password', async () => {
   const logs = [];
   const state = {
     email: 'current@example.test',
@@ -183,24 +226,69 @@ test('step 6 keeps polling after a sign-in notification instead of restarting re
       if (message.type === 'SUBMIT_SET_GPT_PASSWORD_CODE') {
         return { requiresNewPasswordNavigation: true };
       }
-      if (message.type === 'SET_GPT_PASSWORD') {
-        return { success: true, gptPasswordSet: true };
-      }
       throw new Error(`unexpected message: ${message.type}`);
     },
     setState: async (patch) => Object.assign(state, patch),
     sleepWithStop: async () => {},
   });
 
-  const result = await executor.executeSetGptPassword({
+  const result = await executor.executeFetchGptPasswordCode({
     ...state,
-    nodeId: 'set-gpt-password',
-    visibleStep: 6,
+    nodeId: 'fetch-gpt-password-code',
+    visibleStep: 7,
   });
 
-  assert.equal(result.gptPasswordSet, true);
+  assert.equal(result.gptPasswordResetStage, 'new_password_ready');
+  assert.equal(result.gptPasswordSet, false);
   assert.equal(fetchAttempts, 2);
   assert.equal(resetStarts, 1);
   assert.equal(completed, 1);
   assert.equal(logs.some((message) => message.includes('本次取码临时失败，将继续等待下一次尝试（2/5）')), true);
+});
+
+test('step 7 code-fetch exhaustion preserves the current page instead of restarting the round', async () => {
+  const state = {
+    email: 'current@example.test',
+    password: 'Example-password-1',
+    customPassword: 'Example-password-1',
+    passwordAccountIdentifier: 'current@example.test',
+    setGptPasswordCodeMaxAttempts: 2,
+    setGptPasswordVerificationWaitSeconds: 0,
+  };
+  let fetchAttempts = 0;
+  let resetStarts = 0;
+  const executor = createSetGptPasswordExecutor({
+    addLog: async () => {},
+    chrome: { tabs: { get: async () => ({ id: 7, url: 'https://auth.openai.com/email-verification' }), update: async () => ({}) } },
+    completeNodeFromBackground: async () => {},
+    ensureContentScriptReadyOnTab: async () => {},
+    fetchVerificationCodeOnly: async () => {
+      fetchAttempts += 1;
+      throw Object.assign(new Error('<html><title>Your temporary ChatGPT verification code</title></html>'), { code: 'CUSTOM_EMAIL_LATEST_NON_VERIFICATION' });
+    },
+    getMailConfig: () => ({ provider: 'custom', label: '自定义邮箱取码 URL' }),
+    getState: async () => ({ ...state }),
+    getVerificationCodeStateKey: () => 'lastLoginCode',
+    reuseOrCreateTab: async () => 7,
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'START_SET_GPT_PASSWORD_RESET') { resetStarts += 1; return { ready: true }; }
+      throw new Error(`unexpected message: ${message.type}`);
+    },
+    setState: async (patch) => Object.assign(state, patch),
+    sleepWithStop: async () => {},
+  });
+
+  await assert.rejects(
+    executor.executeFetchGptPasswordCode({ ...state, nodeId: 'fetch-gpt-password-code', visibleStep: 7 }),
+    (error) => {
+      assert.equal(error.code, 'SET_GPT_PASSWORD_CODE_FETCH_UNCERTAIN');
+      assert.equal(error.retryable, false);
+      assert.equal(error.preserveSignupSession, true);
+      assert.match(error.message, /保留当前步骤 7 页面/);
+      assert.doesNotMatch(error.message, /<html/i);
+      return true;
+    }
+  );
+  assert.equal(fetchAttempts, 2);
+  assert.equal(resetStarts, 1);
 });

@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 
 globalThis.self = globalThis;
 require('../background/bootstrap/state-store.js');
+require('../background/runtime-state.js');
 
 const { createBackgroundStateStore } = globalThis.MultiPageBackgroundStateStore;
+const { createRuntimeStateHelpers } = globalThis.MultiPageBackgroundRuntimeState;
 
 test('background state hydrates the persisted canonical account read model', async () => {
   const accountRecordsV2 = {
@@ -27,7 +29,7 @@ test('background state hydrates the persisted canonical account read model', asy
     },
     defaultState: {
       accountRecordsV2: { schemaVersion: 2, items: {}, updatedAt: '' },
-      upiCredentialMembershipCheckResults: { items: [] },
+      freeAccountResults: { schemaVersion: 3, items: [] },
     },
     buildStateViewWithRuntimeState: (state) => state,
   });
@@ -155,21 +157,113 @@ test('background state keeps empty custom email pool when persisted settings are
   assert.deepEqual(state.customEmailPool, []);
 });
 
-test('background state persists bounded CDK attempt history for every redeem channel', async () => {
-  const localWrites = [];
+test('persisted settings win over stale session defaults after browser restart', async () => {
+  const persistedSettings = {
+    registrationFreeRoute: 'no-2fa-free',
+    upiSubscriptionApiBaseUrl: 'https://saved-eligibility.example',
+    upiCredentialMembershipCheckTotpApiBaseUrl: 'https://saved-totp.example',
+    setGptPasswordVerificationWaitSeconds: 42,
+    signupVerificationCodeWaitSeconds: 42,
+    mailProvider: 'custom',
+  };
+  const staleSessionState = {
+    currentNodeId: 'persist-no-2fa-free',
+    registrationFreeRoute: 'full-2fa',
+    upiSubscriptionApiBaseUrl: 'https://cha.nerver.cc',
+    upiCredentialMembershipCheckTotpApiBaseUrl: 'https://cha.nerver.cc',
+    setGptPasswordVerificationWaitSeconds: 10,
+    signupVerificationCodeWaitSeconds: 10,
+    mailProvider: 'hotmail-api',
+  };
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: { get: async () => staleSessionState },
+        local: { get: async () => ({}) },
+      },
+    },
+    defaultState: {
+      currentNodeId: '',
+      registrationFreeRoute: 'full-2fa',
+      upiSubscriptionApiBaseUrl: 'https://cha.nerver.cc',
+      upiCredentialMembershipCheckTotpApiBaseUrl: 'https://cha.nerver.cc',
+      setGptPasswordVerificationWaitSeconds: 10,
+      signupVerificationCodeWaitSeconds: 10,
+      mailProvider: 'hotmail-api',
+      freeAccountResults: { schemaVersion: 3, items: [] },
+    },
+    getPersistedSettings: async () => persistedSettings,
+    persistentSettingKeys: Object.keys(persistedSettings),
+    buildStateViewWithRuntimeState: (state) => state,
+  });
+
+  const state = await store.getState();
+
+  assert.equal(state.currentNodeId, 'persist-no-2fa-free');
+  assert.equal(state.registrationFreeRoute, 'no-2fa-free');
+  assert.equal(state.upiSubscriptionApiBaseUrl, 'https://saved-eligibility.example');
+  assert.equal(state.upiCredentialMembershipCheckTotpApiBaseUrl, 'https://saved-totp.example');
+  assert.equal(state.setGptPasswordVerificationWaitSeconds, 42);
+  assert.equal(state.signupVerificationCodeWaitSeconds, 42);
+  assert.equal(state.mailProvider, 'custom');
+});
+
+test('persistent settings are written locally and omitted from session state', async () => {
+  const persistentWrites = [];
+  const sessionWrites = [];
   const sessionData = {};
-  const history = [{
-    submittedEmail: 'current@example.com',
-    tokenEmail: 'previous@example.com',
-    accessToken: 'old-at',
-    submittedAt: 123,
-  }];
   const store = createBackgroundStateStore({
     chrome: {
       storage: {
         session: {
           get: async () => sessionData,
-          set: async (patch) => Object.assign(sessionData, patch),
+          set: async (patch) => {
+            sessionWrites.push(patch);
+            Object.assign(sessionData, patch);
+          },
+        },
+        local: {
+          get: async () => ({}),
+          set: async () => {},
+        },
+      },
+    },
+    defaultState: {
+      registrationFreeRoute: 'full-2fa',
+      currentNodeId: '',
+    },
+    persistentSettingKeys: ['registrationFreeRoute'],
+    setPersistentSettings: async (patch) => persistentWrites.push(patch),
+    buildStatePatchWithRuntimeState: (_current, updates) => updates,
+  });
+
+  await store.setState({
+    registrationFreeRoute: 'no-2fa-free',
+    currentNodeId: 'persist-no-2fa-free',
+  });
+
+  assert.deepEqual(persistentWrites, [{ registrationFreeRoute: 'no-2fa-free' }]);
+  assert.deepEqual(sessionWrites, [{ currentNodeId: 'persist-no-2fa-free' }]);
+  assert.deepEqual(store.sanitizeSessionPatch({
+    registrationFreeRoute: 'full-2fa',
+    currentNodeId: 'open-chatgpt',
+  }), { currentNodeId: 'open-chatgpt' });
+});
+
+test('background state persists Free results and ignores removed CDK fields', async () => {
+  const localWrites = [];
+  const sessionWrites = [];
+  const sessionData = {};
+  const freeAccountResults = {
+    schemaVersion: 3,
+    items: [{ email: 'current@example.com', status: 'free', trialEligibilityStatus: 'eligible' }],
+  };
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: {
+          get: async () => sessionData,
+          set: async (patch) => { sessionWrites.push(patch); Object.assign(sessionData, patch); },
         },
         local: {
           get: async () => ({}),
@@ -177,21 +271,164 @@ test('background state persists bounded CDK attempt history for every redeem cha
         },
       },
     },
-    defaultState: { upiCredentialMembershipCheckResults: { items: [] } },
-    alignUpiRedeemCdkeyAliasStatePatch: (value) => value,
+    defaultState: { freeAccountResults: { schemaVersion: 3, items: [] } },
     buildStatePatchWithRuntimeState: (_current, updates) => updates,
-    normalizePersistentSettingValue: (_key, value) => value,
   });
 
   await store.setState({
-    upiRedeemCdkeyUsage: { UPI: { redeemAttemptHistory: history } },
-    idealRedeemCdkeyUsage: { IDEAL: { redeemAttemptHistory: history } },
-    pixChannelRedeemCdkeyUsage: { PIX: { redeemAttemptHistory: history } },
+    freeAccountResults,
+    upiRedeemCdkeyUsage: { removed: true },
+    idealRedeemCdkeyUsage: { removed: true },
+    pixChannelRedeemCdkeyUsage: { removed: true },
   });
 
-  assert.deepEqual(localWrites, [
-    { upiRedeemCdkeyUsage: { UPI: { redeemAttemptHistory: history } } },
-    { idealRedeemCdkeyUsage: { IDEAL: { redeemAttemptHistory: history } } },
-    { pixChannelRedeemCdkeyUsage: { PIX: { redeemAttemptHistory: history } } },
-  ]);
+  assert.deepEqual(localWrites, [{ freeAccountResults }]);
+  assert.equal(sessionWrites.some((patch) => Object.hasOwn(patch, 'freeAccountResults')), false);
+  assert.equal(Object.hasOwn(sessionData, 'freeAccountResults'), false);
+});
+
+test('background state removes canonical local data left in session storage', async () => {
+  const removed = [];
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: {
+          async setAccessLevel() {},
+          async remove(keys) { removed.push(keys); },
+        },
+      },
+    },
+    membershipResultsStorageKey: 'freeAccountResults',
+    accountRecordsStorageKey: 'accountRecordsV2',
+  });
+
+  await store.initializeSessionStorageAccess();
+
+  assert.deepEqual(removed, [['freeAccountResults', 'accountRecordsV2']]);
+  assert.deepEqual(store.sanitizeSessionPatch({
+    freeAccountResults: { items: [{ session: { large: true } }] },
+    accountRecordsV2: { items: { a: {} } },
+    currentNodeId: 'open-chatgpt',
+  }), { currentNodeId: 'open-chatgpt' });
+});
+
+test('large Free Session payload stays local and cannot exhaust session storage', async () => {
+  const localWrites = [];
+  const sessionWrites = [];
+  const freeAccountResults = {
+    schemaVersion: 3,
+    items: Array.from({ length: 40 }, (_, index) => ({
+      email: `large-${index}@example.test`,
+      trialEligibilityStatus: 'eligible',
+      session: { accessToken: 'x'.repeat(5000), account: { id: String(index) } },
+    })),
+  };
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: {
+          async get() { return {}; },
+          async set(patch) {
+            if (JSON.stringify(patch).length > 2000) throw new Error('Session storage quota bytes exceeded. Values were not stored.');
+            sessionWrites.push(patch);
+          },
+        },
+        local: {
+          async get() { return {}; },
+          async set(patch) { localWrites.push(patch); },
+        },
+      },
+    },
+    defaultState: { freeAccountResults: { schemaVersion: 3, items: [] } },
+    buildStatePatchWithRuntimeState: (_current, updates) => updates,
+  });
+
+  await store.setState({ freeAccountResults, currentNodeId: 'open-chatgpt' });
+
+  assert.deepEqual(localWrites, [{ freeAccountResults }]);
+  assert.deepEqual(sessionWrites, [{ currentNodeId: 'open-chatgpt' }]);
+});
+
+test('plain log updates avoid full session reads and runtime-state rewrites', async () => {
+  let fullSessionReads = 0;
+  const sessionWrites = [];
+  const runtimeStateHelpers = createRuntimeStateHelpers({
+    defaultNodeStatuses: { 'open-chatgpt': 'pending' },
+  });
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: {
+          async get(keys) {
+            if (keys === null) fullSessionReads += 1;
+            return {
+              runtimeState: {
+                flowId: 'openai',
+                currentNodeId: 'open-chatgpt',
+                nodeStatuses: { 'open-chatgpt': 'running' },
+                serviceState: { largePayload: 'x'.repeat(200000) },
+              },
+            };
+          },
+          async set(patch) {
+            sessionWrites.push(patch);
+          },
+        },
+        local: {
+          async get() { return {}; },
+          async set() {},
+        },
+      },
+    },
+    defaultState: {},
+    buildStatePatchWithRuntimeState: runtimeStateHelpers.buildSessionStatePatch,
+    statePatchNeedsCurrentState: runtimeStateHelpers.statePatchNeedsCurrentState,
+  });
+  const logs = [{ message: 'fixture log', timestamp: 1 }];
+
+  await store.setState({ logs });
+
+  assert.equal(fullSessionReads, 0);
+  assert.deepEqual(sessionWrites, [{ logs }]);
+  assert.equal(Object.hasOwn(sessionWrites[0], 'runtimeState'), false);
+});
+
+test('runtime updates still hydrate the current runtime state before writing', async () => {
+  let fullSessionReads = 0;
+  const sessionWrites = [];
+  const runtimeStateHelpers = createRuntimeStateHelpers({
+    defaultNodeStatuses: { 'open-chatgpt': 'pending', 'enter-email': 'pending' },
+  });
+  const store = createBackgroundStateStore({
+    chrome: {
+      storage: {
+        session: {
+          async get(keys) {
+            if (keys === null) fullSessionReads += 1;
+            return {
+              flowId: 'openai',
+              currentNodeId: 'open-chatgpt',
+              nodeStatuses: { 'open-chatgpt': 'completed', 'enter-email': 'pending' },
+            };
+          },
+          async set(patch) {
+            sessionWrites.push(patch);
+          },
+        },
+        local: {
+          async get() { return {}; },
+          async set() {},
+        },
+      },
+    },
+    defaultState: {},
+    buildStatePatchWithRuntimeState: runtimeStateHelpers.buildSessionStatePatch,
+    statePatchNeedsCurrentState: runtimeStateHelpers.statePatchNeedsCurrentState,
+  });
+
+  await store.setState({ currentNodeId: 'enter-email' });
+
+  assert.equal(fullSessionReads, 1);
+  assert.equal(sessionWrites[0].runtimeState.currentNodeId, 'enter-email');
+  assert.equal(sessionWrites[0].runtimeState.nodeStatuses['open-chatgpt'], 'completed');
 });

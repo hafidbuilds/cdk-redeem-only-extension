@@ -8,12 +8,7 @@
     const owners = new Map();
 
     function normalizeResourceKey(value = '') {
-      const key = String(value || '').trim().toLowerCase();
-      if (!key) return '';
-      const cdkeyMatch = key.match(/^cdkey:([^:]+):(.+)$/);
-      if (!cdkeyMatch) return key;
-      if (/^fnv1a_[0-9a-f]{8}$/.test(cdkeyMatch[2])) return `cdkey:${cdkeyMatch[1]}:${cdkeyMatch[2]}`;
-      return `cdkey:${cdkeyMatch[1]}:${schema.stableHash(cdkeyMatch[2].replace(/[\s-]+/g, ''))}`;
+      return String(value || '').trim().toLowerCase();
     }
 
     function normalizeResourceKeys(values = []) {
@@ -81,7 +76,6 @@
             checkpoint: {
               locksAcquired: true,
               accountLockAcquired: keys.some((key) => key.startsWith('account:')),
-              cdkeyLockAcquired: keys.some((key) => key.startsWith('cdkey:')),
             },
           });
         }

@@ -1,8 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+require('../data/step-definitions.js');
 const { createSettingsRoutes } = require('../background/routes/settings-routes.js');
 const { createCustomEmailPoolState } = require('../background/custom-email-pool-state.js');
+const workflowDefinitions = globalThis.MultiPageStepDefinitions;
 
 function createRouteHarness() {
   const writes = [];
@@ -31,7 +33,11 @@ function createRouteHarness() {
         : entry;
     }),
     exportSettingsBundle: async () => ({}),
+    getNodeIdsForState: (nextState = {}) => workflowDefinitions.getNodes(nextState).map((node) => node.nodeId),
     getState: async () => state,
+    getStepIdsForState: (nextState = {}) => workflowDefinitions.getSteps(nextState).map((step) => step.id),
+    getStepKeyForState: (stepId, nextState = {}) => workflowDefinitions.getSteps(nextState)
+      .find((step) => Number(step.id) === Number(stepId))?.key || '',
     importSettingsBundle: async () => ({}),
     normalizeHotmailAccounts: (value = []) => Array.isArray(value) ? value : [],
     resolveSignupMethod: () => 'email',
@@ -166,4 +172,32 @@ test('explicit trial status changes synchronize the canonical account lifecycle'
     allowCustomEmailPoolStatusReset: true,
   });
   assert.deepEqual(harness.lifecycleTransitions.at(-1), { email: 'one@example.com', status: 'unknown' });
+});
+
+test('registration route switch clears stale no-2FA runtime state', async () => {
+  const harness = createRouteHarness();
+  Object.assign(harness.getState(), {
+    registrationFreeRoute: 'no-2fa-free',
+    currentNodeId: 'persist-no-2fa-free',
+    nodeStatuses: {
+      'open-chatgpt': 'pending',
+      'submit-signup-email': 'pending',
+      'fill-password': 'pending',
+      'existing-totp-login': 'pending',
+      'fetch-signup-code': 'pending',
+      'fill-profile': 'pending',
+      'fetch-gpt-password-code': 'skipped',
+      'set-gpt-password': 'skipped',
+      'persist-no-2fa-free': 'pending',
+    },
+  });
+
+  const response = await harness.routes.SAVE_SETTING({ registrationFreeRoute: 'full-2fa' });
+
+  assert.equal(response.ok, true);
+  assert.equal(harness.getState().registrationFreeRoute, 'full-2fa');
+  assert.equal(harness.getState().currentNodeId, '');
+  assert.deepEqual(harness.getState().nodeStatuses, workflowDefinitions.getDefaultNodeStatuses({
+    registrationFreeRoute: 'full-2fa',
+  }));
 });

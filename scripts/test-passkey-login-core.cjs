@@ -8,7 +8,7 @@ const {
   getLoginFailureMessage,
 } = require('../background/passkey-login-core.js');
 require('../background/passkey-api-login-executor.js');
-require('../background/upi-credential-membership-checker.js');
+const { parsePlainTextCredentials } = require('../background/free-account-service.js');
 
 const {
   buildPasskeyExportMarker,
@@ -16,9 +16,6 @@ const {
   getPasskeyCredentialIdFromExportMarker,
   parsePasskeyExportMarker,
 } = globalThis.MultiPagePasskeyApiLoginExecutor;
-const {
-  parseCredentialBackupText,
-} = globalThis.MultiPageBackgroundUpiCredentialMembershipChecker;
 
 test('builds passkey login request with allowed optional fields only', () => {
   const privateJwk = { kty: 'EC', crv: 'P-256', x: 'x', y: 'y', d: 'd' };
@@ -75,8 +72,8 @@ test('parses passkey text marker metadata with backward compatibility', () => {
   });
 });
 
-test('preserves passkey metadata from background credential text import', () => {
-  const [metadataRow, legacyRow] = parseCredentialBackupText([
+test('preserves passkey metadata from V3 Free credential text import', () => {
+  const [metadataRow, legacyRow] = parsePlainTextCredentials([
     'user@example.com---pw---PASSKEY:credential-1;signCount=0;alg=-7---token---2026-07-06T00:00:00Z',
     'legacy@example.com---pw---PASSKEY:credential-2---token---2026-07-06T00:00:00Z',
   ].join('\n'));

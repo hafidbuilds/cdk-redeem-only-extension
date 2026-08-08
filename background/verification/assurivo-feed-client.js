@@ -249,6 +249,7 @@
             || buildLinlinflowMailApiUrl(rawUrl)
             || rawUrl;
         }
+        function appendCustomEmailCacheBust(rawUrl = '') { try { const url = new URL(String(rawUrl || '')); url.searchParams.set('_mp_cache_bust', String(Date.now())); return url.toString(); } catch { return rawUrl; } }
 
         function getCustomEmailVerificationRequestLabel(rawUrl = '') {
           return buildLinlinflowMailApiUrl(rawUrl)
@@ -729,6 +730,7 @@
                 url: requestUrl,
                 label: getCustomEmailVerificationRequestLabel(verificationUrl),
                 preferFirstCode: Boolean(linlinflowRequestUrl) || isAssurivoOpenVerificationUrl(verificationUrl),
+                cacheBust: !linlinflowRequestUrl,
                 assurivoOpenPage: false,
               });
             }
@@ -738,7 +740,7 @@
           for (let requestIndex = 0; requestIndex < requests.length; requestIndex += 1) {
             const request = requests[requestIndex];
             await addLog(`步骤 ${completionStep}：正在通过${request.label}获取${verificationLabel}验证码。`, 'info');
-            const response = await fetcher(request.url, {
+            const response = await fetcher(request.cacheBust ? appendCustomEmailCacheBust(request.url) : request.url, {
               method: 'GET',
               cache: 'no-store',
               credentials: 'include',
@@ -759,7 +761,6 @@
               }
               throw lastError;
             }
-
               const codeDetails = extractCustomEmailVerificationCodeDetails(payload, {
                 excludeCodes: options.excludeCodes || [],
                 filterAfterTimestamp,

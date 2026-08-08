@@ -94,8 +94,6 @@
         plusPaymentMethod: rawPaymentMethod,
         plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
         signupMethod: stepDefinitionState.signupMethod,
-        upiRedeemStopAfterRedeem: options.upiRedeemStopAfterRedeem ?? workflow.getCurrentUpiRedeemStopAfterRedeem?.(),
-        upiRedeemContinueAfterRedeem: options.upiRedeemContinueAfterRedeem,
         totpMfaAfterProfileEnabled: options.totpMfaAfterProfileEnabled ?? workflow.getCurrentTotpMfaAfterProfileEnabled?.(),
         registrationFreeRoute: options.registrationFreeRoute ?? workflow.getCurrentRegistrationFreeRoute?.(),
       });
@@ -230,7 +228,6 @@
         autoRunLabel: workflow.getAutoRunLabel?.() || '',
         autoRunPhase: autoRun.phase,
         countdown: workflow.getActiveAutoRunCountdown?.(),
-        existingTotpLoginDisplayStatus: currentState?.existingTotpLoginDisplayStatus || 'pending',
         nodeIds: getNodeIds(),
         nodeStatuses: getNodeStatuses(currentState),
         now: Date.now(),

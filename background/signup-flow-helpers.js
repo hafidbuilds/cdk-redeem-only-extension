@@ -23,11 +23,11 @@
       isSignupPasswordPageUrl,
       isSignupProfilePageUrl = null,
       persistRegistrationEmailState = null,
+      readChatGptSessionForTotpRecovery = null,
       resolveExistingTotpCredential = null,
       reuseOrCreateTab,
       sendToContentScriptResilient,
       setEmailState,
-      setExistingTotpLoginDisplayStatus = null,
       setState,
       sleepWithStop = null,
       SIGNUP_AUTH_ENTRY_URL = 'https://chatgpt.com/auth/login',
@@ -39,26 +39,25 @@
     } = deps;
 
     const SIGNUP_EXISTING_TOTP_LOGIN_ERROR_PREFIX = 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED::';
-    const EXISTING_TOTP_LOGIN_DISPLAY_STATUSES = new Set(['pending', 'running', 'completed', 'failed']);
-
-    async function updateExistingTotpLoginDisplayStatus(status) {
-      if (!EXISTING_TOTP_LOGIN_DISPLAY_STATUSES.has(status)
-        || typeof setExistingTotpLoginDisplayStatus !== 'function') {
-        return;
-      }
-      try {
-        await setExistingTotpLoginDisplayStatus(status);
-      } catch (_) {
-        // Display-state synchronization must never interrupt the authentication flow.
-      }
-    }
-
     function normalizeEmail(value = '') {
       return String(value || '').trim().toLowerCase();
     }
 
     function normalizeTotpSecret(value = '') {
       return String(value || '').replace(/\s+/g, '').trim().toUpperCase();
+    }
+
+    function getSessionEmail(value = {}) {
+      const source = value && typeof value === 'object' ? value : {};
+      const session = source.session && typeof source.session === 'object' ? source.session : source;
+      return normalizeEmail(
+        source.email
+        || source.user?.email
+        || source.user_email
+        || session.user?.email
+        || session.user_email
+        || session.email
+      );
     }
 
     function isRegisteredLoginTotpState(snapshot = null) {
@@ -83,6 +82,15 @@
       return error;
     }
 
+    function createAccountDeactivatedError(message) {
+      const error = new Error(`ACCOUNT_DEACTIVATED::${message}`);
+      error.code = 'ACCOUNT_DEACTIVATED';
+      error.retryable = false;
+      error.nodeId = 'existing-totp-login';
+      error.failedNodeId = 'existing-totp-login';
+      return error;
+    }
+
     async function sleepForTotpLogin(milliseconds) {
       if (typeof sleepWithStop === 'function') {
         await sleepWithStop(milliseconds);
@@ -99,14 +107,14 @@
 
     async function getFreshTotpCode(secret) {
       if (typeof generateTotpCode !== 'function') {
-        throw createExistingTotpLoginError('本地 TOTP 生成器未加载，无法完成步骤 3.5。');
+        throw createExistingTotpLoginError('本地 TOTP 生成器未加载，无法完成步骤 4。');
       }
       const nowSeconds = Math.floor(Date.now() / 1000);
       const secondsRemaining = 30 - (nowSeconds % 30 || 0);
       if (secondsRemaining <= 7) {
-        await addLog?.(`步骤 3.5：当前 2FA 动态码即将过期，等待 ${secondsRemaining + 1} 秒后使用下一周期。`, 'info', {
-          step: 3,
-          stepKey: 'fill-password',
+        await addLog?.(`步骤 4：当前 2FA 动态码即将过期，等待 ${secondsRemaining + 1} 秒后使用下一周期。`, 'info', {
+          step: 4,
+          stepKey: 'existing-totp-login',
         });
         await sleepForTotpLogin((secondsRemaining + 1) * 1000);
         checkTotpLoginStop();
@@ -122,23 +130,29 @@
       try {
         return await sendToContentScriptResilient('signup-page', {
           type: 'GET_LOGIN_AUTH_STATE',
-          step: 3,
+          step: 4,
           source: 'background',
-          payload: { backgroundOwnsWorkflowOutcome: true },
+          payload: {
+            visibleStep: 4,
+            nodeId: 'existing-totp-login',
+            backgroundOwnsWorkflowOutcome: true,
+          },
         }, {
           timeoutMs: 8000,
           responseTimeoutMs: 6000,
           retryDelayMs: 400,
-          logMessage: '步骤 3.5：正在确认 2FA 登录页状态...',
+          logMessage: '步骤 4：正在确认 2FA 登录页状态...',
         });
       } catch {
         return null;
       }
     }
 
-    async function waitForExistingTotpLoginOutcome(tabId, timeoutMs = 45000) {
+    async function waitForExistingTotpLoginOutcome(tabId, expectedEmail, timeoutMs = 45000) {
       const startedAt = Date.now();
+      const normalizedExpectedEmail = normalizeEmail(expectedEmail);
       let lastAuthState = null;
+      let lastSessionEmail = '';
       let lastUrl = '';
       while (Date.now() - startedAt < timeoutMs) {
         checkTotpLoginStop();
@@ -146,12 +160,28 @@
         lastUrl = String(tab?.url || lastUrl || '').trim();
         if (typeof isLikelyLoggedInChatgptHomeUrl === 'function'
           && isLikelyLoggedInChatgptHomeUrl(lastUrl)) {
-          return { success: true, url: lastUrl };
+          if (typeof readChatGptSessionForTotpRecovery !== 'function') {
+            throw createExistingTotpLoginError('缺少当前标签页 Session 读取能力，不能确认 2FA 登录账号。');
+          }
+          try {
+            const sessionResult = await readChatGptSessionForTotpRecovery(tabId);
+            lastSessionEmail = getSessionEmail(sessionResult);
+            if (lastSessionEmail && lastSessionEmail !== normalizedExpectedEmail) {
+              throw createExistingTotpLoginError('登录后的 Session 账号与本轮账号不一致，已停止并保留当前认证页。');
+            }
+            if (lastSessionEmail && lastSessionEmail === normalizedExpectedEmail) {
+              return { success: true, url: lastUrl, sessionEmail: lastSessionEmail };
+            }
+          } catch (error) {
+            if (error?.code === 'SIGNUP_EXISTING_TOTP_LOGIN_FAILED') {
+              throw error;
+            }
+          }
         }
 
         lastAuthState = await getLoginAuthStateForTotpRecovery(tabId);
         if (lastAuthState?.accountDeactivated === true || lastAuthState?.state === 'account_deactivated_page') {
-          throw createExistingTotpLoginError('账号已删除或停用，无法完成 2FA 登录。');
+          throw createAccountDeactivatedError('账号已删除或停用，无法完成 2FA 登录。');
         }
         if (isRegisteredLoginTotpState(lastAuthState) && lastAuthState?.verificationErrorText) {
           return {
@@ -167,6 +197,7 @@
         success: false,
         invalidCode: false,
         authState: lastAuthState,
+        sessionEmail: lastSessionEmail,
         url: lastUrl,
       };
     }
@@ -182,16 +213,18 @@
         return { handled: false, reason: 'not_totp_login' };
       }
 
-      await updateExistingTotpLoginDisplayStatus('running');
-
       try {
         const state = input?.state || (typeof getState === 'function' ? await getState() : {});
-        const email = normalizeEmail(
+        const workflowEmail = normalizeEmail(
           state?.email
           || state?.registrationEmailState?.current
           || state?.accountIdentifier
-          || authState?.displayedEmail
         );
+        const displayedEmail = normalizeEmail(authState?.displayedEmail);
+        if (workflowEmail && displayedEmail && workflowEmail !== displayedEmail) {
+          throw createExistingTotpLoginError('当前 2FA 页面账号与本轮账号不一致，未提交动态码并保留当前认证页。');
+        }
+        const email = workflowEmail || displayedEmail;
         const credential = typeof resolveExistingTotpCredential === 'function'
           ? await resolveExistingTotpCredential(email, state)
           : null;
@@ -201,17 +234,16 @@
           || credential?.credentials?.totpSecret
         );
         if (!email || !secret) {
-          await updateExistingTotpLoginDisplayStatus('failed');
-          await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，但本地没有当前邮箱的 TOTP 密钥，将保留原有“已注册并排除”处理。', 'warn', {
-            step: 3,
-            stepKey: 'fill-password',
+          await addLog?.('步骤 4：检测到已有账号的 2FA 登录页，但本地没有当前邮箱的 TOTP 密钥，将保留当前认证页面。', 'warn', {
+            step: 4,
+            stepKey: 'existing-totp-login',
           });
           return { handled: false, reason: 'missing_totp_secret' };
         }
 
-        await addLog?.('步骤 3.5：检测到已有账号的 2FA 登录页，正在使用本地保存的 TOTP 密钥完成登录。', 'info', {
-          step: 3,
-          stepKey: 'fill-password',
+        await addLog?.('步骤 4：检测到已有账号的 2FA 登录页，正在使用本地保存的 TOTP 密钥完成登录。', 'info', {
+          step: 4,
+          stepKey: 'existing-totp-login',
         });
 
         for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -225,10 +257,11 @@
               source: 'background',
               payload: {
                 code,
-                visibleStep: 3,
+                visibleStep: 4,
                 purpose: 'login',
                 verificationKind: 'totp',
                 signupExistingTotpLogin: true,
+                nodeId: 'existing-totp-login',
                 suppressVerificationCodeLog: true,
                 backgroundOwnsWorkflowOutcome: true,
               },
@@ -236,15 +269,15 @@
               timeoutMs: 50000,
               responseTimeoutMs: 47000,
               retryDelayMs: 500,
-              logMessage: `步骤 3.5：正在提交 2FA 动态码（${attempt}/2）...`,
+              logMessage: `步骤 4：正在提交 2FA 动态码（${attempt}/2）...`,
             });
           } catch (error) {
             if (!isRetryableContentScriptTransportError(error)) {
               throw createExistingTotpLoginError('2FA 动态码提交失败，已保留当前认证页和账号。');
             }
-            await addLog?.('步骤 3.5：提交后认证页发生跳转并中断通信，正在从当前标签页确认登录结果。', 'warn', {
-              step: 3,
-              stepKey: 'fill-password',
+            await addLog?.('步骤 4：提交后认证页发生跳转并中断通信，正在从当前标签页确认登录结果。', 'warn', {
+              step: 4,
+              stepKey: 'existing-totp-login',
             });
           }
           checkTotpLoginStop();
@@ -255,12 +288,11 @@
               invalidCode: true,
               errorText: String(submitResult.errorText || '').trim(),
             }
-            : await waitForExistingTotpLoginOutcome(tabId);
+            : await waitForExistingTotpLoginOutcome(tabId, email);
           if (outcome.success) {
-            await updateExistingTotpLoginDisplayStatus('completed');
-            await addLog?.('步骤 3.5：2FA 登录成功，已有账号密码已确认；注册验证码、资料和重复设置密码均无需执行。', 'ok', {
-              step: 3,
-              stepKey: 'fill-password',
+            await addLog?.('步骤 4：2FA 登录成功，已有账号密码已确认；步骤 5–8 无需重复执行。', 'ok', {
+              step: 4,
+              stepKey: 'existing-totp-login',
             });
             return {
               handled: true,
@@ -271,15 +303,17 @@
               skipSetPasswordStep: true,
               skipSetPasswordStepReason: 'existing_totp_login',
               existingTotpLogin: true,
+              existingTotpLoginEmail: email,
+              twoFactorEnabled: true,
               url: outcome.url || '',
             };
           }
 
           if (outcome.invalidCode && attempt < 2) {
             const secondsRemaining = 30 - (Math.floor(Date.now() / 1000) % 30 || 0);
-            await addLog?.('步骤 3.5：本轮 2FA 动态码未通过，等待下一周期后仅重试一次。', 'warn', {
-              step: 3,
-              stepKey: 'fill-password',
+            await addLog?.('步骤 4：本轮 2FA 动态码未通过，等待下一周期后仅重试一次。', 'warn', {
+              step: 4,
+              stepKey: 'existing-totp-login',
             });
             await sleepForTotpLogin((secondsRemaining + 1) * 1000);
             continue;
@@ -293,7 +327,6 @@
 
         throw createExistingTotpLoginError('2FA 登录恢复未完成。');
       } catch (error) {
-        await updateExistingTotpLoginDisplayStatus('failed');
         throw error;
       }
     }
@@ -544,8 +577,6 @@
         throw new Error(`认证页面标签页已关闭，无法完成步骤 ${step} 的提交后确认。`);
       }
 
-      await updateExistingTotpLoginDisplayStatus('pending');
-
       const maxFinalizeAttempts = 3;
       let lastRetryableError = null;
 
@@ -591,10 +622,11 @@
           return result || {};
         } catch (error) {
           if (isRegisteredLoginTotpFailure(error)) {
-            const recovered = await recoverRegisteredTotpLogin({ tabId, step, error });
-            if (recovered?.handled) {
-              return recovered;
-            }
+            return {
+              ready: true,
+              state: 'registered_login_totp_page',
+              existingTotpLoginRequired: true,
+            };
           }
           if (!isRetryableContentScriptTransportError(error)) {
             throw error;

@@ -100,7 +100,7 @@
         { key: 'apiKey', stateKey: 'outlookEmailPlusApiKey', secret: true, required: true, normalize: 'trim' },
         { key: 'provider', stateKey: 'outlookEmailPlusProvider', required: true, normalize: 'lower', defaultValue: 'outlook' },
         { key: 'projectKey', stateKey: 'outlookEmailPlusProjectKey', required: true, normalize: 'trim', defaultValue: 'openai' },
-        { key: 'callerIdPrefix', stateKey: 'outlookEmailPlusCallerIdPrefix', normalize: 'trim', defaultValue: 'cdk-redeem' },
+        { key: 'callerIdPrefix', stateKey: 'outlookEmailPlusCallerIdPrefix', normalize: 'trim', defaultValue: 'free-account-tool' },
       ],
       capabilities: ['generate', 'poll', 'resend'],
       dedicatedUi: false,

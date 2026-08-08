@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "CDK Redeem Only",
-  "version": "2.3.0",
-  "version_name": "CDK Redeem Only V2.3.0",
-  "description": "CDK 兑换专用版，保留注册、设置密码、2FA、会员核验与补兑能力",
+  "name": "Free Account Tool",
+  "version": "3.0.0",
+  "version_name": "Free Account Tool V3.0.0",
+  "description": "Free 账号注册、凭据管理与试用资格检测工具",
   "permissions": [
     "sidePanel",
     "alarms",
@@ -14,12 +14,12 @@
     "browsingData",
     "cookies",
     "storage",
+    "unlimitedStorage",
     "scripting",
     "downloads",
     "activeTab"
   ],
   "host_permissions": [
-    "https://chong.nerver.cc/*",
     "https://cha.nerver.cc/*",
     "https://*.icloud.com/*",
     "https://*.icloud.com.cn/*",
@@ -126,7 +126,7 @@
     }
   ],
   "action": {
-    "default_title": "CDK Redeem Only",
+    "default_title": "Free Account Tool",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

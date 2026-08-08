@@ -451,7 +451,7 @@
       const responseEmail = normalizeEmailDep(loginResult.email || payload?.email);
       if (targetEmail && responseEmail && responseEmail !== targetEmail) {
         throw createSessionAccountMismatchError(
-          `UPI 备份核验：${credential.email} Passkey API 登录返回账号 ${responseEmail}，不是当前目标 ${targetEmail}，已停止提交 CDK。`,
+          `Free 账号核验：${credential.email} Passkey API 登录返回账号 ${responseEmail}，不是当前目标 ${targetEmail}，已停止当前操作。`,
           { sessionEmail: responseEmail, targetEmail }
         );
       }

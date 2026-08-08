@@ -371,6 +371,43 @@ test('custom email pool registration-blocked entries are excluded without markin
   assert.equal(writes.some((write) => write.kind === 'persist'), true);
 });
 
+test('custom email pool deactivated entries are labeled, excluded, and advance selection', async () => {
+  let currentState = {
+    emailGenerator: 'custom-pool',
+    email: 'blocked@example.com',
+    customEmailPoolEntries: [
+      { id: 'entry-1', email: 'blocked@example.com', enabled: true, used: false, note: '已注册' },
+      { id: 'entry-2', email: 'next@example.com', enabled: true, used: false },
+    ],
+    selectedCustomEmailPoolEmail: 'blocked@example.com',
+  };
+  const state = createCustomEmailPoolState({
+    getState: async () => currentState,
+    normalizeCustomEmailVerificationUrl,
+    parseCustomEmailPoolEntryValue,
+    parseHiddenEmailCredential,
+    setPersistentSettings: async () => {},
+    setState: async (payload) => {
+      currentState = { ...currentState, ...payload };
+    },
+  });
+
+  const result = await state.markCurrentCustomEmailPoolEntryRegistrationBlocked(currentState, {
+    reason: 'account_deactivated',
+    reasonCode: 'account_deactivated',
+    log: false,
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.customEmailPoolEntries[0].used, false);
+  assert.equal(result.customEmailPoolEntries[0].registrationBlocked, true);
+  assert.equal(result.customEmailPoolEntries[0].registrationBlockedReasonCode, 'account_deactivated');
+  assert.equal(result.customEmailPoolEntries[0].note, '账号已封禁');
+  assert.deepEqual(result.customEmailPool, ['next@example.com']);
+  assert.equal(result.selectedCustomEmailPoolEmail, 'next@example.com');
+  assert.equal(currentState.selectedCustomEmailPoolEmail, 'next@example.com');
+});
+
 test('custom email pool registration block falls back to selected email', async () => {
   let currentState = {
     emailGenerator: 'custom-pool',

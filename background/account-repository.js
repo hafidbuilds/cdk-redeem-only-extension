@@ -143,7 +143,6 @@
     async function markAccountDeleted(accountId, context = {}) {
       const id = normalizeId(accountId);
       const existing = await getAccount(id) || schema.createEmptyAccountRecord(id, { now: context.now || now() });
-      const deletedChannels = schema.REDEEM_CHANNELS.filter((channel) => context.channel === channel);
       return upsertAccount({
         ...existing,
         metadata: {
@@ -151,10 +150,6 @@
           deleted: {
             ...(existing.metadata?.deleted || {}),
             marked: true,
-            channels: Array.from(new Set([
-              ...(Array.isArray(existing.metadata?.deleted?.channels) ? existing.metadata.deleted.channels : []),
-              ...deletedChannels,
-            ])),
             reasonCode: String(context.reasonCode || 'ACCOUNT_DELETED').trim(),
             at: schema.normalizeIsoTimestamp(context.now || now()),
           },
@@ -186,25 +181,6 @@
       }, context);
     }
 
-    async function updateRedemption(accountId, channel, redemptionPatch = {}, context = {}) {
-      const id = normalizeId(accountId);
-      const normalizedChannel = schema.normalizeRedeemChannel(channel);
-      if (!normalizedChannel) {
-        throw createRepositoryError('ACCOUNT_CHANNEL_INVALID', '兑换渠道无效。', { channel: String(channel || '') });
-      }
-      const existing = await getAccount(id) || schema.createEmptyAccountRecord(id, { now: context.now || now() });
-      return upsertAccount({
-        ...existing,
-        redemption: {
-          ...existing.redemption,
-          [normalizedChannel]: {
-            ...existing.redemption[normalizedChannel],
-            ...redemptionPatch,
-          },
-        },
-      }, context);
-    }
-
     async function migrateLegacySources(sources = {}, context = {}) {
       return enqueueWrite(async () => {
         const current = await readRoot();
@@ -233,7 +209,6 @@
       readRoot,
       updateCredentials,
       updateLifecycle,
-      updateRedemption,
       upsertAccount,
     };
   }

@@ -3,6 +3,57 @@
   root.MultiPageRouterMessageDispatcher = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis, function createRouterMessageDispatcherModule() {
+  function getCollectionSize(value = null) {
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === 'object') return Object.keys(value).length;
+    return 0;
+  }
+
+  function buildRuntimeStateMessageView(value = {}) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const next = { ...source };
+    const hasFreeResults = Object.prototype.hasOwnProperty.call(source, 'freeAccountResults');
+    const hasAccountRecords = Object.prototype.hasOwnProperty.call(source, 'accountRecordsV2');
+    const freeResults = source.freeAccountResults && typeof source.freeAccountResults === 'object'
+      ? source.freeAccountResults
+      : {};
+    const accountRecords = source.accountRecordsV2 && typeof source.accountRecordsV2 === 'object'
+      ? source.accountRecordsV2
+      : {};
+    if (hasFreeResults) {
+      next.freeAccountSummary = {
+        total: getCollectionSize(freeResults.items),
+        eligibleCount: Math.max(0, Math.floor(Number(freeResults.eligibleCount) || 0)),
+        ineligibleCount: Math.max(0, Math.floor(Number(freeResults.ineligibleCount) || 0)),
+        failedCount: Math.max(0, Math.floor(Number(freeResults.failedCount) || 0)),
+        checkingCount: Math.max(0, Math.floor(Number(freeResults.checkingCount) || 0)),
+        unknownCount: Math.max(0, Math.floor(Number(freeResults.unknownCount) || 0)),
+        updatedAt: String(freeResults.updatedAt || ''),
+      };
+    }
+    if (hasAccountRecords) {
+      next.accountRecordsSummary = {
+        total: getCollectionSize(accountRecords.items),
+        updatedAt: String(accountRecords.updatedAt || ''),
+      };
+    }
+    delete next.freeAccountResults;
+    delete next.accountRecordsV2;
+    return next;
+  }
+
+  function compactRuntimeMessageResponse(message = {}, response = null) {
+    if (String(message?.type || '').trim().toUpperCase() === 'GET_STATE') {
+      return buildRuntimeStateMessageView(response);
+    }
+    if (!response || typeof response !== 'object' || Array.isArray(response)) return response;
+    if (!Object.prototype.hasOwnProperty.call(response, 'state')) return response;
+    return {
+      ...response,
+      state: buildRuntimeStateMessageView(response.state),
+    };
+  }
+
   function createRouterMessageDispatcher(context = {}) {
     const {
       addLog,
@@ -10,23 +61,21 @@
       appendManualAccountRunRecordIfNeeded,
       batchUpdateLuckmailPurchases,
       broadcastDataUpdate,
-      checkUpiRedeemSubscriptionStatuses,
       clearStopRequest,
       completeNodeFromBackground,
       deleteHotmailAccount,
       deleteHotmailAccounts,
       deleteMail2925Account,
       deleteMail2925Accounts,
-      deleteUpiCredentialMembershipCheckResults,
-      deleteUpiCredentialMembershipCredentials,
+      deleteFreeAccountResults,
       deps,
       disableUsedLuckmailPurchases,
       executeNodeForManualChain,
       exportCurrentSessionJson,
       exportUpiAccountCredentialBackupTextFile,
-      exportUpiCredentialMembershipCheckResults,
+      exportFreeAccountResults,
       fetchHostedCheckoutVerificationCodeManually,
-      fillUpiCredentialMembershipFreeAccessTokens,
+      fillFreeAccountAccessTokens,
       finalizeStep3Completion,
       findHotmailAccount,
       findStepByNodeId,
@@ -37,20 +86,18 @@
       getState,
       getStepKeyForState,
       getStopRequested,
-      getUpiCredentialMembershipCheckResults,
-      getUpiCredentialMembershipCredentialPool,
+      getFreeAccountResults,
       handleCloudflareSecurityBlocked,
       handleStepData,
-      identifyUpiCredentialMembershipFreePlus,
-      importUpiCredentialMembershipFreeResults,
+      importFreeAccountResults,
+      isFreeAccountSessionFillActive,
       invalidateDownstreamAfterStepRestart,
       isAutoRunLockedState,
       isCloudflareSecurityBlockedError,
       isStaleAutoRunNodeMessage,
       isStopError,
       listLuckmailPurchasesForManagement,
-      loginUpiCredentialMembershipAccount,
-      moveUpiCredentialMembershipAccountGroup,
+      loginFreeAccount,
       normalizeHotmailAccounts,
       normalizeNodeProtocolMessage,
       normalizeString,
@@ -60,9 +107,7 @@
       patchMail2925Account,
       pauseRemovedPaymentWorkerJob,
       pollContributionStatus,
-      pruneIneligibleFreeUpiCredentialMembership,
-      redeemUpiCredentialMembershipFree,
-      refreshUpiCredentialMembershipAccessTokens,
+      refreshFreeAccountAccessTokens,
       refreshCardHelperCardBalance,
       refreshChatGptSessionAndInspectPlusActivation,
       refreshOAuthTimeoutWindowAfterCheckoutSuccess,
@@ -83,8 +128,7 @@
       shouldAutoContinueManualNode,
       skipNode,
       startContributionFlow,
-      stopUpiCredentialMembershipCheck,
-      stopUpiCredentialMembershipRedeem,
+      stopFreeAccountCheck,
       syncHotmailAccounts,
       testCheckoutConversionProxy,
       testHotmailAccountMailAccess,
@@ -92,10 +136,15 @@
       upsertLegacyWalletAccount,
       upsertMail2925Account,
       verifyHotmailAccount,
-      verifyUpiCredentialMembershipPlus,
     } = context;
 
     const taskRuntime = (typeof self !== 'undefined' ? self : globalThis).MultiPageRuntimeTaskRuntime || null;
+
+    async function ensureSessionFillIdle(actionLabel = '执行当前操作') {
+      if (typeof isFreeAccountSessionFillActive === 'function' && await isFreeAccountSessionFillActive()) {
+        throw new Error(`补充 Session 任务运行中，当前不能${actionLabel}。`);
+      }
+    }
 
     function getTaskAccountIds(payload = {}) {
       const credentials = Array.isArray(payload.credentials) ? payload.credentials : [];
@@ -115,13 +164,13 @@
         type,
         accountId: accountIds.length === 1 ? accountIds[0] : '',
         accountIds,
-        channel: String(payload.channel || payload.redeemChannel || '').trim().toLowerCase(),
+        channel: String(payload.channel || '').trim().toLowerCase(),
         payload,
         progress: { current: 0, total: Math.max(1, accountIds.length) },
         checkpoint,
         workflowSnapshot: {
           activeFlowId: String(state.activeFlowId || '').trim(),
-          workflowVersion: Number(state.workflowVersion) || 1,
+          workflowVersion: Number(state.workflowVersion) || 3,
           nodeIds: typeof getNodeIdsForState === 'function' ? getNodeIdsForState(state) : [],
         },
       }, operation);
@@ -129,10 +178,11 @@
 
     async function handleMessage(rawMessage, sender) {
       const message = await normalizeNodeProtocolMessage(rawMessage);
-      const type = String(message?.type || '').trim();
+      const rawType = String(message?.type || '').trim();
+      const type = rawType;
       const payload = message?.payload || {};
       if (routeHandlers[type]) {
-        return routeHandlers[type](payload, message, sender);
+        return compactRuntimeMessageResponse(message, await routeHandlers[type](payload, message, sender));
       }
 
       switch (type) {
@@ -195,13 +245,23 @@
           let completionPayload = { ...(message.payload || {}) };
           try {
             if (nodeId === 'fill-password' && typeof finalizeStep3Completion === 'function') {
-              const finalizeResult = await finalizeStep3Completion(completionPayload);
-              if (finalizeResult && typeof finalizeResult === 'object' && !Array.isArray(finalizeResult)) {
-                completionPayload = {
-                  ...completionPayload,
-                  ...finalizeResult,
-                };
+              const shouldFinalizePasswordSubmit = completionPayload.skippedPasswordPage !== true
+                && completionPayload.passwordSubmitAttempted !== false;
+              let finalizeResult = null;
+              if (shouldFinalizePasswordSubmit) {
+                finalizeResult = await finalizeStep3Completion(completionPayload);
+                if (finalizeResult && typeof finalizeResult === 'object' && !Array.isArray(finalizeResult)) {
+                  completionPayload = {
+                    ...completionPayload,
+                    ...finalizeResult,
+                  };
+                }
               }
+              completionPayload.signupPasswordCreated = Boolean(
+                completionPayload.signupPasswordCreationAttempted === true
+                && finalizeResult?.ready === true
+                && finalizeResult?.existingTotpLoginRequired !== true
+              );
             }
           } catch (error) {
             if (typeof isCloudflareSecurityBlockedError === 'function' && isCloudflareSecurityBlockedError(error)) {
@@ -217,7 +277,7 @@
               nodeId,
             });
             await appendManualAccountRunRecordIfNeeded(`node:${nodeId}:failed`, null, errorMessage);
-            notifyNodeError(nodeId, errorMessage);
+            notifyNodeError(nodeId, error);
             return { ok: true, error: errorMessage };
           }
 
@@ -230,14 +290,7 @@
           await addLog('已完成', 'ok', { nodeId });
           await handleStepData(resolvedStep, completionPayload);
           if (isFinalNode && typeof appendAccountRunRecord === 'function') {
-            const successState = nodeId === 'upi-redeem'
-              ? {
-                ...(completionState || {}),
-                upiRedeemSuccess: true,
-                upiRedeemCdkey: completionPayload.cdkey || completionState?.upiRedeemCdkey || '',
-              }
-              : completionState;
-            await appendAccountRunRecord('success', successState);
+            await appendAccountRunRecord('success', completionState);
           }
           notifyNodeComplete(nodeId, completionPayload);
           return { ok: true };
@@ -466,7 +519,7 @@
         }
 
         case 'GET_STATE': {
-          return await getState();
+          return buildRuntimeStateMessageView(await getState());
         }
 
         case 'EXPORT_CURRENT_SESSION_JSON': {
@@ -561,89 +614,35 @@
           return { ok: true, ...(await exportUpiAccountCredentialBackupTextFile()) };
         }
 
-        case 'REDEEM_UPI_CREDENTIAL_MEMBERSHIP_FREE': {
-          clearStopRequest();
-          if (typeof redeemUpiCredentialMembershipFree !== 'function') {
-            throw new Error('UPI Free 账号兑换能力尚未接入。');
-          }
-          if ((message.payload || {}).manualTrigger !== true) {
-            throw new Error('Free 账号 CDK 兑换只能通过一键兑换按钮手动触发。');
-          }
-          const redeemPayload = message.payload || {};
-          const tracked = await runTrackedTask('redeem', redeemPayload, async (taskContext) => {
-            await taskContext?.checkpoint?.({
-              nodeId: 'cdk-redeem',
-              channel: redeemPayload.channel || 'upi',
-              cdkSubmitted: false,
-              remoteRequestSent: false,
-            });
-            await taskContext?.assertNotCanceled?.();
-            return redeemUpiCredentialMembershipFree({ ...redeemPayload, taskId: taskContext?.taskId || '' });
-          });
-          return { ok: true, taskId: tracked.taskId, results: tracked.result };
-        }
-
-        case 'IDENTIFY_UPI_CREDENTIAL_MEMBERSHIP_FREE_PLUS': {
-          clearStopRequest();
-          const state = await getState();
-          const payload = message.payload || {};
-          if (isAutoRunLockedState(state) && payload.allowDuringAutoRun !== true) {
-            throw new Error('自动流程运行中，当前不能识别 UPI Free 分组 Plus。');
-          }
-          if (typeof identifyUpiCredentialMembershipFreePlus !== 'function') {
-            throw new Error('UPI Free 分组 Plus 识别能力尚未接入。');
-          }
-          const tracked = await runTrackedTask('verify_membership', payload, async (taskContext) => {
-            await taskContext?.checkpoint?.({ nodeId: 'identify-plus' });
-            return identifyUpiCredentialMembershipFreePlus(payload);
-          });
-          return { ok: true, taskId: tracked.taskId, ...tracked.result };
-        }
-
-        case 'REFRESH_UPI_CREDENTIAL_MEMBERSHIP_ACCESS_TOKENS': {
+        case 'REFRESH_FREE_ACCOUNT_ACCESS_TOKENS': {
+          await ensureSessionFillIdle('刷新 AT');
           clearStopRequest();
           const state = await getState();
           if (isAutoRunLockedState(state)) {
             throw new Error('自动流程运行中，当前不能检查并刷新 AT。');
           }
-          if (typeof refreshUpiCredentialMembershipAccessTokens !== 'function') {
-            throw new Error('UPI 账号 AT 检查刷新能力尚未接入。');
+          if (typeof refreshFreeAccountAccessTokens !== 'function') {
+            throw new Error('Free 账号 AT 检查刷新能力尚未接入。');
           }
           const refreshPayload = message.payload || {};
           const tracked = await runTrackedTask('refresh_access_token', refreshPayload, async (taskContext) => {
             await taskContext?.checkpoint?.({ nodeId: 'refresh-access-token', remoteRequestSent: false });
-            return refreshUpiCredentialMembershipAccessTokens(refreshPayload);
+            return refreshFreeAccountAccessTokens(refreshPayload);
           });
           return { ok: true, taskId: tracked.taskId, ...tracked.result };
         }
 
-        case 'VERIFY_UPI_CREDENTIAL_MEMBERSHIP_PLUS': {
-          clearStopRequest();
-          const state = await getState();
-          if (isAutoRunLockedState(state)) {
-            throw new Error('自动流程运行中，当前不能验证 UPI Plus 分组。');
-          }
-          if (typeof verifyUpiCredentialMembershipPlus !== 'function') {
-            throw new Error('UPI Plus 分组验证能力尚未接入。');
-          }
-          const verifyPayload = message.payload || {};
-          const tracked = await runTrackedTask('verify_membership', verifyPayload, async (taskContext) => {
-            await taskContext?.checkpoint?.({ nodeId: 'verify-plus' });
-            return verifyUpiCredentialMembershipPlus(verifyPayload);
-          });
-          return { ok: true, taskId: tracked.taskId, ...tracked.result };
-        }
-
-        case 'LOGIN_UPI_CREDENTIAL_MEMBERSHIP_ACCOUNT': {
+        case 'LOGIN_FREE_ACCOUNT': {
+          await ensureSessionFillIdle('登录账号');
           clearStopRequest();
           const state = await getState();
           if (isAutoRunLockedState(state)) {
             throw new Error('自动流程运行中，当前不能登录 UPI 分组账号。');
           }
-          if (typeof loginUpiCredentialMembershipAccount !== 'function') {
-            throw new Error('UPI 分组账号登录能力尚未接入。');
+          if (typeof loginFreeAccount !== 'function') {
+            throw new Error('Free 账号登录能力尚未接入。');
           }
-          const result = await loginUpiCredentialMembershipAccount({
+          const result = await loginFreeAccount({
             ...(message.payload || {}),
             source: 'row-login',
             readAccessToken: false,
@@ -652,37 +651,13 @@
           return { ok: true, ...result };
         }
 
-        case 'MOVE_UPI_CREDENTIAL_MEMBERSHIP_ACCOUNT_GROUP': {
-          const state = await getState();
-          if (isAutoRunLockedState(state)) {
-            throw new Error('自动流程运行中，当前不能移动 UPI 分组账号。');
-          }
-          if (typeof moveUpiCredentialMembershipAccountGroup !== 'function') {
-            throw new Error('UPI 分组账号移动能力尚未接入。');
-          }
-          const result = await moveUpiCredentialMembershipAccountGroup(message.payload || {});
-          return { ok: true, ...result };
-        }
-
-        case 'PRUNE_INELIGIBLE_UPI_CREDENTIAL_MEMBERSHIP_FREE': {
+        case 'IMPORT_FREE_ACCOUNT_RESULTS': {
+          await ensureSessionFillIdle('导入或修改账号');
           clearStopRequest();
-          const state = await getState();
-          if (isAutoRunLockedState(state)) {
-            throw new Error('自动流程运行中，当前不能检测 UPI Free 分组试用资格。');
+          if (typeof importFreeAccountResults !== 'function') {
+            throw new Error('Free 账号导入能力尚未接入。');
           }
-          if (typeof pruneIneligibleFreeUpiCredentialMembership !== 'function') {
-            throw new Error('UPI Free 分组试用资格检测能力尚未接入。');
-          }
-          const result = await pruneIneligibleFreeUpiCredentialMembership(message.payload || {});
-          return { ok: true, ...result };
-        }
-
-        case 'IMPORT_UPI_CREDENTIAL_MEMBERSHIP_FREE_RESULTS': {
-          clearStopRequest();
-          if (typeof importUpiCredentialMembershipFreeResults !== 'function') {
-            throw new Error('UPI 无会员备份账号导入能力尚未接入。');
-          }
-          const result = await importUpiCredentialMembershipFreeResults(message.payload || {});
+          const result = await importFreeAccountResults(message.payload || {});
           return {
             ok: true,
             results: result,
@@ -694,53 +669,33 @@
           };
         }
 
-        case 'GET_UPI_CREDENTIAL_MEMBERSHIP_CREDENTIAL_POOL': {
-          if (typeof getUpiCredentialMembershipCredentialPool !== 'function') {
-            throw new Error('UPI 备份账号核验池读取能力尚未接入。');
+        case 'GET_FREE_ACCOUNT_RESULTS': {
+          if (typeof getFreeAccountResults !== 'function') {
+            throw new Error('Free 账号结果读取能力尚未接入。');
           }
-          return { ok: true, pool: await getUpiCredentialMembershipCredentialPool(message.payload || {}) };
+          return { ok: true, results: await getFreeAccountResults() };
         }
 
-        case 'GET_UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS': {
-          if (typeof getUpiCredentialMembershipCheckResults !== 'function') {
-            throw new Error('UPI 备份账号会员核验结果读取能力尚未接入。');
+        case 'DELETE_FREE_ACCOUNT_RESULTS': {
+          await ensureSessionFillIdle('删除账号');
+          if (typeof deleteFreeAccountResults !== 'function') {
+            throw new Error('Free 账号结果删除能力尚未接入。');
           }
-          return { ok: true, results: await getUpiCredentialMembershipCheckResults() };
+          return { ok: true, ...(await deleteFreeAccountResults(message.payload || {})) };
         }
 
-        case 'DELETE_UPI_CREDENTIAL_MEMBERSHIP_CREDENTIALS': {
-          if (typeof deleteUpiCredentialMembershipCredentials !== 'function') {
-            throw new Error('UPI 备份账号核验池删除能力尚未接入。');
+        case 'EXPORT_FREE_ACCOUNT_RESULTS': {
+          if (typeof exportFreeAccountResults !== 'function') {
+            throw new Error('Free 账号导出能力尚未接入。');
           }
-          return { ok: true, ...(await deleteUpiCredentialMembershipCredentials(message.payload || {})) };
+          return { ok: true, ...(await exportFreeAccountResults(message.payload || {})) };
         }
 
-        case 'DELETE_UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS': {
-          if (typeof deleteUpiCredentialMembershipCheckResults !== 'function') {
-            throw new Error('UPI 备份账号核验结果删除能力尚未接入。');
+        case 'STOP_FREE_ACCOUNT_CHECK': {
+          if (typeof stopFreeAccountCheck !== 'function') {
+            throw new Error('Free 账号资格检测停止能力尚未接入。');
           }
-          return { ok: true, ...(await deleteUpiCredentialMembershipCheckResults(message.payload || {})) };
-        }
-
-        case 'EXPORT_UPI_CREDENTIAL_MEMBERSHIP_CHECK_RESULTS': {
-          if (typeof exportUpiCredentialMembershipCheckResults !== 'function') {
-            throw new Error('UPI 备份账号会员核验导出能力尚未接入。');
-          }
-          return { ok: true, ...(await exportUpiCredentialMembershipCheckResults(message.payload || {})) };
-        }
-
-        case 'STOP_UPI_CREDENTIAL_MEMBERSHIP_CHECK': {
-          if (typeof stopUpiCredentialMembershipCheck !== 'function') {
-            throw new Error('UPI 备份账号会员核验停止能力尚未接入。');
-          }
-          return { ok: true, results: await stopUpiCredentialMembershipCheck() };
-        }
-
-        case 'STOP_UPI_CREDENTIAL_MEMBERSHIP_REDEEM': {
-          if (typeof stopUpiCredentialMembershipRedeem !== 'function') {
-            throw new Error('UPI Free 账号兑换停止能力尚未接入。');
-          }
-          return { ok: true, results: await stopUpiCredentialMembershipRedeem() };
+          return { ok: true, results: await stopFreeAccountCheck() };
         }
 
         case 'REFRESH_CARD_HELPER_CARD_BALANCE': {
@@ -938,21 +893,6 @@
           };
         }
 
-        case 'CHECK_UPI_REDEEM_SUBSCRIPTION_STATUSES': {
-          const state = await getState();
-          if (isAutoRunLockedState(state)) {
-            throw new Error('自动流程运行中，当前不能查询 UPI 会员状态。');
-          }
-          if (typeof checkUpiRedeemSubscriptionStatuses !== 'function') {
-            throw new Error('UPI 会员状态查询能力尚未接入。');
-          }
-          const result = await checkUpiRedeemSubscriptionStatuses({
-            ...state,
-            ...(message.payload || {}),
-          });
-          return { ok: true, ...result };
-        }
-
         case 'REMOVED_PAYMENT_WORKER_PAUSE_JOB': {
           if (typeof pauseRemovedPaymentWorkerJob !== 'function') {
             throw new Error('RemovedPaymentWorker 暂停能力尚未接入。');
@@ -986,6 +926,8 @@
   }
 
   return {
+    buildRuntimeStateMessageView,
+    compactRuntimeMessageResponse,
     createRouterMessageDispatcher,
   };
 });

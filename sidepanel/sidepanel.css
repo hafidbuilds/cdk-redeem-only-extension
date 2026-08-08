@@ -1,5 +1,5 @@
 /* ============================================================
-   CDK Redeem Only - Side Panel
+   Free Account Tool - Side Panel
    Design: Swiss Modernism + Developer Tool
    Font: Inter (UI) + JetBrains Mono (code)
    Themes: Light (default) + Dark (toggle)
@@ -57,13 +57,10 @@ body.upi-only #row-custom-email-pool {
 }
 
 body.upi-only #row-upi-subscription-api-base-url,
-body.upi-only #row-upi-redeem-external-api-key,
-body.upi-only #row-upi-redeem-client-id,
 body.upi-only #row-totp-mfa-after-profile-enabled,
 body.upi-only #row-set-gpt-password-verification-wait-seconds,
 body.upi-only #row-upi-credential-membership-totp-api-base-url,
-body.upi-only #row-upi-credential-membership-totp-lookup-key,
-body.upi-only #row-upi-redeem-cdkey-pool {
+body.upi-only #row-upi-credential-membership-totp-lookup-key {
   display: flex !important;
 }
 
@@ -155,6 +152,10 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   transition: background var(--transition), color var(--transition);
+}
+
+body.account-records-open {
+  overflow: hidden;
 }
 
 /* ============================================================
@@ -295,6 +296,128 @@ header {
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.header-account-records-btn {
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.online-tools-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 14px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.online-tools-label {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.online-tools-links {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.online-tool-link {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.online-tool-link:hover {
+  background: var(--bg-hover);
+}
+
+.online-tool-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.online-tool-link.is-gcash:hover {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--border));
+}
+
+.online-tool-link.is-cdk:hover {
+  border-color: color-mix(in srgb, var(--orange) 55%, var(--border));
+}
+
+.online-tool-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.online-tool-link.is-gcash .online-tool-icon {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.online-tool-link.is-cdk .online-tool-icon {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.online-tool-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.online-tool-title,
+.online-tool-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-tool-title {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.online-tool-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.online-tool-external {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.online-tool-link:hover .online-tool-external {
+  color: currentColor;
 }
 
 .btn-contribution-mode {
@@ -842,7 +965,26 @@ header {
 }
 
 @media (max-width: 540px) {
+  .online-tools-bar {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .online-tools-label {
+    padding-inline: 1px;
+  }
+
+  .online-tool-hint {
+    display: none;
+  }
+
   .contribution-mode-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 360px) {
+  .online-tools-links {
     grid-template-columns: 1fr;
   }
 }

@@ -25,7 +25,7 @@
 
     function isSignupEntryUnavailableErrorMessage(errorLike) {
       const message = getErrorMessage(errorLike);
-      return /未找到可用的邮箱输入入口|当前页面没有可用的注册入口，也不在邮箱\/密码页/i.test(message);
+      return /未找到可用的邮箱输入入口|未找到可点击的[“\"]?继续[”\"]?按钮|当前页面没有可用的注册入口，也不在邮箱\/密码页/i.test(message);
     }
 
     function isRetryableStep2TransportErrorMessage(errorLike) {
@@ -86,7 +86,9 @@
           type: 'ENSURE_SIGNUP_ENTRY_READY',
           step: 2,
           source: 'background',
-          payload: {},
+          payload: {
+            backgroundOwnsWorkflowOutcome: true,
+          },
         }, {
           timeoutMs: 30000,
           retryDelayMs: 500,
@@ -160,7 +162,10 @@
           nodeId: 'submit-signup-email',
           step: 2,
           source: 'background',
-          payload,
+          payload: {
+            ...payload,
+            backgroundOwnsWorkflowOutcome: true,
+          },
         }, {
           timeoutMs,
           retryDelayMs,
@@ -389,7 +394,7 @@
         accountIdentifier: resolvedEmail,
         nextSignupState: landingResult?.state || 'password_page',
         nextSignupUrl: landingResult?.url || step2Result?.url || '',
-        skippedPasswordStep: landingResult?.state === 'verification_page',
+        skippedPasswordStep: false,
       });
     }
 

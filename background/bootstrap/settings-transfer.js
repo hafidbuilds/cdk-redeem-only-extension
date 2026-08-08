@@ -5,7 +5,6 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createSettingsTransferModule() {
   const security = globalThis.MultiPageSettingsTransferSecurity
     || (typeof require === 'function' ? require('./settings-transfer-security.js') : null);
-
   function createSettingsTransfer(context = {}) {
     const {
       chromeApi,
@@ -36,18 +35,17 @@
       ensureManualInteractionAllowed = async () => ({}),
       getState = async () => ({}),
       synchronizeAccountReadModel = async () => null,
+      workflowDefinitions = null,
       settingsImportBackupStorageKey = 'settingsImportBackupsV1',
       settingsImportBackupLimit = 3,
     } = context;
     const CURRENT_SCHEMA_VERSION = Math.max(1, Number(settingsExportSchemaVersion) || 1);
-    const membershipResultsStorageKey = storageKeys.membershipResults || 'upiCredentialMembershipCheckResults';
+    const membershipResultsStorageKey = storageKeys.membershipResults || 'freeAccountResults';
     const credentialBackupsStorageKey = storageKeys.credentialBackups || 'upiAccountCredentialBackups';
     const accountRunHistoryStorageKey = storageKeys.accountRunHistory || 'accountRunHistory';
-
     function normalizeLocalCpaJsonPluginDir(rawValue = '') {
       return String(rawValue || '').trim();
     }
-
     function normalizeLocalCpaJsonRelativeAuthDir(rawValue = '') {
       return String(rawValue || '').trim() || defaultLocalCpaJsonRelativeAuthDir;
     }
@@ -66,27 +64,23 @@
       if (!source) {
         return null;
       }
+      const resultsApi = globalThis.MultiPageFreeAccountResults;
       const items = (Array.isArray(source.items) ? source.items : [])
         .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
-        .map((item) => ({ ...item }));
-      const paidCount = items.filter((item) => String(item?.status || '').trim().toLowerCase() === 'paid').length;
-      const freeCount = items.filter((item) => String(item?.status || '').trim().toLowerCase() === 'free').length;
-      const failedCount = items.filter((item) => String(item?.status || '').trim().toLowerCase() === 'failed').length;
-      return {
+        .map((item) => resultsApi?.sanitizeFreeAccountItem?.(item))
+        .filter(Boolean);
+      const normalized = {
         ...source,
+        schemaVersion: 3,
         items,
         running: false,
-        redeeming: false,
         flowStage: '',
         flowStageEmail: '',
-        flowMode: '',
         total: Math.max(items.length, Math.floor(Number(source.total) || 0)),
         completed: Math.max(items.length, Math.floor(Number(source.completed) || 0)),
-        paidCount,
-        freeCount,
-        failedCount,
         updatedAt: String(source.updatedAt || '') || new Date().toISOString(),
       };
+      return resultsApi?.normalizeResults ? resultsApi.normalizeResults(normalized) : normalized;
     }
     function normalizeSettingsRuntimeCredentialBackups(value = null) {
       const source = normalizeSettingsRuntimeObject(value, null);
@@ -138,7 +132,6 @@
         icloudAliasCacheAt: Math.max(0, Number(source.icloudAliasCacheAt) || 0),
       };
     }
-
     function buildSafeRuntimeData(runtimeData = {}) {
       return security.buildSafeRuntimeData(runtimeData, {
         normalizeMembership: normalizeSettingsRuntimeMembershipResults,
@@ -146,7 +139,6 @@
         normalizeAlias: normalizeSettingsRuntimeAliasState,
       });
     }
-
     function migrateSettingsBundle(input = {}) {
       return security.migrateSettingsBundle(input, CURRENT_SCHEMA_VERSION);
     }
@@ -166,9 +158,9 @@
         icloudAliasCacheAt: 0,
       };
       return {
-        upiCredentialMembershipCheckResults: normalizeSettingsRuntimeMembershipResults(
+        freeAccountResults: normalizeSettingsRuntimeMembershipResults(
           stored?.[membershipResultsStorageKey]
-        ) || defaultState.upiCredentialMembershipCheckResults,
+        ) || defaultState.freeAccountResults,
         upiAccountCredentialBackups: normalizeSettingsRuntimeCredentialBackups(
           stored?.[credentialBackupsStorageKey]
         ) || {},
@@ -180,12 +172,11 @@
         icloudAliasCacheAt: normalizedAliasState.icloudAliasCacheAt,
       };
     }
-
     function buildSettingsRuntimeDataImportUpdates(configBundle = {}) {
       const runtimeData = normalizeSettingsRuntimeObject(configBundle.runtimeData, {});
       const membershipResults = normalizeSettingsRuntimeMembershipResults(
-        runtimeData.upiCredentialMembershipCheckResults
-        || configBundle.upiCredentialMembershipCheckResults
+        runtimeData.freeAccountResults
+        || configBundle.freeAccountResults
       );
       const credentialBackups = normalizeSettingsRuntimeCredentialBackups(
         runtimeData.upiAccountCredentialBackups
@@ -232,7 +223,6 @@
       }
       return updates;
     }
-
     async function exportSettingsBundle(options = {}) {
       const includeSensitiveRuntimeData = options?.includeSensitiveRuntimeData === true;
       if (includeSensitiveRuntimeData && options?.confirmed !== true) {
@@ -252,13 +242,11 @@
         settings: safeExport ? security.omitSensitiveFields(settings) : settings,
         runtimeData: safeExport ? buildSafeRuntimeData(runtimeData) : runtimeData,
       };
-
       return {
         fileName: buildSettingsExportFilename(),
         fileContent: JSON.stringify(bundle, null, 2),
       };
     }
-
     async function saveImportBackup() {
       return security.saveImportBackup({
         chromeApi,
@@ -269,7 +257,6 @@
         currentVersion: CURRENT_SCHEMA_VERSION,
       });
     }
-
     async function importSettingsBundle(configBundle) {
       const state = await ensureManualInteractionAllowed('导入配置');
       if (Object.values(state.nodeStatuses || {}).some((status) => status === 'running')) {
@@ -278,12 +265,10 @@
       if (!configBundle || typeof configBundle !== 'object' || Array.isArray(configBundle)) {
         throw new Error('配置文件内容无效。');
       }
-
       const migratedBundle = migrateSettingsBundle(configBundle);
       if (!migratedBundle.settings || typeof migratedBundle.settings !== 'object' || Array.isArray(migratedBundle.settings)) {
         throw new Error('配置文件缺少 settings 配置段。');
       }
-
       const importedSettings = buildPersistentSettingsPayload(migratedBundle.settings, {
         fillDefaults: false,
         requireKnownKeys: true,
@@ -299,8 +284,7 @@
         Object.assign(importedSettings, importModeValidation.normalizedUpdates);
       }
       if (
-        Object.prototype.hasOwnProperty.call(importedSettings, 'plusModeEnabled')
-        || Object.prototype.hasOwnProperty.call(importedSettings, 'signupMethod')
+        Object.prototype.hasOwnProperty.call(importedSettings, 'signupMethod')
         || Object.prototype.hasOwnProperty.call(importedSettings, 'panelMode')
         || Object.prototype.hasOwnProperty.call(importedSettings, 'activeFlowId')
         || Object.prototype.hasOwnProperty.call(importedSettings, 'contributionMode')
@@ -311,7 +295,6 @@
           resolvedSignupMethod: null,
         });
       }
-
       await saveImportBackup();
       await setPersistentSettings(importedSettings);
       const runtimeDataUpdates = buildSettingsRuntimeDataImportUpdates(migratedBundle.containsSensitiveRuntimeData === true
@@ -320,10 +303,9 @@
       if (Object.keys(runtimeDataUpdates).length > 0) {
         await chromeApi.storage.local.set(runtimeDataUpdates);
       }
-
       const runtimeSessionUpdates = {};
       if (Object.prototype.hasOwnProperty.call(runtimeDataUpdates, membershipResultsStorageKey)) {
-        runtimeSessionUpdates.upiCredentialMembershipCheckResults = runtimeDataUpdates[membershipResultsStorageKey];
+        runtimeSessionUpdates.freeAccountResults = runtimeDataUpdates[membershipResultsStorageKey];
       }
       if (Object.prototype.hasOwnProperty.call(runtimeDataUpdates, accountRunHistoryStorageKey)) {
         runtimeSessionUpdates.accountRunHistory = runtimeDataUpdates[accountRunHistoryStorageKey];
@@ -333,15 +315,16 @@
           runtimeSessionUpdates[key] = runtimeDataUpdates[key];
         }
       }
-
+      const importedStateView = { ...state, ...importedSettings, ...runtimeSessionUpdates,
+        currentHotmailAccountId: null, email: null,
+        registrationEmailState: { ...defaultRegistrationEmailState } };
       const sessionUpdates = {
-        ...importedSettings,
-        ...runtimeSessionUpdates,
-        currentHotmailAccountId: null,
-        email: null,
-        registrationEmailState: { ...defaultRegistrationEmailState },
+        ...importedStateView,
+        workflowVersion: Number(workflowDefinitions?.WORKFLOW_VERSION) || 3,
+        currentNodeId: '',
+        nodeStatuses: typeof workflowDefinitions?.getDefaultNodeStatuses === 'function'
+          ? workflowDefinitions.getDefaultNodeStatuses(importedStateView) : { ...(defaultState.nodeStatuses || {}) },
       };
-
       await setState(sessionUpdates);
       const accountReadModelSync = await synchronizeAccountReadModel('settings-import');
       broadcastDataUpdate({
@@ -352,10 +335,8 @@
         ...(sessionUpdates.email !== undefined ? { email: sessionUpdates.email } : {}),
         registrationEmailState: sessionUpdates.registrationEmailState,
       });
-
       return getState();
     }
-
     return {
       normalizeLocalCpaJsonPluginDir,
       normalizeLocalCpaJsonRelativeAuthDir,
@@ -375,6 +356,5 @@
       importSettingsBundle,
     };
   }
-
   return { createSettingsTransfer };
 });
