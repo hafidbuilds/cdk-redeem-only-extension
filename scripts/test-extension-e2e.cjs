@@ -433,6 +433,13 @@ test('isolated Chrome for Testing loads MV3 extension and sidepanel', { timeout:
   );
 
   await page.setViewport({ width: 1000, height: 500 });
+  await page.evaluate(() => {
+    const panel = document.querySelector('.account-records-panel');
+    if (!panel) return;
+    panel.style.height = '260px';
+    panel.style.maxHeight = '260px';
+    panel.scrollTop = 0;
+  });
   const modalScrollBefore = await page.evaluate(() => {
     const panel = document.querySelector('.account-records-panel');
     const bodyStyle = getComputedStyle(document.body);
@@ -445,6 +452,7 @@ test('isolated Chrome for Testing loads MV3 extension and sidepanel', { timeout:
       overflowY: panelStyle?.overflowY || '',
       scrollHeight: panel?.scrollHeight || 0,
       scrollTop: panel?.scrollTop || 0,
+      viewportHeight: window.innerHeight,
     };
   });
   assert.equal(modalScrollBefore.bodyLocked, true, JSON.stringify(modalScrollBefore));

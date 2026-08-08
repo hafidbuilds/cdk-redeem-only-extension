@@ -13,6 +13,7 @@ git log --oneline -- docs/audit
 
 | 日期 | 问题 | 修复结论 | 详细记录 |
 | --- | --- | --- | --- |
+| 2026-08-08 | GitHub Actions 中账号弹窗滚动 E2E 受 Runner 视口影响失败 | 在隔离测试页直接固定弹窗高度，稳定构造溢出并保留原滚动行为断言 | [记录](issue-fix-archive-2026-08.md#2026-08-08-github-actions-e2e-scroll-viewport) |
 | 2026-08-08 | 注册完成后仍显示并执行不再需要的第 10 步 | 工作流升级为九步，第 9 步保存 `unknown` 后结束；资格接口代码保留供手动复检 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step10-hidden-nine-step-workflow) |
 | 2026-08-08 | 第 10 步仍按旧协议请求资格接口，缺少 GCash 检查参数和服务授权 | 发送 `check_gcash_pm` 与独立 Bearer 令牌，按 GCash 字段区分无资格、配置失败和临时错误 | [记录](issue-fix-archive-2026-08.md#2026-08-08-step10-gcash-api-contract) |
 | 2026-08-02 | 第 4 步账号已停用时仍继续等待验证码或重开当前账号 | 标记账号封禁；手动停止，自动运行同轮换下一个账号 | [记录](issue-fix-archive-2026-08.md#2026-08-02-step4-account-deactivated-replacement) |

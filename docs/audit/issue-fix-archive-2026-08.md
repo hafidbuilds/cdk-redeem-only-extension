@@ -30,6 +30,7 @@
 - [旧自动运行结果串入新会话并触发错误恢复](#2026-08-08-auto-run-superseded-session-race)
 - [验证码页官方密码按钮被主动跳过并误报完成](#2026-08-08-step3-login-password-switch-click)
 - [第 10 步仍使用旧资格接口契约](#2026-08-08-step10-gcash-api-contract)
+- [GitHub Actions 账号弹窗滚动 E2E 受 Runner 视口影响失败](#2026-08-08-github-actions-e2e-scroll-viewport)
 
 ---
 
@@ -2169,3 +2170,43 @@ V3 重写 Free 账号导出时，`formatFreeAccountTextLine()` 直接对 `record
 - `npm test` 共 `469/469` 通过，其中 MV3 E2E 使用 Puppeteer 管理的 `Chrome/150.0.7871.24`、临时隔离 Profile 和 pipe transport；未连接用户的指纹浏览器或已登录 Profile。
 - `npm run docs:check`、`npm run audit` 和完整 `npm run check` 均通过；Smoke Audit 检查 `150` 个运行时文件。
 - Manifest 权限、Free schema、账号分组和 GCash 接口契约没有变化。升级后需在实际指纹浏览器 Profile 中重新加载扩展；旧 v2 运行态会在读取时迁移到九步节点图，新注册账号默认进入“未检测资格”，需要时从 Free 账号面板手动复检。
+
+---
+
+<a id="2026-08-08-github-actions-e2e-scroll-viewport"></a>
+
+## GitHub Actions 账号弹窗滚动 E2E 受 Runner 视口影响失败
+
+日期：2026-08-08
+
+关联记录：[Free 账号分组弹窗滚动穿透主界面](#2026-08-05-free-account-modal-scroll)、[注册完成后仍显示并执行不再需要的第 10 步](#2026-08-08-step10-hidden-nine-step-workflow)
+
+### 故障现象与诊断证据
+
+`release: v3.0.0` 提交 `79c8b17` 在 GitHub Actions 的 `main` 运行 `31256643710` 和标签 `v3.0.0` 运行 `31256917636` 中显示红色失败状态。失败发生在 `npm test` 的隔离 MV3 E2E，业务与单元测试共 `468/469` 通过；唯一失败位于 `scripts/test-extension-e2e.cjs` 的账号弹窗滚动断言。Windows Runner 执行 `page.setViewport({ width: 1000, height: 500 })` 后，页面诊断仍为 `clientHeight=939`、`scrollHeight=939`，因此测试没有构造出预期的可滚动几何条件。证据不包含账号、令牌、Cookie、邮箱、代理或浏览器 Profile 数据。
+
+### 根因与影响范围
+
+- E2E 通过改变浏览器视口高度间接制造弹窗内容溢出，断言实际依赖 GitHub Windows Runner 和 Chrome for Testing 对视口调整的具体行为。
+- Runner 中页面内部高度没有按请求缩小，账号弹窗内容刚好无需滚动，导致“弹窗应拥有纵向滚动”断言失败；这不是 Side Panel 产品样式或滚动锁失效。
+- 问题只影响 CI 测试稳定性和提交状态展示，不影响扩展运行时、九步工作流、账号数据、Manifest 权限或发布包功能。
+
+### 实现与安全边界
+
+- E2E 打开账号弹窗后，在隔离测试页面内把 `.account-records-panel` 的 `height` 和 `maxHeight` 固定为 `260px`，并将 `scrollTop` 归零，直接建立可重复的溢出条件。
+- 诊断对象增加 `viewportHeight`，后续失败时可以区分浏览器视口与弹窗自身几何尺寸。
+- 原断言语义保持不变：验证 `body` 滚动锁、弹窗 `overflow-y: auto`、纵向滚动由弹窗承担，并确认滚动弹窗时页面主体位置不变。
+- 修改仅存在于仓库自有的隔离浏览器测试，不接触用户安装的 Chrome、指纹浏览器、登录 Profile 或外部站点，也不修改产品 CSS 和运行时代码。
+
+### 回归覆盖
+
+- 直接语法检查覆盖修改后的 E2E 文件。
+- 聚焦隔离浏览器 E2E 验证 MV3 Service Worker、Side Panel、账号弹窗滚动、运行时消息和诊断剪贴板流程。
+- 完整门禁覆盖全部 Node 测试、隔离浏览器 E2E、文档检查和 Smoke Audit。
+
+### 验证与发布影响
+
+- `node --check scripts/test-extension-e2e.cjs` 通过。
+- 聚焦 E2E `1/1` 通过，使用 Puppeteer 管理的 `Chrome/150.0.7871.24`、临时隔离 Profile 和 pipe transport。
+- `npm run check` 通过：`297` 个 JavaScript 文件语法检查通过，测试 `469/469` 通过，隔离 MV3 E2E、文档检查和审计均通过；Smoke Audit 检查 `150` 个运行时文件。
+- Manifest、扩展版本、`v3.0.0` 标签和现有 Release 资产未修改。历史失败运行保留作为发布提交的检查记录；修复通过后续 `main` 提交触发独立 CI 验证。
