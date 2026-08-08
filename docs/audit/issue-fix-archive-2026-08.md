@@ -2235,6 +2235,7 @@ V3 重写 Free 账号导出时，`formatFreeAccountTextLine()` 直接对 `record
 ### 实现与安全边界
 
 - 第三步在等待密码页超时后检查当前标签页：仅当主机为 `auth.openai.com`、路径为 `/email-verification` 且标题/状态呈现浏览器 HTTP 500 特征时，才执行带 `bypassCache` 的标签页刷新。
+- 第三步开始前也执行同一预检，处理用户已经看到错误页后再次点击步骤 3 的场景；正常验证码页不会被刷新。
 - 刷新后重新等待内容脚本并重新执行官方“使用密码继续”入口，最多自动恢复两轮；成功进入 `/create-account/password` 或 `/log-in/password` 后继续原生密码表单逻辑。
 - 刷新后无法恢复内容脚本、入口消失、再次跳转未知或密码提交结果不确定时，抛出不可静默降级的 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，保留当前标签页、邮箱和注册会话，不写入密码已设置成功状态，不重复创建账号记录。
 - 新增 `waitForTabStableComplete` 依赖仅用于等待当前标签页加载稳定；不增加 Manifest 权限、远程接口或直接 `fetch`，不修改 OpenAI 未公开注册接口调用。
@@ -2243,10 +2244,12 @@ V3 重写 Free 账号导出时，`formatFreeAccountTextLine()` 直接对 `record
 
 - 第三步注册密码、已有账号登录密码页、跳转失败保留会话的既有测试继续通过。
 - 新增瞬时 HTTP 500 场景：首次等待未进入密码页，刷新一次，重新点击入口，再恢复密码页提交；验证只执行一次刷新且不重复最终恢复提交。
+- 新增启动时已经停在 HTTP 500 错误页的场景：先刷新并完成内容脚本握手，再进入既有第三步流程。
 - 测试使用虚构账号和假密码，不写入任何真实认证材料。
 
 ### 验证与发布影响
 
 - `node --check background/steps/fill-password.js`、`background/bootstrap/signup-executor-registry.js` 和 `scripts/test-signup-password-transition.cjs` 通过。
 - `node --test scripts/test-signup-password-transition.cjs`：`14/14` 通过。
-- 完整 `npm run check` 通过：语法检查 `297` 个 JavaScript 文件，测试 `470/470` 通过，文档检查、Smoke Audit `150` 个运行时文件、Removed Network 审计和手机号短信残留审计均通过。Manifest、版本号、账号 schema、邮箱 Provider 和既有发布标签不变。
+- 定向第三步测试 `15/15` 通过。
+- 完整 `npm run check` 通过：语法检查 `297` 个 JavaScript 文件，测试 `471/471` 通过，文档检查、Smoke Audit `150` 个运行时文件、Removed Network 审计和手机号短信残留审计均通过。Manifest、版本号、账号 schema、邮箱 Provider 和既有发布标签不变。

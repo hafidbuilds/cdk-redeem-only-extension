@@ -78,6 +78,7 @@ function createStep3Harness({
   matchedTab = { id: 17, url: 'https://auth.openai.com/create-account/password' },
   passwordSwitchRouteKind = 'signup_create',
   httpErrorRecovery = false,
+  httpErrorAtStart = false,
 } = {}) {
   const calls = [];
   const stateUpdates = [];
@@ -85,8 +86,10 @@ function createStep3Harness({
   let reloadCount = 0;
   const currentTab = {
     id: 17,
-    url: 'https://auth.openai.com/email-verification',
-    title: 'auth.openai.com',
+    url: httpErrorAtStart
+      ? 'https://auth.openai.com/email-verification'
+      : 'https://auth.openai.com/create-account/password',
+    title: httpErrorAtStart ? 'auth.openai.com' : 'ChatGPT',
     status: 'complete',
   };
   const executor = createStep3Executor({
@@ -94,7 +97,7 @@ function createStep3Harness({
     chrome: {
       tabs: {
         update: async () => {},
-        get: async () => (httpErrorRecovery ? currentTab : null),
+        get: async () => (httpErrorRecovery || httpErrorAtStart ? currentTab : null),
         reload: async () => {
           reloadCount += 1;
           currentTab.url = 'https://auth.openai.com/create-account/password';
@@ -122,7 +125,11 @@ function createStep3Harness({
     SIGNUP_PAGE_INJECT_FILES: ['content/signup-page.js'],
     waitForTabUrlMatch: async (_tabId, predicate) => {
       waitCalls += 1;
-      if (httpErrorRecovery && waitCalls === 1) return null;
+      if (httpErrorRecovery && waitCalls === 1) {
+        currentTab.url = 'https://auth.openai.com/email-verification';
+        currentTab.title = 'auth.openai.com';
+        return null;
+      }
       return matchedTab && predicate(matchedTab.url) ? matchedTab : null;
     },
   });
@@ -180,6 +187,19 @@ test('step 3 reloads a transient HTTP 500 verification page before retrying the 
   const resumedMessage = harness.calls
     .filter(([kind]) => kind === 'resume')[1][1];
   assert.equal(resumedMessage.payload.passwordSwitchResumed, true);
+});
+
+test('step 3 refreshes an HTTP 500 page before the content script handshake', async () => {
+  const harness = createStep3Harness({ httpErrorAtStart: true });
+
+  await harness.executor.executeStep3({
+    email: 'new.account@example.test',
+    accounts: [],
+  });
+
+  assert.equal(harness.reloadCount(), 1);
+  assert.equal(harness.calls.filter(([kind]) => kind === 'stable').length, 1);
+  assert.equal(harness.calls.filter(([kind]) => kind === 'ready').length, 2);
 });
 
 test('step 3 preserves the signup session when the password switch never reaches the create page', async () => {

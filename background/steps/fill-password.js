@@ -183,6 +183,7 @@
       await setState({ accounts });
 
       await chrome.tabs.update(signupTabId, { active: true });
+      await reloadSignupAuthHttpErrorPage(signupTabId, '步骤 3 开始前检测到认证错误页');
       await ensureContentScriptReadyOnTab('signup-page', signupTabId, {
         inject: SIGNUP_PAGE_INJECT_FILES,
         injectSource: 'signup-page',
