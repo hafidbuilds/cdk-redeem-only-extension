@@ -77,13 +77,33 @@ test('password page kind keeps signup creation separate from existing-account lo
 function createStep3Harness({
   matchedTab = { id: 17, url: 'https://auth.openai.com/create-account/password' },
   passwordSwitchRouteKind = 'signup_create',
+  httpErrorRecovery = false,
 } = {}) {
   const calls = [];
   const stateUpdates = [];
+  let waitCalls = 0;
+  let reloadCount = 0;
+  const currentTab = {
+    id: 17,
+    url: 'https://auth.openai.com/email-verification',
+    title: 'auth.openai.com',
+    status: 'complete',
+  };
   const executor = createStep3Executor({
     addLog: async (message) => calls.push(['log', message]),
-    chrome: { tabs: { update: async () => {} } },
+    chrome: {
+      tabs: {
+        update: async () => {},
+        get: async () => (httpErrorRecovery ? currentTab : null),
+        reload: async () => {
+          reloadCount += 1;
+          currentTab.url = 'https://auth.openai.com/create-account/password';
+          currentTab.title = 'ChatGPT';
+        },
+      },
+    },
     ensureContentScriptReadyOnTab: async () => calls.push(['ready']),
+    waitForTabStableComplete: async () => calls.push(['stable']),
     generatePassword: () => 'GeneratedPassword123!',
     getTabId: async () => 17,
     isTabAlive: async () => true,
@@ -93,16 +113,20 @@ function createStep3Harness({
     },
     sendToContentScriptResilient: async (_source, message) => {
       calls.push(['resume', message]);
-      return { ok: true };
+      return message.payload?.passwordSwitchResumed === true
+        ? { ok: true }
+        : { ok: true, passwordPageNavigationScheduled: true, passwordSwitchRouteKind };
     },
     setPasswordState: async () => {},
     setState: async (updates) => stateUpdates.push(updates),
     SIGNUP_PAGE_INJECT_FILES: ['content/signup-page.js'],
-    waitForTabUrlMatch: async (_tabId, predicate) => (
-      matchedTab && predicate(matchedTab.url) ? matchedTab : null
-    ),
+    waitForTabUrlMatch: async (_tabId, predicate) => {
+      waitCalls += 1;
+      if (httpErrorRecovery && waitCalls === 1) return null;
+      return matchedTab && predicate(matchedTab.url) ? matchedTab : null;
+    },
   });
-  return { calls, executor, stateUpdates };
+  return { calls, executor, reloadCount: () => reloadCount, stateUpdates };
 }
 
 test('step 3 resumes on the new create-account password page after the official switch link navigates', async () => {
@@ -137,6 +161,25 @@ test('step 3 follows the official verification-page password action when it uses
   assert.equal(resumedMessage.payload.passwordSwitchResumed, true);
   assert.equal(resumedMessage.payload.passwordSwitchRouteKind, 'login');
   assert.equal(resumedMessage.payload.email, 'new.account@example.test');
+});
+
+test('step 3 reloads a transient HTTP 500 verification page before retrying the password switch', async () => {
+  const harness = createStep3Harness({ httpErrorRecovery: true });
+
+  await harness.executor.executeStep3({
+    email: 'new.account@example.test',
+    accounts: [],
+  });
+
+  assert.equal(harness.reloadCount(), 1);
+  assert.equal(harness.calls.filter(([kind]) => kind === 'stable').length, 1);
+  assert.equal(harness.calls.filter(([kind]) => kind === 'resume').length, 2);
+  const retryMessage = harness.calls
+    .filter(([kind]) => kind === 'resume')[0][1];
+  assert.equal(retryMessage.payload.passwordSwitchRetry, 1);
+  const resumedMessage = harness.calls
+    .filter(([kind]) => kind === 'resume')[1][1];
+  assert.equal(resumedMessage.payload.passwordSwitchResumed, true);
 });
 
 test('step 3 preserves the signup session when the password switch never reaches the create page', async () => {

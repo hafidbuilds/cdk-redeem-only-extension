@@ -165,6 +165,7 @@
         setPasswordState: deps.setPasswordState,
         setState: deps.setState,
         SIGNUP_PAGE_INJECT_FILES: deps.SIGNUP_PAGE_INJECT_FILES,
+        waitForTabStableComplete: deps.waitForTabStableComplete,
         waitForTabUrlMatch: deps.waitForTabUrlMatch,
       }) || null,
       existingTotpLogin: root.MultiPageBackgroundExistingTotpLogin?.createExistingTotpLoginExecutor?.({

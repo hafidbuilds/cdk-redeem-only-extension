@@ -31,6 +31,7 @@
 - [验证码页官方密码按钮被主动跳过并误报完成](#2026-08-08-step3-login-password-switch-click)
 - [第 10 步仍使用旧资格接口契约](#2026-08-08-step10-gcash-api-contract)
 - [GitHub Actions 账号弹窗滚动 E2E 受 Runner 视口影响失败](#2026-08-08-github-actions-e2e-scroll-viewport)
+- [第三步验证码页 HTTP 500 导致密码入口切换停在错误页](#2026-08-08-step3-password-switch-http-500)
 
 ---
 
@@ -2210,3 +2211,42 @@ V3 重写 Free 账号导出时，`formatFreeAccountTextLine()` 直接对 `record
 - 聚焦 E2E `1/1` 通过，使用 Puppeteer 管理的 `Chrome/150.0.7871.24`、临时隔离 Profile 和 pipe transport。
 - `npm run check` 通过：`297` 个 JavaScript 文件语法检查通过，测试 `469/469` 通过，隔离 MV3 E2E、文档检查和审计均通过；Smoke Audit 检查 `150` 个运行时文件。
 - Manifest、扩展版本、`v3.0.0` 标签和现有 Release 资产未修改。历史失败运行保留作为发布提交的检查记录；修复通过后续 `main` 提交触发独立 CI 验证。
+
+---
+
+<a id="2026-08-08-step3-password-switch-http-500"></a>
+
+## 第三步验证码页 HTTP 500 导致密码入口切换停在错误页
+
+日期：2026-08-08
+
+关联记录：[验证码页官方密码按钮被主动跳过并误报完成](#2026-08-08-step3-login-password-switch-click)、[邮箱注册默认进入验证码页后无法在第 3 步创建密码](#2026-08-08-step3-email-verification-password-switch)
+
+### 故障现象与诊断证据
+
+用户在第三步执行密码创建时，指纹浏览器标签页停留在 `auth.openai.com/email-verification`，页面显示“このページは動作していません / HTTP ERROR 500”。用户网络连接正常；该现象发生在验证码页点击官网密码入口后的认证路由切换期间。脱敏代码路径显示第三步只等待 `/create-account/password` 或 `/log-in/password`，等待超时后直接返回 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，没有处理仍停在验证码路由的认证 HTTP 500 页面。记录不保存邮箱、密码、验证码、Cookie、Session、指纹参数或请求标识。
+
+### 根因与影响范围
+
+- 官网认证服务在密码入口切换期间可能短暂返回同一路径的 HTTP 500 错误页；这不等同于本地网络不可用，也不能仅通过判断 URL 是否仍为 `/email-verification` 来区分。
+- 第三步已有验证码取码和 GPT 密码重置流程的 HTTP 500 刷新逻辑，但注册密码切换执行器没有复用这一恢复边界，因此页面会停在浏览器错误页并等待最终超时。
+- 问题影响验证码优先注册路线的第三步密码切换；正常验证码页、已存在账号的 `/log-in/password` 登录验证、密码提交未知状态和后续步骤不改变。
+
+### 实现与安全边界
+
+- 第三步在等待密码页超时后检查当前标签页：仅当主机为 `auth.openai.com`、路径为 `/email-verification` 且标题/状态呈现浏览器 HTTP 500 特征时，才执行带 `bypassCache` 的标签页刷新。
+- 刷新后重新等待内容脚本并重新执行官方“使用密码继续”入口，最多自动恢复两轮；成功进入 `/create-account/password` 或 `/log-in/password` 后继续原生密码表单逻辑。
+- 刷新后无法恢复内容脚本、入口消失、再次跳转未知或密码提交结果不确定时，抛出不可静默降级的 `SIGNUP_PASSWORD_SUBMIT_UNCERTAIN`，保留当前标签页、邮箱和注册会话，不写入密码已设置成功状态，不重复创建账号记录。
+- 新增 `waitForTabStableComplete` 依赖仅用于等待当前标签页加载稳定；不增加 Manifest 权限、远程接口或直接 `fetch`，不修改 OpenAI 未公开注册接口调用。
+
+### 回归覆盖
+
+- 第三步注册密码、已有账号登录密码页、跳转失败保留会话的既有测试继续通过。
+- 新增瞬时 HTTP 500 场景：首次等待未进入密码页，刷新一次，重新点击入口，再恢复密码页提交；验证只执行一次刷新且不重复最终恢复提交。
+- 测试使用虚构账号和假密码，不写入任何真实认证材料。
+
+### 验证与发布影响
+
+- `node --check background/steps/fill-password.js`、`background/bootstrap/signup-executor-registry.js` 和 `scripts/test-signup-password-transition.cjs` 通过。
+- `node --test scripts/test-signup-password-transition.cjs`：`14/14` 通过。
+- 完整 `npm run check` 通过：语法检查 `297` 个 JavaScript 文件，测试 `470/470` 通过，文档检查、Smoke Audit `150` 个运行时文件、Removed Network 审计和手机号短信残留审计均通过。Manifest、版本号、账号 schema、邮箱 Provider 和既有发布标签不变。
